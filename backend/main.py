@@ -54,6 +54,11 @@ def create_app() -> FastAPI:
         [ConsoleNotifier(), WhatsAppOutboxNotifier()]
     )
 
+    # AI layer — free, local embeddings + grounded Q&A (never a paid API).
+    from ai.qa import QaEngine
+
+    app.state.qa = QaEngine(dataset)
+
     @app.exception_handler(Exception)
     async def unhandled(request, exc):  # pragma: no cover - safety net
         return JSONResponse(

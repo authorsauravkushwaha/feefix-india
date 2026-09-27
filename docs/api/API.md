@@ -108,6 +108,37 @@ POST /api/students/{session_id}/reminders/dispatch   { "limit": 10 }
 `POST dispatch` sends them through the notification router (console +
 WhatsApp outbox at `runtime/whatsapp_outbox.jsonl`) — the reach-layer demo.
 
+## AI — semantic search & grounded Q&A (free local models)
+
+```
+GET  /api/search/semantic?q=education%20loan&k=5
+```
+```jsonc
+{ "query": "education loan", "backend": "ngram" | "neural",
+  "hits": [ { "id": "bscc-bihar", "semantic_score": 0.32, … } ] }
+```
+
+```
+POST /api/ask   { "question": "engineering scholarship for girls",
+                  "session_id": null }           // optional → personalises answers
+```
+```jsonc
+{
+  "question": "…",
+  "answer": "Based on your profile, you qualify for these:\n1. **AICTE Pragati…**",
+  "mode": "profile" | "search",
+  "backend": "ngram" | "neural",
+  "citations": [ { "id": "aicte-pragati", "name": "…", "score": 74.5 } ],
+  "detected_profile": { "gender": "female", "course_level": "ug" }   // extracted hints
+}
+```
+
+**Grounding guarantee:** answers are assembled *only* from verified dataset
+fields; every `**scheme name**` in an answer appears in `citations` (enforced
+by tests). Profile-aware mode reranks matches by a 50/50 blend of rule-ranker
+score and semantic similarity, and surfaces *near-miss radar* entries with
+gap-coaching advice.
+
 ## Reach layer (WhatsApp-style chat)
 
 ```

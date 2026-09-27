@@ -79,8 +79,10 @@ client and the WhatsApp conversation — one payload, four product surfaces.
 | `backend/services/matching.py` | Orchestrates engine+ranker into API payloads. |
 | `backend/services/tracker.py` | Status pipeline (`saved→planning→applied→under_review→approved/rejected`), JSON-file persistence behind an interface (swap → Postgres later). |
 | `backend/services/reminders.py` | Derives *actions* from deadlines + tracker state. |
-| `backend/services/chat.py` | Reach-layer conversation state machine (3 questions → matches). |
+| `backend/services/chat.py` | Reach-layer conversation state machine (3 questions → matches → free-text Q&A). |
 | `backend/notifications` | Channel-agnostic dispatch (console + WhatsApp outbox now; Business API later). |
+| `ai/` | Free-local AI: lexical layer, two embedding backends (neural `fastembed` or built-in n-gram), semantic search, grounded Q&A. **No paid APIs, ever.** |
+| `agents/` | Deterministic automations: dataset verification (CI gate) + reminder scheduler (cron). |
 
 ## Storage today vs production
 

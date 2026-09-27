@@ -59,12 +59,14 @@ def test_manifest_covers_every_scheme(schemes):
         assert record["source"].startswith("https://")
 
 
-def test_west_bengal_is_the_phase_1_focus(schemes):
+def test_phase_states_present(schemes):
     states = set()
     for s in schemes:
         if s.eligibility.domicile_states:
             states.update(s.eligibility.domicile_states)
+    # Phase 1 = West Bengal · Phase 2 = Bihar
     assert "West Bengal" in states
+    assert "Bihar" in states
 
 
 def test_scheme_files_are_valid_json():

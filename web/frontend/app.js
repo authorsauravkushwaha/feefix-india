@@ -47,6 +47,15 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
+/** Minimal safe markdown: **bold**, *bold*, _em_, line breaks. */
+function mdLite(text) {
+  return esc(text)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<strong>$1</strong>")
+    .replace(/_([^_]+)_/g, "<em>$1</em>")
+    .replace(/\n/g, "<br>");
+}
+
 let toastTimer = null;
 function toast(msg) {
   const el = $("#toast");
@@ -599,6 +608,7 @@ function nearCardHTML(n) {
     <div class="near-card" data-id="${esc(n.id)}">
       <h4>${esc(n.name)}</h4>
       <div class="blocker">⚠ ${esc(n.failed_rule.detail)}</div>
+      ${n.gap_advice ? `<div class="advice">💡 ${esc(n.gap_advice)}</div>` : ""}
       <button class="btn btn-ghost btn-small" data-act="view">${esc(t("results.view"))}</button>
     </div>`;
 }
@@ -648,6 +658,12 @@ async function openScheme(id, viaRoute = false) {
       <div class="provider">${esc(s.provider)}</div>
       ${deadlineChip(dl)}
       <div class="d-section"><div class="d-box">${esc(s.summary)}</div></div>
+
+      ${ctx?.gap_advice ? `
+        <div class="d-section"><div class="d-box" style="border-color:rgba(251,191,36,0.35);background:var(--amber-soft)">
+          💡 <b style="color:var(--amber)">${esc(t("near.advice"))}</b>
+          <p style="color:var(--text-soft);font-size:0.9rem;margin-top:6px">${esc(ctx.gap_advice)}</p>
+        </div></div>` : ""}
 
       ${why.length ? `
         <div class="d-section"><h4>${esc(t("results.why"))}</h4>
@@ -885,6 +901,14 @@ async function ExploreView(el) {
           <h2>${esc(t("explore.title"))}</h2>
           <p>${esc(t("explore.subtitle"))}</p>
         </div>
+        <div class="ask-box" id="askBox">
+          <div class="ask-head">✦ ${esc(t("explore.ask.title"))}</div>
+          <div class="ask-row">
+            <input id="askInput" placeholder="${esc(t("explore.ask.placeholder"))}" />
+            <button class="btn btn-primary btn-small" id="askBtn">${esc(t("explore.ask.button"))}</button>
+          </div>
+          <div class="ask-out" id="askOut" style="display:none"></div>
+        </div>
         <div class="filter-bar">
           <input type="search" id="expSearch" placeholder="${esc(t("explore.search"))}" />
           <div class="pill-row" id="expLevel">
@@ -926,6 +950,41 @@ async function ExploreView(el) {
 
   shell();
   await load();
+
+  // --- Ask FeeFix (grounded AI Q&A) ---
+  const askBtn = $("#askBtn");
+  const askInput = $("#askInput");
+  const ask = async () => {
+    const q = askInput.value.trim();
+    if (!q) return;
+    askBtn.disabled = true;
+    askBtn.textContent = t("common.loading");
+    const out = $("#askOut");
+    out.style.display = "block";
+    out.innerHTML = `<div class="ask-loading">${esc(t("common.loading"))}</div>`;
+    try {
+      const r = await api("/api/ask", {
+        method: "POST",
+        body: JSON.stringify({ question: q, session_id: State.sid }),
+      });
+      out.innerHTML = `
+        <div class="ask-answer">${mdLite(r.answer)}</div>
+        <div class="cite-row">
+          ${(r.citations || []).map((c) => `<button class="cite-chip" data-cite="${esc(c.id)}">↗ ${esc(c.name.length > 42 ? c.name.slice(0, 42) + "…" : c.name)}</button>`).join("")}
+          <span class="ask-mode">FeeFix AI · ${esc(r.backend)} · ${esc(r.mode === "profile" ? t("ask.mode.profile") : t("ask.mode.search"))}</span>
+        </div>`;
+      $$(".cite-chip", out).forEach((c) =>
+        c.addEventListener("click", () => openScheme(c.dataset.cite))
+      );
+    } catch (e) {
+      out.innerHTML = `<div class="ask-answer">⚠ ${esc(e.message)}</div>`;
+    }
+    askBtn.disabled = false;
+    askBtn.textContent = t("explore.ask.button");
+  };
+  askBtn.addEventListener("click", ask);
+  askInput.addEventListener("keydown", (e) => { if (e.key === "Enter") ask(); });
+
   $("#expSearch").addEventListener("input", (e) => {
     filter.q = e.target.value;
     clearTimeout(debouncer);
@@ -982,9 +1041,23 @@ const Chat = {
     const body = $("#chatBody");
     const b = document.createElement("div");
     b.className = `bub ${who}`;
-    // Minimal WhatsApp-style bold: *text*
-    b.innerHTML = esc(text).replace(/\*([^*]+)\*/g, "<strong>$1</strong>");
+    b.innerHTML = mdLite(text);
     body.appendChild(b);
+    body.scrollTop = body.scrollHeight;
+  },
+
+  citations(list) {
+    if (!list?.length) return;
+    const body = $("#chatBody");
+    const row = document.createElement("div");
+    row.className = "cite-row chat-cites";
+    row.innerHTML = list.map((c) =>
+      `<button class="cite-chip" data-cite="${esc(c.id)}">↗ ${esc(c.name.length > 34 ? c.name.slice(0, 34) + "…" : c.name)}</button>`
+    ).join("");
+    body.appendChild(row);
+    row.querySelectorAll(".cite-chip").forEach((c) =>
+      c.addEventListener("click", () => openScheme(c.dataset.cite))
+    );
     body.scrollTop = body.scrollHeight;
   },
 
@@ -1005,6 +1078,8 @@ const Chat = {
       this.id = r.chat_id;
       localStorage.setItem("feefix.chat", r.chat_id);
       this.bubble(r.reply, "bot");
+      if (r.citations) this.citations(r.citations);
+      if (r.matches) this.citations(r.matches.map((m) => ({ id: m.id, name: m.name })));
     } catch (e) {
       typing.remove();
       this.bubble("⚠ " + t("common.error"), "bot");

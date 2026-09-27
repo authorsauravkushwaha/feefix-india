@@ -31,6 +31,12 @@
     { "scheme_id": "aicte-saksham", "verified_by": "curator", "verified_on": "2026-09-16", "source": "https://scholarships.gov.in" },
     { "scheme_id": "ugc-pg-single-girl-child", "verified_by": "curator", "verified_on": "2026-09-11", "source": "https://scholarships.gov.in" },
     { "scheme_id": "ugc-pg-merit-rank-holders", "verified_by": "curator", "verified_on": "2026-09-11", "source": "https://scholarships.gov.in" },
-    { "scheme_id": "nmms-central", "verified_by": "curator", "verified_on": "2026-09-06", "source": "https://scholarships.gov.in" }
+    { "scheme_id": "nmms-central", "verified_by": "curator", "verified_on": "2026-09-06", "source": "https://scholarships.gov.in" },
+    { "scheme_id": "bihar-pms-scst", "verified_by": "curator", "verified_on": "2026-09-18", "source": "https://pmsonline.bih.nic.in" },
+    { "scheme_id": "bihar-pms-obc", "verified_by": "curator", "verified_on": "2026-09-18", "source": "https://pmsonline.bih.nic.in" },
+    { "scheme_id": "mku-medhavi-chhatra-br", "verified_by": "curator", "verified_on": "2026-09-15", "source": "https://medhasoft.bih.nic.in" },
+    { "scheme_id": "bscc-bihar", "verified_by": "curator", "verified_on": "2026-09-15", "source": "https://www.7nishchay-yuvaupmission.bihar.gov.in" },
+    { "scheme_id": "inter-protsahan-br", "verified_by": "curator", "verified_on": "2026-09-15", "source": "https://medhasoft.bih.nic.in" },
+    { "scheme_id": "medhavi-ebc-bc-br", "verified_by": "curator", "verified_on": "2026-09-15", "source": "https://medhasoft.bih.nic.in" }
   ]
 }

@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 
 from backend.api.schemas import (
+    AskRequest,
     ChatRequest,
     DispatchRequest,
     ProfileUpsertRequest,
@@ -41,10 +42,12 @@ def _tracker(request: Request):
 # -- meta -----------------------------------------------------------------------
 @router.get("/health")
 def health(request: Request) -> dict:
+    qa = getattr(request.app.state, "qa", None)
     return {
         "status": "ok",
         "service": "feefix-india",
         "schemes_loaded": len(_dataset(request).schemes),
+        "ai_backend": qa.backend if qa else "offline",
     }
 
 
@@ -203,12 +206,53 @@ def dispatch_reminders(
     }
 
 
+# -- AI: semantic search & grounded Q&A ------------------------------------------------------
+@router.get("/search/semantic")
+def semantic_search(request: Request, q: str, k: int = 5) -> dict:
+    qa = getattr(request.app.state, "qa", None)
+    if qa is None:
+        raise HTTPException(status_code=503, detail="AI layer not initialised")
+    k = max(1, min(k, 15))
+    hits = qa.search.search(q, k=k)
+    return {
+        "query": q,
+        "backend": qa.backend,
+        "count": len(hits),
+        "hits": [
+            {**scheme_to_public(h.scheme), "semantic_score": round(h.score, 4)}
+            for h in hits
+        ],
+    }
+
+
+@router.post("/ask")
+def ask(body: AskRequest, request: Request) -> dict:
+    qa = getattr(request.app.state, "qa", None)
+    if qa is None:
+        raise HTTPException(status_code=503, detail="AI layer not initialised")
+    session_profile = None
+    if body.session_id:
+        saved = _tracker(request).load_profile(body.session_id)
+        if saved:
+            session_profile = StudentProfile(**saved)
+    result = qa.answer(body.question, session_profile=session_profile)
+    return {
+        "question": result.question,
+        "answer": result.answer,
+        "mode": result.mode,
+        "backend": result.backend,
+        "citations": result.citations,
+        "detected_profile": result.detected_profile,
+    }
+
+
 # -- reach layer: conversational matcher --------------------------------------------------
 @router.post("/chat")
 def chat(body: ChatRequest, request: Request) -> dict:
     if not body.message.strip():
         raise HTTPException(status_code=422, detail="Message must not be empty")
-    return handle_message(body.message, _dataset(request), body.chat_id)
+    qa = getattr(request.app.state, "qa", None)
+    return handle_message(body.message, _dataset(request), body.chat_id, qa=qa)
 
 
 # -- language layer ---------------------------------------------------------------------------

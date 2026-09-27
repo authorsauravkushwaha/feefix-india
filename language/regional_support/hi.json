@@ -72,5 +72,11 @@
   "common.loading": "लोड हो रहा है…",
   "common.error": "कुछ गलत हो गया",
   "common.apply_official": "आधिकारिक पोर्टल पर आवेदन करें",
-  "common.close": "बंद करें"
+  "common.close": "बंद करें",
+  "explore.ask.title": "FeeFix से पूछें — सत्यापित सूची से आधारित उत्तर",
+  "explore.ask.placeholder": "जैसे: लड़कियों के लिए इंजीनियरिंग छात्रवृत्ति · कन्याश्री में क्या चाहिए?",
+  "explore.ask.button": "पूछें",
+  "ask.mode.profile": "व्यक्तिगत",
+  "ask.mode.search": "कैटलॉग खोज",
+  "near.advice": "यह अंतर कैसे भरें"
 }

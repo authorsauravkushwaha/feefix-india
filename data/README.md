@@ -7,7 +7,8 @@ the matching engine, the API, the website, the app and the reach layer.
 ```
 data/
 ├── schemes/            # Scheme records (one JSON array per coverage area)
-│   ├── west_bengal.json   # Phase 1 focus: verified WB dataset
+│   ├── west_bengal.json   # Phase 1: verified WB dataset
+│   ├── bihar.json         # Phase 2: verified Bihar dataset (PMS, protsahan, BSCC…)
 │   └── national.json      # Central / All-India schemes (NSP, UGC, AICTE, DST…)
 ├── eligibility_rules/  # The rule DSL documentation (README)
 └── verification/       # Verification manifest — who checked what, when, where

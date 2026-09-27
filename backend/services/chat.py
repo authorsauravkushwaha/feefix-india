@@ -33,7 +33,7 @@ _COURSE_KEYWORDS: list[tuple[tuple[str, ...], CourseLevel]] = [
     (("b.tech", "btech", "b.e", "engineering", "mbbs", "b.sc", "bsc", "ba", "b.com", "undergraduate", "ug", "degree", "college"), CourseLevel.ug),
     (("iti",), CourseLevel.iti),
     (("diploma", "polytechnic"), CourseLevel.diploma),
-    (("11", "12", "xi", "xii", "hs", "higher secondary", "+2", "intermediate"), CourseLevel.higher_secondary),
+    (("11", "12", "xi", "xii", "hs", "higher secondary", "+2", "intermediate", "inter", "plus two"), CourseLevel.higher_secondary),
     (("school", "class 8", "class 9", "class 10", "8", "9", "10", "madhyamik"), CourseLevel.school),
 ]
 
@@ -118,8 +118,13 @@ def handle_message(
     message: str,
     dataset: DatasetService,
     chat_id: str | None = None,
+    qa=None,
 ) -> dict:
-    """Process one chat turn and return the reply (+ matches when ready)."""
+    """Process one chat turn and return the reply (+ matches when ready).
+
+    ``qa`` (optional): an ``ai.qa.QaEngine`` — enables grounded free-text
+    follow-ups after the 3-question flow.
+    """
     session = _SESSIONS.get(chat_id or "")
     if session is None:
         session = ChatSession(chat_id=chat_id or uuid.uuid4().hex[:12])
@@ -207,7 +212,9 @@ def handle_message(
             lines.append(f"{i}. *{m['name']}* — {m['benefit']} · {when}")
         lines.append(
             "\nOn the FeeFix site you can add category, marks, gender and minority "
-            "details to refine these results — and track every application."
+            "details to refine these results — and track every application. "
+            "Ask me anything about these schemes now (e.g. \"what documents does "
+            "the top one need?\") — or type *restart*."
         )
         return {
             "chat_id": session.chat_id,
@@ -218,7 +225,24 @@ def handle_message(
             "full_result": strip_internal(result),
         }
 
-    # DONE — any further message restarts.
+    # DONE — free-text follow-ups become grounded Q&A (if an AI engine is
+    # wired in); the word "restart" starts over.
+    if session.step == DONE and qa is not None:
+        profile = StudentProfile(
+            domicile_state=session.answers.get("domicile", "West Bengal"),
+            course_level=session.answers.get("course", CourseLevel.ug),
+            annual_family_income=session.answers.get("income"),
+        )
+        result = qa.answer(text, session_profile=profile)
+        return {
+            "chat_id": session.chat_id,
+            "step": session.step,
+            "reply": result.answer,
+            "citations": result.citations,
+            "mode": result.mode,
+        }
+
+    # Otherwise: restart the 3-question flow.
     session.step, session.answers = ASK_STATE, {}
     return {
         "chat_id": session.chat_id,

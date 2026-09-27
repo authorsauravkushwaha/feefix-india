@@ -116,5 +116,11 @@
   "common.error": "Something went wrong",
   "common.apply_official": "Apply on official portal",
   "common.close": "Close",
-  "common.na": "—"
+  "common.na": "—",
+  "explore.ask.title": "Ask FeeFix — grounded answers from the verified catalogue",
+  "explore.ask.placeholder": "e.g. engineering scholarship for girls · what does Kanyashree need?",
+  "explore.ask.button": "Ask",
+  "ask.mode.profile": "personalised",
+  "ask.mode.search": "catalogue search",
+  "near.advice": "How to close this gap"
 }

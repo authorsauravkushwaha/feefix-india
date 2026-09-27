@@ -116,5 +116,11 @@
   "common.error": "কিছু ভুল হয়েছে",
   "common.apply_official": "অফিসিয়াল পোর্টালে আবেদন করুন",
   "common.close": "বন্ধ করুন",
-  "common.na": "—"
+  "common.na": "—",
+  "explore.ask.title": "FeeFix-কে জিজ্ঞাসা করুন — যাচাইকৃত ক্যাটালগ থেকে নির্ভরযোগ্য উত্তর",
+  "explore.ask.placeholder": "যেমন: মেয়েদের ইঞ্জিনিয়ারিং বৃত্তি · কন্যাশ্রীতে কী কী লাগে?",
+  "explore.ask.button": "জিজ্ঞাসা করুন",
+  "ask.mode.profile": "ব্যক্তিগত",
+  "ask.mode.search": "ক্যাটালগ অনুসন্ধান",
+  "near.advice": "এই ফাঁক কীভাবে পূরণ করবেন"
 }

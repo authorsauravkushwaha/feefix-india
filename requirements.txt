@@ -2,6 +2,10 @@
 fastapi>=0.115
 uvicorn[standard]>=0.30
 
+# Free, local AI embeddings (open weights, no API keys). Optional — when the
+# model weights can't be downloaded, the built-in n-gram embedder takes over.
+fastembed>=0.3
+
 # tests only
 pytest>=8.0
 pytest-asyncio>=0.23

@@ -8,6 +8,7 @@ from backend.matching_engine.engine import EligibilityEngine
 from backend.matching_engine.ranker import RankedMatch, RankingEngine
 from backend.models.scheme import Scheme
 from backend.models.student import StudentProfile
+from backend.services.coach import gap_advice_for
 from backend.services.dataset import DatasetService
 
 
@@ -97,6 +98,7 @@ def match_profile(
                     "detail": blocker.detail,
                 },
                 "satisfied_rules": [r.detail for r in ev.rules.passed],
+                "gap_advice": gap_advice_for(blocker, ev.scheme),
             }
         )
         near_misses.append(payload)

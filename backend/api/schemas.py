@@ -29,3 +29,11 @@ class ChatRequest(BaseModel):
 
 class DispatchRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=50)
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=2, max_length=1000)
+    session_id: str | None = Field(
+        default=None,
+        description="When given, answers are personalised with the saved profile",
+    )
