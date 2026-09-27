@@ -1,0 +1,36 @@
+{
+  "dataset_version": "1.0.0",
+  "generated_at": "2026-09-27",
+  "policy": {
+    "review_cycle_days": 30,
+    "statuses": {
+      "verified": "Cross-checked against the official portal within the review cycle.",
+      "pending_review": "Record exists but a re-check against the official source is due.",
+      "stale": "Last verification older than the review cycle — treat with caution."
+    },
+    "amounts_disclaimer": "Benefit amounts are indicative of recent public cycles and must be re-verified on the official portal before applying."
+  },
+  "records": [
+    { "scheme_id": "sv-mcm-wb", "verified_by": "curator", "verified_on": "2026-09-12", "source": "https://svmcm.wb.gov.in" },
+    { "scheme_id": "kanyashree-k2", "verified_by": "curator", "verified_on": "2026-09-05", "source": "https://www.wbkanyashree.gov.in" },
+    { "scheme_id": "aikyashree-wb", "verified_by": "curator", "verified_on": "2026-09-08", "source": "https://wbmdfcscholarship.gov.in" },
+    { "scheme_id": "oasis-sc-st-wb", "verified_by": "curator", "verified_on": "2026-09-10", "source": "https://oasis.gov.in" },
+    { "scheme_id": "oasis-obc-wb", "verified_by": "curator", "verified_on": "2026-09-10", "source": "https://oasis.gov.in" },
+    { "scheme_id": "oasis-pre-sc-wb", "verified_by": "curator", "verified_on": "2026-09-10", "source": "https://oasis.gov.in" },
+    { "scheme_id": "nabanna-wb", "verified_by": "curator", "verified_on": "2026-09-02", "source": "https://wbcmo.gov.in" },
+    { "scheme_id": "wbfs-freeship-wb", "verified_by": "curator", "verified_on": "2026-09-01", "source": "https://wbhed.gov.in" },
+    { "scheme_id": "hindi-scholarship-wb", "verified_by": "curator", "verified_on": "2026-08-28", "source": "https://school.wb.gov.in" },
+    { "scheme_id": "nsp-central-sector", "verified_by": "curator", "verified_on": "2026-09-18", "source": "https://scholarships.gov.in" },
+    { "scheme_id": "nsp-post-matric-minority", "verified_by": "curator", "verified_on": "2026-09-18", "source": "https://scholarships.gov.in" },
+    { "scheme_id": "nsp-post-matric-disabilities", "verified_by": "curator", "verified_on": "2026-09-18", "source": "https://scholarships.gov.in" },
+    { "scheme_id": "nsp-merit-cum-means", "verified_by": "curator", "verified_on": "2026-09-18", "source": "https://scholarships.gov.in" },
+    { "scheme_id": "nsp-top-class-sc", "verified_by": "curator", "verified_on": "2026-09-18", "source": "https://scholarships.gov.in" },
+    { "scheme_id": "inspire-she", "verified_by": "curator", "verified_on": "2026-09-14", "source": "https://online-inspire.gov.in" },
+    { "scheme_id": "begum-hazrat-mahal", "verified_by": "curator", "verified_on": "2026-08-30", "source": "https://www.bhmnsp.maefcloud.com" },
+    { "scheme_id": "aicte-pragati", "verified_by": "curator", "verified_on": "2026-09-16", "source": "https://scholarships.gov.in" },
+    { "scheme_id": "aicte-saksham", "verified_by": "curator", "verified_on": "2026-09-16", "source": "https://scholarships.gov.in" },
+    { "scheme_id": "ugc-pg-single-girl-child", "verified_by": "curator", "verified_on": "2026-09-11", "source": "https://scholarships.gov.in" },
+    { "scheme_id": "ugc-pg-merit-rank-holders", "verified_by": "curator", "verified_on": "2026-09-11", "source": "https://scholarships.gov.in" },
+    { "scheme_id": "nmms-central", "verified_by": "curator", "verified_on": "2026-09-06", "source": "https://scholarships.gov.in" }
+  ]
+}
