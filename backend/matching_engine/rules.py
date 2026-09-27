@@ -9,6 +9,10 @@ Every rule produces one of three states::
 A scheme is a MATCH when no rule fails (unknowns become *assumptions* the
 student should verify). A scheme is a NEAR MISS when exactly one rule fails —
 surface these to students as "you are one requirement away" opportunities.
+
+Each result also carries ``params`` — the slot values used to re-render the
+explanation in any supported language (see backend/services/i18n_rules.py).
+This keeps the engine language-neutral while always defaulting to English.
 """
 
 from __future__ import annotations
@@ -41,7 +45,8 @@ class RuleResult:
     rule: str           # machine id, e.g. "income"
     status: str         # pass | fail | unknown
     requirement: str    # what the scheme demands, in plain words
-    detail: str         # the verdict for this student, in plain words
+    detail: str         # the verdict for this student, in plain words (en)
+    params: dict = field(default_factory=dict)  # slots for i18n re-rendering
 
 
 @dataclass
@@ -91,34 +96,40 @@ def evaluate_rules(profile: StudentProfile, scheme: Scheme) -> RuleSet:
             rules.results.append(RuleResult(
                 "state", UNKNOWN, requirement,
                 "Domicile state not provided — assumed ok.",
+                params={"states": states, "student": ""},
             ))
         elif profile.domicile_state in e.domicile_states:
             rules.results.append(RuleResult(
                 "state", PASS, requirement,
                 f"Your domicile state ({profile.domicile_state}) satisfies the "
                 f"{states} domicile requirement.",
+                params={"states": states, "student": profile.domicile_state},
             ))
         else:
             rules.results.append(RuleResult(
                 "state", FAIL, requirement,
                 f"This scheme is limited to domiciles of {states}; your state "
                 f"is {profile.domicile_state}.",
+                params={"states": states, "student": profile.domicile_state},
             ))
 
     # --- Reservation category ---------------------------------------------
     if e.categories:
         cats = ", ".join(c.value.upper() for c in e.categories)
         requirement = f"Category must be one of {cats}"
+        params = {"cats": cats, "student": profile.category.value.upper()}
         if profile.category in e.categories:
             rules.results.append(RuleResult(
                 "category", PASS, requirement,
                 f"Your category ({profile.category.value.upper()}) is eligible.",
+                params=params,
             ))
         else:
             rules.results.append(RuleResult(
                 "category", FAIL, requirement,
                 f"Requires category {cats}; you selected "
                 f"{profile.category.value.upper()}.",
+                params=params,
             ))
 
     # --- Family income -----------------------------------------------------
@@ -129,18 +140,21 @@ def evaluate_rules(profile: StudentProfile, scheme: Scheme) -> RuleSet:
             rules.results.append(RuleResult(
                 "income", UNKNOWN, requirement,
                 f"Income not provided — the scheme caps family income at {cap}/year.",
+                params={"cap": cap, "income": ""},
             ))
         elif profile.annual_family_income <= e.max_family_income:
             rules.results.append(RuleResult(
                 "income", PASS, requirement,
                 f"Your family income ({_inr(profile.annual_family_income)}) is "
                 f"within the {cap} limit.",
+                params={"cap": cap, "income": _inr(profile.annual_family_income)},
             ))
         else:
             rules.results.append(RuleResult(
                 "income", FAIL, requirement,
                 f"Your family income ({_inr(profile.annual_family_income)}) is "
                 f"above the {cap} limit.",
+                params={"cap": cap, "income": _inr(profile.annual_family_income)},
             ))
 
     # --- Gender -------------------------------------------------------------
@@ -150,21 +164,26 @@ def evaluate_rules(profile: StudentProfile, scheme: Scheme) -> RuleSet:
             # Scheme treats gender as unrestricted — do not surface a rule.
             pass
         else:
-            requirement = f"Open to {', '.join(allowed)} applicants"
+            allowed_str = ", ".join(allowed)
+            requirement = f"Open to {allowed_str} applicants"
+            params = {"allowed": allowed_str}
             if profile.gender == Gender.prefer_not_to_say:
                 rules.results.append(RuleResult(
                     "gender", UNKNOWN, requirement,
                     "Gender not shared — this scheme is gender-restricted.",
+                    params={**params, "student": ""},
                 ))
             elif profile.gender in e.genders:
                 rules.results.append(RuleResult(
                     "gender", PASS, requirement,
                     "Your gender matches the scheme's requirement.",
+                    params={**params, "student": profile.gender.value},
                 ))
             else:
                 rules.results.append(RuleResult(
                     "gender", FAIL, requirement,
-                    f"This scheme is open to {', '.join(allowed)} applicants only.",
+                    f"This scheme is open to {allowed_str} applicants only.",
+                    params={**params, "student": profile.gender.value},
                 ))
 
     # --- Minority community -------------------------------------------------
@@ -184,16 +203,20 @@ def evaluate_rules(profile: StudentProfile, scheme: Scheme) -> RuleSet:
                     "minority", FAIL, requirement,
                     f"{profile.minority_community.title()} is not in the scheme's "
                     f"eligible community list.",
+                    params={"communities": communities,
+                            "student": profile.minority_community.title()},
                 ))
             else:
                 rules.results.append(RuleResult(
                     "minority", PASS, requirement,
                     "You belong to a minority community covered by the scheme.",
+                    params={"communities": communities, "student": ""},
                 ))
         else:
             rules.results.append(RuleResult(
                 "minority", FAIL, requirement,
                 "You indicated you are not from a notified minority community.",
+                params={"communities": communities, "student": ""},
             ))
 
     # --- Disability ----------------------------------------------------------
@@ -214,39 +237,49 @@ def evaluate_rules(profile: StudentProfile, scheme: Scheme) -> RuleSet:
     # --- Course level --------------------------------------------------------
     if e.course_levels:
         levels = ", ".join(l.value.replace("_", " ") for l in e.course_levels)
+        student_level = profile.course_level.value.replace("_", " ")
         requirement = f"Enrolled in one of: {levels}"
+        params = {"levels": levels, "student": student_level}
         if profile.course_level in e.course_levels:
             rules.results.append(RuleResult(
                 "course", PASS, requirement,
-                f"Your course level ({profile.course_level.value.replace('_', ' ')}) "
+                f"Your course level ({student_level}) "
                 "is covered.",
+                params=params,
             ))
         else:
             rules.results.append(RuleResult(
                 "course", FAIL, requirement,
                 f"Covers {levels}; you selected "
-                f"{profile.course_level.value.replace('_', ' ')}.",
+                f"{student_level}.",
+                params=params,
             ))
 
     # --- Merit (marks) --------------------------------------------------------
     if e.min_marks_percent is not None:
-        requirement = f"At least {e.min_marks_percent:.0f}% in the last qualifying exam"
+        cutoff = f"{e.min_marks_percent:.0f}%"
+        requirement = f"At least {cutoff} in the last qualifying exam"
         if profile.last_exam_percentage is None:
             rules.results.append(RuleResult(
                 "marks", UNKNOWN, requirement,
                 "Marks not provided — verify you meet the merit cut-off.",
+                params={"cutoff": cutoff, "student": ""},
             ))
         elif profile.last_exam_percentage >= e.min_marks_percent:
             rules.results.append(RuleResult(
                 "marks", PASS, requirement,
                 f"Your {profile.last_exam_percentage:.1f}% clears the "
-                f"{e.min_marks_percent:.0f}% merit cut-off.",
+                f"{cutoff} merit cut-off.",
+                params={"cutoff": cutoff,
+                        "student": f"{profile.last_exam_percentage:.1f}%"},
             ))
         else:
             rules.results.append(RuleResult(
                 "marks", FAIL, requirement,
-                f"Needs ≥{e.min_marks_percent:.0f}% in the last exam; you "
+                f"Needs ≥{cutoff} in the last exam; you "
                 f"reported {profile.last_exam_percentage:.1f}%.",
+                params={"cutoff": cutoff,
+                        "student": f"{profile.last_exam_percentage:.1f}%"},
             ))
 
     # --- Single girl child ------------------------------------------------------

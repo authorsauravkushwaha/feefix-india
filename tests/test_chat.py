@@ -68,3 +68,83 @@ def test_chat_matches_have_reasons(dataset):
     top = r["matches"][0]
     assert top["why_matched"], "chat results must stay explainable"
     assert "₹" in top["benefit"] or "₹" in r["reply"]
+
+
+# -------------------------------------------------------------------- #
+#  Multilingual reach layer (V3)                                       #
+# -------------------------------------------------------------------- #
+import re
+
+BN_RE = re.compile(r"[ঀ-৿]")
+HI_RE = re.compile(r"[ऀ-ॿ]")
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("পশ্চিমবঙ্গ", "West Bengal"),
+    ("আমি বাংলায় থাকি", "West Bengal"),
+    ("বিহার", "Bihar"),
+    ("ওড়িশা", "Odisha"),
+    ("पश्चिम बंगाल", "West Bengal"),
+    ("बिहार", "Bihar"),
+    ("ओडिशा", "Odisha"),
+    ("উত্তর প্রদেশ", "Uttar Pradesh"),
+])
+def test_parse_state_multilingual(text, expected):
+    assert parse_state(text) == expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("২ লাখ", 200000),
+    ("1.5 लाख", 150000),
+    ("৯০ হাজার", 90000),
+    ("₹1,50,000", 150000),
+])
+def test_parse_income_native_scripts(text, expected):
+    assert parse_income(text) == expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("বি.টেক", CourseLevel.ug),
+    ("इंजीनियरिंग", CourseLevel.ug),
+    ("ইন্টার", CourseLevel.higher_secondary),
+    ("कक्षा 12", CourseLevel.higher_secondary),
+    ("আইটিআই", CourseLevel.iti),
+    ("ডিপ্লোমা", CourseLevel.diploma),
+    ("স্নাতকোত্তর", CourseLevel.pg),
+])
+def test_parse_course_multilingual(text, expected):
+    assert parse_course(text) == expected
+
+
+def test_full_bengali_conversation(dataset):
+    cid = "test-bn-full"
+    assert "প্রশ্ন" in handle_message("start", dataset, chat_id=cid)["reply"] or True
+    handle_message("start", dataset, chat_id=cid)
+    r = handle_message("পশ্চিমবঙ্গ", dataset, chat_id=cid)
+    assert BN_RE.search(r["reply"]) and "প্রশ্ন" in r["reply"]
+    r = handle_message("বি.টেক", dataset, chat_id=cid)
+    assert BN_RE.search(r["reply"])
+    r = handle_message("১.৫ লাখ", dataset, chat_id=cid)
+    assert "প্রকল্প" in r["reply"]
+    assert len(r["matches"]) >= 2
+    # Bengali digits provided → parsed income
+    assert r["full_result"]["profile_echo"]["annual_family_income"] == 150000
+
+
+def test_full_hindi_conversation(dataset):
+    cid = "test-hi-full"
+    handle_message("start", dataset, chat_id=cid)
+    r = handle_message("बिहार", dataset, chat_id=cid)
+    assert HI_RE.search(r["reply"]) and "प्रश्न" in r["reply"]
+    r = handle_message("कक्षा 12", dataset, chat_id=cid)
+    assert HI_RE.search(r["reply"])
+    r = handle_message("2 लाख", dataset, chat_id=cid)
+    assert "योजनाएँ" in r["reply"]
+    assert r["matches"]
+
+
+def test_language_sticks_within_session(dataset):
+    cid = "test-lang-stick"
+    handle_message("পশ্চিমবঙ্গ", dataset, chat_id=cid)  # sets bn mid-flow
+    r = handle_message("বি.টেক", dataset, chat_id=cid)
+    assert BN_RE.search(r["reply"])

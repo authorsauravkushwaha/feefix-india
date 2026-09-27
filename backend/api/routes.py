@@ -11,6 +11,7 @@ from backend.api.schemas import (
     AskRequest,
     ChatRequest,
     DispatchRequest,
+    EventRequest,
     ProfileUpsertRequest,
     TrackRequest,
 )
@@ -106,15 +107,15 @@ def scheme_detail(scheme_id: str, request: Request) -> dict:
 # -- matching ----------------------------------------------------------------------
 @router.post("/match")
 def match_route(body: ProfileUpsertRequest, request: Request) -> dict:
-    result = match_profile(body.profile, _dataset(request))
+    result = match_profile(body.profile, _dataset(request), lang=body.lang)
     return strip_internal(result)
 
 
 @router.get("/match/{session_id}")
-def match_for_session(session_id: str, request: Request) -> dict:
+def match_for_session(session_id: str, request: Request, lang: str = "en") -> dict:
     profile_dict = _tracker(request).load_profile(session_id)
     result = match_profile(
-        StudentProfile(**(profile_dict or {})), _dataset(request)
+        StudentProfile(**(profile_dict or {})), _dataset(request), lang=lang
     )
     return strip_internal(result)
 
@@ -123,7 +124,7 @@ def match_for_session(session_id: str, request: Request) -> dict:
 @router.put("/students/{session_id}/profile")
 def save_profile(session_id: str, body: ProfileUpsertRequest, request: Request) -> dict:
     _tracker(request).save_profile(session_id, body.profile.model_dump(mode="json"))
-    result = match_profile(body.profile, _dataset(request))
+    result = match_profile(body.profile, _dataset(request), lang=body.lang)
     return {"saved": True, "session_id": session_id, **strip_internal(result)}
 
 
@@ -244,6 +245,55 @@ def ask(body: AskRequest, request: Request) -> dict:
         "citations": result.citations,
         "detected_profile": result.detected_profile,
     }
+
+
+# -- outcome events & V2 rank preview (Phase 3) -------------------------------------------
+@router.post("/events")
+def record_event(body: EventRequest, request: Request) -> dict:
+    """Record an application-outcome signal — V2's future training data."""
+    from backend.matching_engine.engine import EligibilityEngine
+    from backend.matching_engine.ranker import RankingEngine
+    from backend.services import events as events_svc
+
+    dataset = _dataset(request)
+    scheme = dataset.get(body.scheme_id)
+    if not scheme:
+        raise HTTPException(status_code=404, detail="Scheme not found")
+
+    # Snapshot V1 signal context so V2 trains on exactly what V1 showed.
+    context: dict = {}
+    profile_dict = _tracker(request).load_profile(body.session_id)
+    if profile_dict:
+        profile = StudentProfile(**profile_dict)
+        engine = EligibilityEngine(dataset.schemes)
+        ranked = [r for r in RankingEngine().rank(engine.match(profile).matches)
+                  if r.scheme.id == body.scheme_id]
+        if ranked:
+            r = ranked[0]
+            amounts = [x.scheme.benefit.amount_annual_inr
+                       for x in engine.match(profile).matches] or [1]
+            context = {
+                "clarity": r.evaluation.clarity,
+                "urgency": round(RankingEngine()._urgency(r.days_left) / 25, 4),
+                "benefit_norm": round(r.scheme.benefit.amount_annual_inr / max(amounts), 4),
+                "verified": 1.0 if r.scheme.verification_status == "verified" else 0.0,
+            }
+    try:
+        event = events_svc.record(body.session_id, body.scheme_id, body.type, context)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"recorded": True, "event": event}
+
+
+@router.get("/ml/rank/{session_id}")
+def ml_rank_preview(session_id: str, request: Request) -> dict:
+    """V1 vs V2: the outcome-model reranks this session's matches (Phase 3 preview)."""
+    from backend.services import events as events_svc
+    from ml.ranking.service import compare
+
+    profile_dict = _tracker(request).load_profile(session_id)
+    profile = StudentProfile(**(profile_dict or {}))
+    return compare(profile, _dataset(request), events_svc.load())
 
 
 # -- reach layer: conversational matcher --------------------------------------------------

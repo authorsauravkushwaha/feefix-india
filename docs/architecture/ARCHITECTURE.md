@@ -79,9 +79,12 @@ client and the WhatsApp conversation — one payload, four product surfaces.
 | `backend/services/matching.py` | Orchestrates engine+ranker into API payloads. |
 | `backend/services/tracker.py` | Status pipeline (`saved→planning→applied→under_review→approved/rejected`), JSON-file persistence behind an interface (swap → Postgres later). |
 | `backend/services/reminders.py` | Derives *actions* from deadlines + tracker state. |
-| `backend/services/chat.py` | Reach-layer conversation state machine (3 questions → matches → free-text Q&A). |
+| `backend/services/chat.py` + `chat_i18n.py` | Reach-layer conversation state machine (3 questions → matches → free-text Q&A), multilingual: Bengali/Hindi script detection, native-digit/state/course parsing, localized conversation strings that stick per session. |
+| `backend/services/i18n_rules.py` + `language/regional_support/explanations/` | Rule-explanation renderer: every rule result carries `{rule, status, params}`; templates per language produce localized `why_matched` / assumption / blocker sentences. |
+| `backend/services/events.py` | Outcome-event collector (`runtime/outcomes.jsonl`) — the V2 ranker's training feed. |
+| `ml/ranking/service.py` | V1↔V2 compare service: trains the logistic model on recorded events (synthetic bootstrap < 25 real events) and re-ranks a session's matches with probabilities + V1/V2 rank deltas. |
 | `backend/notifications` | Channel-agnostic dispatch (console + WhatsApp outbox now; Business API later). |
-| `ai/` | Free-local AI: lexical layer, two embedding backends (neural `fastembed` or built-in n-gram), semantic search, grounded Q&A. **No paid APIs, ever.** |
+| `ai/` | Free-local AI: lexical layer, two embedding backends (neural `fastembed` or built-in n-gram), semantic search, grounded Q&A + near-miss radar. **No paid APIs, ever.** |
 | `agents/` | Deterministic automations: dataset verification (CI gate) + reminder scheduler (cron). |
 
 ## Storage today vs production
@@ -94,13 +97,18 @@ pydantic shapes (`Scheme`, `Eligibility`, …); tracker swaps `TrackerStore`
 for tables keyed by user id; chat sessions move to Redis. **The API and the
 engine do not change.**
 
-## V2/V3
+## V2/V3 — shipped
 
-* **V2 — outcome ranking:** `ml/ranking/outcome_ranker.py` (logistic model,
-  trained on tracker events, feature-parity with the V1 signals).
-  `ml/experiments/simulate_outcomes.py` demonstrates the training loop on
-  synthetic data.
-* **V3 — regional-language intelligence:** dictionaries already drive the web
-  UI (`language/regional_support`); the same keys render chat answers, then
-  rule-explanation templates (`rules.py` already renders from rule ids — the
-  seam for per-language templates).
+* **V2 — outcome ranking (shipped):** `ml/ranking/` trains the logistic model on
+  recorded outcome events (`POST /api/events` → `runtime/outcomes.jsonl`;
+  synthetic bootstrap while < 25 real events) and serves the live comparison at
+  `GET /api/ml/rank/{session_id}` — V1 score/rank vs model probability and the
+  blended V2 rank. Feature-parity with the V1 signals; no invented facts.
+  `ml/experiments/simulate_outcomes.py` demonstrates the loop offline.
+* **V3 — regional-language intelligence (shipped):** UI dictionaries already
+  drive the web UI; `chat_i18n.py` gives the reach layer full Bengali/Hindi
+  conversations with native-script parsing, and `i18n_rules.py` + the
+  `language/regional_support/explanations/` templates localize every match
+  explanation (`match_profile(..., lang=)` → `POST /api/match` `lang`).
+* **V4 next:** more states roll out on the same engine; richer regional language
+  coverage (te/ta/mr) is a matter of adding template files, no engine changes.

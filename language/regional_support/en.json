@@ -122,5 +122,7 @@
   "explore.ask.button": "Ask",
   "ask.mode.profile": "personalised",
   "ask.mode.search": "catalogue search",
-  "near.advice": "How to close this gap"
+  "near.advice": "How to close this gap",
+  "results.ml_preview": "ML preview (V2)",
+  "results.ml_preview_off": "Back to V1 order"
 }

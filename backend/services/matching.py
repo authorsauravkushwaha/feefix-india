@@ -10,6 +10,7 @@ from backend.models.scheme import Scheme
 from backend.models.student import StudentProfile
 from backend.services.coach import gap_advice_for
 from backend.services.dataset import DatasetService
+from backend.services.i18n_rules import localize_report
 
 
 def _deadline_payload(scheme: Scheme, days_left: int | None, expired: bool) -> dict:
@@ -80,10 +81,16 @@ def match_profile(
     profile: StudentProfile,
     dataset: DatasetService,
     today: date | None = None,
+    lang: str = "en",
 ) -> dict:
-    """Full pipeline: profile → rules → ranking → explainable payload."""
+    """Full pipeline: profile → rules → ranking → explainable payload.
+
+    ``lang`` localizes every generated explanation (why-you-match reasons,
+    assumptions, blockers) through the Phase-4 language templates.
+    """
     engine = EligibilityEngine(dataset.schemes)
     report = engine.match(profile)
+    report = localize_report(report, lang)
     ranked = RankingEngine(today=today).rank(report.matches)
 
     near_misses = []

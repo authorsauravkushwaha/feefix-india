@@ -64,9 +64,10 @@ def test_phase_states_present(schemes):
     for s in schemes:
         if s.eligibility.domicile_states:
             states.update(s.eligibility.domicile_states)
-    # Phase 1 = West Bengal · Phase 2 = Bihar
+    # Phase 1 = West Bengal · Phase 2 = Bihar + Odisha
     assert "West Bengal" in states
     assert "Bihar" in states
+    assert "Odisha" in states
 
 
 def test_scheme_files_are_valid_json():

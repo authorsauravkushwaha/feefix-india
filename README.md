@@ -9,7 +9,7 @@
 Instead of *“Where can I find scholarships?”* — FeeFix answers
 **“Which schemes fit my profile, why do I qualify, and what should I do next?”**
 
-Rule-based matching · fully explainable · multilingual UI · WhatsApp-style reach layer · application tracking · **free local AI (no paid APIs)** · ML-ready ranking
+Rule-based matching · fully explainable · multilingual UI · WhatsApp-style reach layer · application tracking · **free local AI (no paid APIs)** · trained outcome ranking
 
 </div>
 
@@ -18,8 +18,8 @@ Rule-based matching · fully explainable · multilingual UI · WhatsApp-style re
 FeeFix is a **decision engine, not a search engine**. A student answers a few
 guided questions and gets a personalised, *ranked* set of scholarships and fee
 waivers — every match explained, every deadline tracked, every application
-nudged along. The dataset ships verified for **West Bengal (9) + Bihar (6) +
-national schemes (12)**, following the phased launch roadmap.
+nudged along. The dataset ships verified for **West Bengal (14) + Bihar (6) +
+Odisha (6) + national schemes (7)**, following the phased launch roadmap.
 
 ## ✨ What's inside
 
@@ -27,18 +27,18 @@ national schemes (12)**, following the phased launch roadmap.
 |---|---|---|
 | **Web experience** | `web/frontend/` | Full product: guided Smart Matcher wizard → explainable ranked results → scheme pages → dashboard with tracker & reminders → **Ask FeeFix** AI panel. English · বাংলা · हिन्दी. |
 | **AI layer (free-only)** | `ai/` | Local open-source embeddings (`fastembed`/MiniLM or built-in n-gram embedder — **never a paid API**), Hinglish/Benglish lexicon, semantic search, and **grounded Q&A** with citations — answers assembled only from verified dataset fields. |
-| **Matching engine** | `backend/matching_engine/` | Transparent rule engine: `pass / fail / unknown` semantics, **“why you match”** explanations, **near-miss detection** + **gap coaching** (how to close the one blocking requirement). |
+| **Matching engine** | `backend/matching_engine/` | Transparent rule engine: `pass / fail / unknown` semantics, **“why you match”** explanations, **near-miss detection** + **gap coaching** (how to close the one blocking requirement). Every rule result carries parameter slots so explanations can be localized. |
 | **Ranking** | `backend/matching_engine/ranker.py` | `45·clarity + urgency + benefit + verified`, deadline-aware, badges. |
+| **V2 outcome model** | `ml/ranking/`, `POST /api/events`, `GET /api/ml/rank` | Logistic model trained on real apply/approve/reject outcome signals (synthetic bootstrap until ≥25 real events) — “⚡ ML preview” toggle re-ranks match cards with probabilities. **Same signals V1 uses; no invented facts.** |
 | **API** | `backend/api/`, `backend/main.py` | FastAPI. One origin serves the API *and* the SPA. |
-| **Data & verification** | `data/` | 27 curated schemes (WB · Bihar · central) as structured, validated records with verification manifest. |
-| **Reach layer** | `backend/services/chat.py` | WhatsApp-style conversational matcher — *State → Course → Income → matches →* **free-text Q&A** — live in the web chat widget. |
+| **Data & verification** | `data/` | 33 curated schemes (WB · Bihar · Odisha · central) as structured, validated records with verification manifest. |
+| **Reach layer** | `backend/services/chat.py` + `chat_i18n.py` | WhatsApp-style conversational matcher — *State → Course → Income → matches →* **free-text Q&A** — in **English, Bengali & Hindi** (native scripts, দেশি digits `২ লাখ`, state names পশ্চিমবঙ্গ / पश्चिम बंगाल) — live in the web chat widget. |
 | **Agents** | `agents/` | Dataset verification agent (data health + CI gate) and reminder scheduler agent (cron-friendly dispatcher). |
 | **Notifications** | `backend/notifications/` | Channel-agnostic reminders (console + WhatsApp outbox demo). |
 | **Android** | `mobile/android/` | Kotlin/Compose reference scaffold on the same API. |
-| **ML (V2)** | `ml/` | Outcome-based logistic ranker over the *same signals* + synthetic training experiment. |
-| **Language layer** | `language/regional_support/` | Full dictionary-driven UI: en, বাংলা, हिन्दी. |
+| **Language layer** | `language/regional_support/` | Full dictionary-driven UI + **localized rule-explanation templates**: en, বাংলা, हिन्दी (income formatted as ₹1,00,000 / ১,০০,০০০ automatically). |
 | **CI** | `.github/workflows/` | Tests + dataset agent + ML sanity + scheduler dry-run (free GitHub Actions). |
-| **Tests** | `tests/` | 91 tests: engine, ranking, dataset integrity, API contract, chat intelligence, AI grounding, agents. |
+| **Tests** | `tests/` | 125 tests: engine, ranking, dataset integrity, API contract, chat intelligence, multilingual parsing, AI grounding, agents, ML endpoints. |
 
 ## 🚀 Quickstart
 
@@ -106,19 +106,19 @@ feefix-india/
 │   ├── api/                 # routes + request schemas
 │   ├── matching_engine/     # rules · engine · ranker  (the core)
 │   ├── models/              # StudentProfile · Scheme (pydantic)
-│   ├── services/            # dataset · matching · coach · tracker · reminders · chat
+│   ├── services/            # dataset · matching · coach · tracker · chat · events · i18n
 │   ├── notifications/       # notifier abstraction + WhatsApp outbox
 │   └── main.py              # FastAPI app (API + static SPA, one origin)
 ├── ai/                      # FREE-ONLY AI: lexicon · embeddings · search · grounded Q&A
 ├── agents/                  # dataset verification agent · reminder scheduler agent
 ├── data/
-│   ├── schemes/             # west_bengal.json · bihar.json · national.json (27 schemes)
+│   ├── schemes/             # west_bengal · bihar · odisha · national (33 schemes)
 │   ├── eligibility_rules/   # the rule DSL documentation
 │   └── verification/        # verification manifest
 ├── web/frontend/            # the FeeFix web experience (no build step)
 ├── mobile/android/          # Kotlin scaffold (same API contract)
-├── ml/                      # V2 outcome ranker + experiments
-├── language/regional_support/  # en · bn · hi dictionaries
+├── ml/                      # V2 outcome ranker + experiments + events-trained service
+├── language/regional_support/  # en/bn/hi dictionaries + explanations/ rule templates
 ├── docs/                    # architecture · API reference · dataset schema
 ├── .github/workflows/       # CI: tests + agents + ML sanity (free for public repos)
 ├── scripts/dev.sh           # one-command dev bootstrap
@@ -128,9 +128,9 @@ feefix-india/
 ## 🗺 Roadmap (matches the product phases)
 
 - [x] **Phase 1 — West Bengal**: verified dataset, rule-based explainable matcher ✅
-- [x] **Phase 2 — Multi-state expansion begins**: Bihar dataset added; agent-automated verification ✅
-- [ ] Phase 3 — ML ranking: swap hand weights for the trained outcome ranker (`ml/ranking`)
-- [ ] Phase 4 — Regional-language depth: explanation templates per language; chat in Bengali/Hindi
+- [x] **Phase 2 — Multi-state expansion begins**: Bihar + Odisha datasets; agent-automated verification ✅
+- [x] **Phase 3 — ML ranking**: outcome-event collection + trained logistic reranker live behind the ⚡ ML preview toggle (`/api/events`, `/api/ml/rank`) ✅
+- [x] **Phase 4 — Regional-language depth**: explanation templates per language; chat holds full conversations in Bengali/Hindi ✅
 - [ ] Phase 5 — Broader student network: colleges & states, same core engine
 
 ## ⚖️ Data disclaimer

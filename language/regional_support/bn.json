@@ -122,5 +122,7 @@
   "explore.ask.button": "জিজ্ঞাসা করুন",
   "ask.mode.profile": "ব্যক্তিগত",
   "ask.mode.search": "ক্যাটালগ অনুসন্ধান",
-  "near.advice": "এই ফাঁক কীভাবে পূরণ করবেন"
+  "near.advice": "এই ফাঁক কীভাবে পূরণ করবেন",
+  "results.ml_preview": "ML প্রিভিউ (V2)",
+  "results.ml_preview_off": "V1 ক্রমে ফিরুন"
 }

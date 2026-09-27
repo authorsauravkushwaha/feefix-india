@@ -13,6 +13,10 @@ class MatchRequest(BaseModel):
 
 class ProfileUpsertRequest(BaseModel):
     profile: StudentProfile
+    lang: str = Field(
+        default="en",
+        description="Language for generated explanations: en | bn | hi",
+    )
 
 
 class TrackRequest(BaseModel):
@@ -37,3 +41,9 @@ class AskRequest(BaseModel):
         default=None,
         description="When given, answers are personalised with the saved profile",
     )
+
+
+class EventRequest(BaseModel):
+    session_id: str
+    scheme_id: str
+    type: str = Field(description="viewed | saved | planning | applied | under_review | approved | rejected | missed | matched")

@@ -335,7 +335,7 @@ function renderWizard(el, dir = 1) {
         // Persist profile + get matches in one call.
         const results = await api(`/api/students/${State.sid}/profile`, {
           method: "PUT",
-          body: JSON.stringify({ profile }),
+          body: JSON.stringify({ profile, lang: State.lang }),
         });
         State.lastResults = results;
         location.hash = "#/results";
@@ -550,6 +550,9 @@ function ResultsView(el) {
         <div class="stat"><div class="num">${fmtINR(res.total_indicative_annual_benefit_inr)}</div><div class="lbl">${esc(t("results.pool"))}</div></div>
         <div class="stat"><div class="num">${res.evaluated_schemes}</div><div class="lbl">${esc(t("results.evaluated"))}</div></div>
       </div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+        <button class="btn btn-ghost btn-small" id="mlToggle">⚡ ${esc(t("results.ml_preview"))}</button>
+      </div>
       <div id="matchList">
         ${open.length ? "" : `<div class="empty"><div class="big">🎯</div>${esc(t("results.empty"))}</div>`}
       </div>
@@ -572,6 +575,41 @@ function ResultsView(el) {
   bindMatchCards(el);
   // Stagger.
   $$(".match-card", el).forEach((c, i) => (c.style.animationDelay = `${i * 70}ms`));
+
+  // --- ML preview: rerank with the outcome model and show probabilities.
+  const mlBtn = $("#mlToggle");
+  let mlOn = false;
+  mlBtn.addEventListener("click", async () => {
+    if (mlOn) { location.reload(); return; }
+    mlBtn.disabled = true;
+    try {
+      const data = await api(`/api/ml/rank/${State.sid}`);
+      const order = new Map(data.items.map((it) => [it.scheme_id, it]));
+      const list = $("#matchList");
+      const cards = $$(".match-card", list);
+      cards
+        .sort((a, b) => (order.get(a.dataset.id)?.v2_rank ?? 999) - (order.get(b.dataset.id)?.v2_rank ?? 999))
+        .forEach((c) => list.appendChild(c));
+      cards.forEach((c) => {
+        const it = order.get(c.dataset.id);
+        if (!it) return;
+        const chip = document.createElement("span");
+        chip.className = "badge ml-chip";
+        chip.textContent = `⚡ ML ${(it.model_probability * 100).toFixed(0)}%`;
+        const badges = c.querySelector(".badge-row");
+        if (badges && !badges.querySelector(".ml-chip")) badges.appendChild(chip);
+      });
+      const note = document.createElement("div");
+      note.className = "ml-note";
+      note.textContent = `V2 outcome model · trained on ${data.trained_on} samples${data.bootstrap ? " (synthetic bootstrap until real outcomes accumulate)" : ""}`;
+      list.before(note);
+      mlOn = true;
+      mlBtn.textContent = "↩ " + t("results.ml_preview_off");
+    } catch (e) {
+      toast(e.message);
+    }
+    mlBtn.disabled = false;
+  });
 }
 
 function matchCardHTML(m) {

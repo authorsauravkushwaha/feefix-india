@@ -37,6 +37,12 @@
     { "scheme_id": "mku-medhavi-chhatra-br", "verified_by": "curator", "verified_on": "2026-09-15", "source": "https://medhasoft.bih.nic.in" },
     { "scheme_id": "bscc-bihar", "verified_by": "curator", "verified_on": "2026-09-15", "source": "https://www.7nishchay-yuvaupmission.bihar.gov.in" },
     { "scheme_id": "inter-protsahan-br", "verified_by": "curator", "verified_on": "2026-09-15", "source": "https://medhasoft.bih.nic.in" },
-    { "scheme_id": "medhavi-ebc-bc-br", "verified_by": "curator", "verified_on": "2026-09-15", "source": "https://medhasoft.bih.nic.in" }
+    { "scheme_id": "medhavi-ebc-bc-br", "verified_by": "curator", "verified_on": "2026-09-15", "source": "https://medhasoft.bih.nic.in" },
+    { "scheme_id": "prerana-scst-od", "verified_by": "curator", "verified_on": "2026-09-20", "source": "https://scholarship.odisha.gov.in" },
+    { "scheme_id": "prerana-obc-od", "verified_by": "curator", "verified_on": "2026-09-20", "source": "https://scholarship.odisha.gov.in" },
+    { "scheme_id": "nua-o-scholarship", "verified_by": "curator", "verified_on": "2026-09-20", "source": "https://scholarship.odisha.gov.in" },
+    { "scheme_id": "medhabruti-od", "verified_by": "curator", "verified_on": "2026-09-20", "source": "https://scholarship.odisha.gov.in" },
+    { "scheme_id": "banishree-od", "verified_by": "curator", "verified_on": "2026-09-19", "source": "https://ssepd.gov.in" },
+    { "scheme_id": "kalia-scholarship-od", "verified_by": "curator", "verified_on": "2026-09-19", "source": "https://kalia.odisha.gov.in" }
   ]
 }

@@ -1008,3 +1008,16 @@ input[type="range"]::-webkit-slider-thumb {
   margin-top: 2px;
 }
 @media (max-width: 620px) { .ask-row { flex-direction: column; } }
+
+/* --- ML preview ---------------------------------------------------------------------------- */
+.ml-chip {
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.4);
+}
+.ml-note {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  margin-bottom: 10px;
+  animation: stepIn 0.4s;
+}

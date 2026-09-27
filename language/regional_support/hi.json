@@ -78,5 +78,7 @@
   "explore.ask.button": "पूछें",
   "ask.mode.profile": "व्यक्तिगत",
   "ask.mode.search": "कैटलॉग खोज",
-  "near.advice": "यह अंतर कैसे भरें"
+  "near.advice": "यह अंतर कैसे भरें",
+  "results.ml_preview": "ML पूर्वावलोकन (V2)",
+  "results.ml_preview_off": "V1 क्रम पर वापस"
 }
