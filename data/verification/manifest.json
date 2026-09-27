@@ -43,6 +43,12 @@
     { "scheme_id": "nua-o-scholarship", "verified_by": "curator", "verified_on": "2026-09-20", "source": "https://scholarship.odisha.gov.in" },
     { "scheme_id": "medhabruti-od", "verified_by": "curator", "verified_on": "2026-09-20", "source": "https://scholarship.odisha.gov.in" },
     { "scheme_id": "banishree-od", "verified_by": "curator", "verified_on": "2026-09-19", "source": "https://ssepd.gov.in" },
-    { "scheme_id": "kalia-scholarship-od", "verified_by": "curator", "verified_on": "2026-09-19", "source": "https://kalia.odisha.gov.in" }
+    { "scheme_id": "kalia-scholarship-od", "verified_by": "curator", "verified_on": "2026-09-19", "source": "https://kalia.odisha.gov.in" },
+    { "scheme_id": "up-postmatric-scst", "verified_by": "curator", "verified_on": "2026-09-27", "source": "https://scholarship.up.gov.in" },
+    { "scheme_id": "up-postmatric-obc-general", "verified_by": "curator", "verified_on": "2026-09-27", "source": "https://scholarship.up.gov.in" },
+    { "scheme_id": "up-prematric", "verified_by": "curator", "verified_on": "2026-09-27", "source": "https://scholarship.up.gov.in" },
+    { "scheme_id": "kanya-sumangala-up", "verified_by": "curator", "verified_on": "2026-09-26", "source": "https://mksy.up.gov.in" },
+    { "scheme_id": "rani-laxmibai-kosh-up", "verified_by": "curator", "verified_on": "2026-09-26", "source": "https://mahilakalyan.up.nic.in" },
+    { "scheme_id": "cm-abhyudaya-up", "verified_by": "curator", "verified_on": "2026-09-26", "source": "https://abhyuday.up.gov.in" }
   ]
 }

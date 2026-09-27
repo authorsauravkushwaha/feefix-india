@@ -671,12 +671,25 @@ function bindMatchCards(root) {
   });
 }
 
+// ------------------------------------------------------------ outcome events
+// Tracker statuses that map to ML outcome events (feeds runtime/outcomes.jsonl
+// → the V2 ranker's training data). Best-effort: never blocks the UI.
+const TRACK_EVENTS = { applied: "applied", under_review: "under_review", approved: "approved", rejected: "rejected" };
+function recordEvent(schemeId, type) {
+  if (!schemeId || !type) return;
+  api("/api/events", {
+    method: "POST",
+    body: JSON.stringify({ session_id: State.sid, scheme_id: schemeId, type }),
+  }).catch(() => {});
+}
+
 /* ========================================================= SCHEME DRAWER */
 async function openScheme(id, viaRoute = false) {
   const scrim = $("#drawerScrim");
   const drawer = $("#drawer");
   try {
     const s = await api(`/api/schemes/${id}`);
+    recordEvent(id, "viewed");
     // Enrich with match context when available.
     let ctx = null;
     const res = State.lastResults;
@@ -774,6 +787,7 @@ async function openScheme(id, viaRoute = false) {
         await api(`/api/tracker/${State.sid}/${id}`, {
           method: "PUT", body: JSON.stringify({ status: next }),
         });
+        if (next) recordEvent(id, TRACK_EVENTS[next]);
         if (next) State.board[id] = { status: next }; else delete State.board[id];
         $$("#trackRow .track-btn").forEach((b) => b.classList.toggle("on", b.dataset.status === next));
         toast(next ? t("dash.status." + next) : t("dash.remove"));
@@ -870,6 +884,7 @@ async function DashboardView(el) {
         btn.addEventListener("click", async () => {
           const st = btn.dataset.status === "remove" ? null : btn.dataset.status;
           await api(`/api/tracker/${State.sid}/${id}`, { method: "PUT", body: JSON.stringify({ status: st }) });
+          if (st) recordEvent(id, TRACK_EVENTS[st]);
           DashboardView(el);
         });
       });

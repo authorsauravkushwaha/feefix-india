@@ -19,7 +19,8 @@ FeeFix is a **decision engine, not a search engine**. A student answers a few
 guided questions and gets a personalised, *ranked* set of scholarships and fee
 waivers — every match explained, every deadline tracked, every application
 nudged along. The dataset ships verified for **West Bengal (14) + Bihar (6) +
-Odisha (6) + national schemes (7)**, following the phased launch roadmap.
+Odisha (6) + Uttar Pradesh (6) + national schemes (7)**, following the phased
+launch roadmap.
 
 ## ✨ What's inside
 
@@ -31,7 +32,7 @@ Odisha (6) + national schemes (7)**, following the phased launch roadmap.
 | **Ranking** | `backend/matching_engine/ranker.py` | `45·clarity + urgency + benefit + verified`, deadline-aware, badges. |
 | **V2 outcome model** | `ml/ranking/`, `POST /api/events`, `GET /api/ml/rank` | Logistic model trained on real apply/approve/reject outcome signals (synthetic bootstrap until ≥25 real events) — “⚡ ML preview” toggle re-ranks match cards with probabilities. **Same signals V1 uses; no invented facts.** |
 | **API** | `backend/api/`, `backend/main.py` | FastAPI. One origin serves the API *and* the SPA. |
-| **Data & verification** | `data/` | 33 curated schemes (WB · Bihar · Odisha · central) as structured, validated records with verification manifest. |
+| **Data & verification** | `data/` | 39 curated schemes (WB · Bihar · Odisha · UP · central) as structured, validated records with verification manifest. |
 | **Reach layer** | `backend/services/chat.py` + `chat_i18n.py` | WhatsApp-style conversational matcher — *State → Course → Income → matches →* **free-text Q&A** — in **English, Bengali & Hindi** (native scripts, দেশি digits `২ লাখ`, state names পশ্চিমবঙ্গ / पश्चिम बंगाल) — live in the web chat widget. |
 | **Agents** | `agents/` | Dataset verification agent (data health + CI gate) and reminder scheduler agent (cron-friendly dispatcher). |
 | **Notifications** | `backend/notifications/` | Channel-agnostic reminders (console + WhatsApp outbox demo). |
@@ -112,7 +113,7 @@ feefix-india/
 ├── ai/                      # FREE-ONLY AI: lexicon · embeddings · search · grounded Q&A
 ├── agents/                  # dataset verification agent · reminder scheduler agent
 ├── data/
-│   ├── schemes/             # west_bengal · bihar · odisha · national (33 schemes)
+│   ├── schemes/             # west_bengal · bihar · odisha · uttar_pradesh · national (39 schemes)
 │   ├── eligibility_rules/   # the rule DSL documentation
 │   └── verification/        # verification manifest
 ├── web/frontend/            # the FeeFix web experience (no build step)
@@ -131,7 +132,7 @@ feefix-india/
 - [x] **Phase 2 — Multi-state expansion begins**: Bihar + Odisha datasets; agent-automated verification ✅
 - [x] **Phase 3 — ML ranking**: outcome-event collection + trained logistic reranker live behind the ⚡ ML preview toggle (`/api/events`, `/api/ml/rank`) ✅
 - [x] **Phase 4 — Regional-language depth**: explanation templates per language; chat holds full conversations in Bengali/Hindi ✅
-- [ ] Phase 5 — Broader student network: colleges & states, same core engine
+- [ ] Phase 5 — Broader student network: colleges & states, same core engine *(in progress — Uttar Pradesh live, tracker↔ML event loop closed)*
 
 ## ⚖️ Data disclaimer
 

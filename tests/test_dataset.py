@@ -64,12 +64,53 @@ def test_phase_states_present(schemes):
     for s in schemes:
         if s.eligibility.domicile_states:
             states.update(s.eligibility.domicile_states)
-    # Phase 1 = West Bengal · Phase 2 = Bihar + Odisha
+    # Phase 1 = West Bengal · Phase 2 = Bihar + Odisha · Phase 5 = Uttar Pradesh
     assert "West Bengal" in states
     assert "Bihar" in states
     assert "Odisha" in states
+    assert "Uttar Pradesh" in states
 
 
 def test_scheme_files_are_valid_json():
     for path in sorted(Path(DATA_DIR / "schemes").glob("*.json")):
         json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_uttar_pradesh_profile_matches(dataset):
+    from backend.services.matching import match_profile
+    from backend.models.student import (
+        Category, CourseLevel, Gender, StudentProfile,
+    )
+
+    profile = StudentProfile(
+        domicile_state="Uttar Pradesh",
+        category=Category.obc,
+        annual_family_income=150_000,
+        course_level=CourseLevel.ug,
+        gender=Gender.female,
+        last_exam_percentage=78,
+    )
+    result = match_profile(profile, dataset)
+    ids = {m["id"] for m in result["matches"]}
+    assert "up-postmatric-obc-general" in ids
+    assert "kanya-sumangala-up" in ids
+    # SC/ST line correctly excluded for an OBC student
+    assert "up-postmatric-scst" not in ids
+
+
+def test_up_schoolgirl_prematric(dataset):
+    from backend.services.matching import match_profile
+    from backend.models.student import (
+        Category, CourseLevel, Gender, StudentProfile,
+    )
+
+    profile = StudentProfile(
+        domicile_state="Uttar Pradesh",
+        category=Category.sc,
+        annual_family_income=90_000,
+        course_level=CourseLevel.school,
+        gender=Gender.female,
+    )
+    ids = {m["id"] for m in match_profile(profile, dataset)["matches"]}
+    assert "up-prematric" in ids
+    assert "kanya-sumangala-up" in ids
