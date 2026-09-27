@@ -65,6 +65,22 @@
     { "scheme_id": "tn-bcmbc-postmatric", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://tnscholarships.tn.gov.in" },
     { "scheme_id": "tn-first-graduate", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://www.tn.gov.in" },
     { "scheme_id": "tn-pudhumai-penn", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://penkalvi.tn.gov.in" },
-    { "scheme_id": "tn-farmers-scholarship", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://www.tn.gov.in" }
+    { "scheme_id": "tn-farmers-scholarship", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://www.tn.gov.in" },
+    { "scheme_id": "assam-fee-waiver-bpl", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://dhe.assam.gov.in" },
+    { "scheme_id": "assam-postmatric-sc", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://scholarships.gov.in" },
+    { "scheme_id": "assam-postmatric-obc", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://scholarships.gov.in" },
+    { "scheme_id": "assam-abhinandan", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://finance.assam.gov.in" },
+    { "scheme_id": "assam-pragyan-bharati", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://dhe.assam.gov.in" },
+    { "scheme_id": "karnataka-postmatric-scst", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://ssp.postmatric.karnataka.gov.in" },
+    { "scheme_id": "karnataka-vidyasiri-obc", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://ssp.postmatric.karnataka.gov.in" },
+    { "scheme_id": "karnataka-prize-money-scst", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://swdoms.karnataka.gov.in" },
+    { "scheme_id": "kmdc-arivu-loan", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://kmdc.karnataka.gov.in" },
+    { "scheme_id": "karnataka-labour-welfare", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://labour.karnataka.gov.in" },
+    { "scheme_id": "kerala-egrantz-scst", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://egrantz.kerala.gov.in" },
+    { "scheme_id": "kerala-higher-education", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://hes.kerala.gov.in" },
+    { "scheme_id": "ch-muhammedkoya-kl", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://www.collegiateedu.kerala.gov.in" },
+    { "scheme_id": "kerala-suvarna-jubilee", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://www.collegiateedu.kerala.gov.in" },
+    { "scheme_id": "vidya-samunnathi-kl", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://kswcfc.org" },
+    { "scheme_id": "ishan-uday-ner", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://www.ugc.gov.in" }
   ]
 }

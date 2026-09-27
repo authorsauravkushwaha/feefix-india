@@ -65,9 +65,11 @@ def test_phase_states_present(schemes):
         if s.eligibility.domicile_states:
             states.update(s.eligibility.domicile_states)
     # Phase 1 = West Bengal · Phase 2 = Bihar + Odisha
-    # Phase 5 = Uttar Pradesh + Maharashtra + Jharkhand + Tamil Nadu
+    # Phase 5  = Uttar Pradesh + Maharashtra + Jharkhand + Tamil Nadu
+    # Phase 5b = Assam + Karnataka + Kerala (national Ishan Uday covers the 8 NE states)
     for state in ("West Bengal", "Bihar", "Odisha", "Uttar Pradesh",
-                  "Maharashtra", "Jharkhand", "Tamil Nadu"):
+                  "Maharashtra", "Jharkhand", "Tamil Nadu",
+                  "Assam", "Karnataka", "Kerala"):
         assert state in states
 
 
@@ -164,3 +166,44 @@ def test_tamil_nadu_profiles(dataset):
     assert "tn-bcmbc-postmatric" in girl
     assert "tn-first-graduate" in girl  # income-free waiver
     assert "tn-postmatric-scst" not in girl
+
+
+def test_assam_profiles(dataset):
+    from backend.models.student import Category, CourseLevel, Gender
+
+    low = _match_ids(dataset, domicile_state="Assam", category=Category.general,
+                     annual_family_income=150_000, course_level=CourseLevel.ug,
+                     gender=Gender.female, last_exam_percentage=70)
+    assert "assam-fee-waiver-bpl" in low
+    assert "ishan-uday-ner" in low          # NER central scheme covers Assam
+    mid = _match_ids(dataset, domicile_state="Assam", category=Category.general,
+                     annual_family_income=350_000, course_level=CourseLevel.ug,
+                     gender=Gender.female, last_exam_percentage=70)
+    assert "assam-fee-waiver-bpl" not in mid
+
+
+def test_karnataka_profiles(dataset):
+    from backend.models.student import Category, CourseLevel, Gender
+
+    st = _match_ids(dataset, domicile_state="Karnataka", category=Category.st,
+                    annual_family_income=200_000, course_level=CourseLevel.ug,
+                    gender=Gender.male, last_exam_percentage=72)
+    assert "karnataka-postmatric-scst" in st
+    assert "karnataka-prize-money-scst" in st
+    assert "karnataka-vidyasiri-obc" not in st
+
+
+def test_kerala_profiles(dataset):
+    from backend.models.student import Category, CourseLevel, Gender
+
+    muslim_girl = _match_ids(
+        dataset, domicile_state="Kerala", category=Category.general,
+        annual_family_income=400_000, course_level=CourseLevel.ug,
+        gender=Gender.female, is_minority=True, minority_community="muslim",
+        last_exam_percentage=85)
+    assert "ch-muhammedkoya-kl" in muslim_girl
+    ews = _match_ids(dataset, domicile_state="Kerala", category=Category.general,
+                     annual_family_income=150_000, course_level=CourseLevel.ug,
+                     gender=Gender.male, last_exam_percentage=60)
+    assert "vidya-samunnathi-kl" in ews
+    assert "kerala-suvarna-jubilee" in ews

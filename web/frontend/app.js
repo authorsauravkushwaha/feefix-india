@@ -72,7 +72,7 @@ async function loadLang(lang) {
     State.dict = dict;
     State.lang = lang;
     localStorage.setItem("feefix.lang", lang);
-    document.documentElement.lang = lang === "bn" ? "bn" : lang === "hi" ? "hi" : "en";
+    document.documentElement.lang = ["bn", "hi", "ta"].includes(lang) ? lang : "en";
   } catch (e) {
     State.dict = {};
   }
@@ -98,6 +98,7 @@ function renderNav() {
        <option value="en" ${State.lang === "en" ? "selected" : ""}>English</option>
        <option value="bn" ${State.lang === "bn" ? "selected" : ""}>বাংলা</option>
        <option value="hi" ${State.lang === "hi" ? "selected" : ""}>हिन्दी</option>
+       <option value="ta" ${State.lang === "ta" ? "selected" : ""}>தமிழ்</option>
      </select>`;
   $("#langPick").addEventListener("change", async (e) => {
     await loadLang(e.target.value);

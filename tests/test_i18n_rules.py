@@ -84,3 +84,22 @@ def test_render_rule_fallback_safety():
     assert render_rule(r, "en") == "english detail"
     out = render_rule(r, "bn")
     assert BN_RE.search(out) and "WB" in out
+
+
+def test_tamil_explanations(dataset):
+    import re
+
+    result = match_profile(StudentProfile(**PROFILE), dataset, lang="ta")
+    reasons = [r for m in result["matches"] for r in m["why_matched"]]
+    assert reasons and any(re.search(r"[஀-௿]", r) for r in reasons)
+
+
+def test_all_explanation_languages_cover_same_keys():
+    import json
+    from pathlib import Path
+
+    root = Path("language/regional_support/explanations")
+    en_keys = set(json.loads((root / "en.json").read_text(encoding="utf-8")))
+    for lang in ("bn", "hi", "ta"):
+        lang_keys = set(json.loads((root / f"{lang}.json").read_text(encoding="utf-8")))
+        assert lang_keys == en_keys, f"{lang} missing: {en_keys - lang_keys}"

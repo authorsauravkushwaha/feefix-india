@@ -11,7 +11,7 @@ Interactive docs (Swagger): `GET /docs` when the server is running.
 | GET | `/api/health` | Liveness + loaded scheme count |
 | GET | `/api/meta` | Enums: states, categories, course levels, genders, minority communities, tracker statuses |
 | GET | `/api/stats` | Catalogue totals (schemes, verified count, benefit pool…) |
-| GET | `/api/i18n/{lang}` | UI dictionary (`en`, `bn`, `hi`) |
+| GET | `/api/i18n/{lang}` | UI dictionary (`en`, `bn`, `hi`, `ta`) |
 
 ## Schemes
 
@@ -26,7 +26,7 @@ curl 'http://localhost:8000/api/schemes?q=nsp&fee_waiver=false'
 
 ## Matching (the core)
 
-`POST /api/match` accepts an optional `"lang": "bn" | "hi"` alongside `profile` —
+`POST /api/match` accepts an optional `"lang": "bn" | "hi" | "ta"` alongside `profile` —
 `why_matched` / assumption details are then localized (Phase 4). The same `lang`
 parameter works on `PUT /api/students/{sid}/profile` (body) and
 `GET /api/match/{sid}?lang=`.
@@ -188,8 +188,8 @@ POST /api/chat   { "message": "₹2,00,000",     "chat_id": "ab12cd34ef56" }
 ```
 
 Three questions → ranked matches with the same explanations. Natural parsing:
-`"2 lakh"`, `"wb"`, `"class 12"` all understood — and so are Bengali/Hindi inputs:
-`পশ্চিমবঙ্গ`, `बिहार`, `২ লাখ`, `৯০ হাজার`, `১.৫ লাখ`, `বি.টেক`, `कक्षा 12`.
+`"2 lakh"`, `"wb"`, `"class 12"` all understood — and so are Bengali/Hindi/Tamil inputs:
+`পশ্চিমবঙ্গ`, `बिहार`, `தமிழ்நாடு`, `২ লাখ`, `৯০ হাজার`, `2 லட்சம்`, `বি.টেক`, `कक्षा 12`.
 The session language is detected per turn and **sticks** for the rest of the
 conversation; questions, summaries and follow-ups come back in that language
 (Phase 4). Sessions are in-memory keyed by `chat_id` (swap `_SESSIONS` for Redis

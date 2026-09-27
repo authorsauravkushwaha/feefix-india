@@ -16,8 +16,15 @@ for Redis to run many workers.
 from __future__ import annotations
 
 import re
+import unicodedata
 import uuid
 from dataclasses import dataclass, field
+
+
+def _nfc(text: str) -> str:
+    """Canonical-compose Indic text — typed input may arrive in NFD, which
+    would defeat plain containment matching."""
+    return unicodedata.normalize("NFC", text)
 
 from backend.models.student import (
     CourseLevel,
@@ -36,13 +43,14 @@ DONE = "done"
 _COURSE_KEYWORDS: list[tuple[tuple[str, ...], CourseLevel]] = [
     (("phd", "ph.d", "doctorate", "research", "পিএইচডি", "पीएचडी"), CourseLevel.phd),
     (("m.tech", "mtech", "m.sc", "msc", "mba", "ma ", "postgraduate", "pg", "master",
-      "স্নাতকোত্তর", "এমএসসি", "এমএ", "एमएससी", "स्नातकोत्तर"), CourseLevel.pg),
+      "স্নাতকোত্তর", "এমএসসি", "এমএ", "एमएससी", "स्नातकोत्तर",
+      "எம்.எஸ்சி", "முதுகலை"), CourseLevel.pg),
     (("b.tech", "btech", "b.e", "engineering", "mbbs", "b.sc", "bsc", "ba", "b.com",
       "undergraduate", "ug", "degree", "college", "বি.টেক", "বি টেক",
       "ইঞ্জিনিয়ারিং", "इंजीनियरिंग", "बी.टेक", "बी टेक", "স্নাতক", "स्नातक",
-      "কলেজ", "कॉलेज"), CourseLevel.ug),
-    (("iti", "আইটিআই", "आईटीआई"), CourseLevel.iti),
-    (("diploma", "polytechnic", "ডিপ্লোমা", "डिप्लोमा", "পলিটেকনিক"), CourseLevel.diploma),
+      "কলেজ", "कॉलेज", "பி.டெக்", "பட்டப்படிப்பு", "இளங்கலை", "பொறியியல்"), CourseLevel.ug),
+    (("iti", "আইটিআই", "आईटीआई", "ஐடிஐ"), CourseLevel.iti),
+    (("diploma", "polytechnic", "ডিপ্লোমা", "डिप्लोमा", "পলিটেকনিক", "டிப்ளமோ", "பாலிடெக்னிக்"), CourseLevel.diploma),
     (("11", "12", "xi", "xii", "hs", "higher secondary", "+2", "intermediate", "inter",
       "plus two", "১১", "১২", "१२", "ইন্টার", "इंटर", "উচ্চ মাধ্যমিক",
       "कक्षा 12", "कक्षा १२", "कक्षा 11"), CourseLevel.higher_secondary),
@@ -73,17 +81,30 @@ _STATE_LOOKUP.update({
     "राजस्थान": "Rajasthan", "गुजरात": "Gujarat", "पंजाब": "Punjab",
     "तमिलनाडु": "Tamil Nadu", "केरल": "Kerala", "कर्नाटक": "Karnataka",
     "दिल्ली": "Delhi", "झारखंड": "Jharkhand", "तेलंगाना": "Telangana",
+    # Tamil
+    "தமிழ்நாடு": "Tamil Nadu", "மேற்கு வங்கம்": "West Bengal", "வங்காளம்": "West Bengal",
+    "கர்நாடகா": "Karnataka", "கேரளம்": "Kerala", "கேரளா": "Kerala", "அசாம்": "Assam",
+    "பிகார்": "Bihar", "ஒடிசா": "Odisha", "ஒரிசா": "Odisha",
+    "உத்தரப் பிரதேசம்": "Uttar Pradesh", "மகாராஷ்டிரம்": "Maharashtra",
+    "சார்க்கண்ட்": "Jharkhand", "ஜார்க்கண்ட்": "Jharkhand", "மத்தியப் பிரதேசம்": "Madhya Pradesh",
     "हरियाणा": "Haryana", "छत्तीसगढ़": "Chhattisgarh", "त्रिपुरा": "Tripura",
 })
 
 
 def parse_income(text: str) -> int | None:
-    """Parse '₹2,00,000', '2 lakh', '১২ লাখ', '2 लाख', '1.5 lakhs', '200000'."""
-    t = normalize_digits(text.lower()).replace("₹", "").replace(",", "").strip()
-    m = re.search(r"(\d+(?:\.\d+)?)\s*(lakh|lac|লাখ|लाख|l)(?:s|hs)?\b", t)
+    """Parse '₹2,00,000', '2 lakh', '১২ লাখ', '2 लाख', '2 லட்சம்', '200000'."""
+    t = _nfc(normalize_digits(text.lower()).replace("₹", "").replace(",", "").strip())
+    # Indic-script units match by containment (ASCII \b doesn't apply to them)
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(லட்சம்|লাখ|लाख)", t)
     if m:
         return int(float(m.group(1)) * 100000)
-    m = re.search(r"(\d+(?:\.\d+)?)\s*(thousand|k|হাজার|हज़ार|हजार)\b", t)
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(lakhs?|lac|l)\b", t)
+    if m:
+        return int(float(m.group(1)) * 100000)
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(ஆயிரம்|হাজার|हज़ार|हजार)", t)
+    if m:
+        return int(float(m.group(1)) * 1000)
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(thousand|k)\b", t)
     if m:
         return int(float(m.group(1)) * 1000)
     m = re.search(r"(\d{4,9})", t)
@@ -93,7 +114,7 @@ def parse_income(text: str) -> int | None:
 
 
 def parse_state(text: str) -> str | None:
-    t = text.strip().lower()
+    t = _nfc(text.strip().lower())
     if t in _STATE_LOOKUP:
         return _STATE_LOOKUP[t]
     for key, name in _STATE_LOOKUP.items():
@@ -111,7 +132,7 @@ def _word_regex(keyword: str) -> re.Pattern:
         # Latin tokens get word boundaries; Indic-script keywords use plain
         # containment (ASCII boundary classes don't apply around native text).
         if re.search(r"[^a-z0-9+\s]", keyword):
-            pattern = re.compile(re.escape(keyword.strip()))
+            pattern = re.compile(re.escape(_nfc(keyword.strip())))
         else:
             pattern = re.compile(
                 rf"(?<![a-z0-9]){re.escape(keyword.strip())}(?![a-z0-9])"
@@ -122,7 +143,7 @@ def _word_regex(keyword: str) -> re.Pattern:
 
 def parse_course(text: str) -> CourseLevel | None:
     """Keyword match; 'diploma' must not hit PG's 'ma', 'internship' must not hit 'inter'."""
-    t = text.strip().lower()
+    t = _nfc(text.strip().lower())
     for keywords, level in _COURSE_KEYWORDS:
         if any(_word_regex(kw).search(t) for kw in keywords):
             return level

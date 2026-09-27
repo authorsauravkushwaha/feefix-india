@@ -27,7 +27,7 @@ from backend.services.reminders import build_reminders
 router = APIRouter(prefix="/api")
 
 LANG_DIR = Path(__file__).resolve().parents[2] / "language" / "regional_support"
-SUPPORTED_LANGS = {"en", "bn", "hi"}
+SUPPORTED_LANGS = {"en", "bn", "hi", "ta"}
 DEFAULT_STATUS_ERROR = "Invalid status. Use one of saved|planning|applied|under_review|approved|rejected."
 
 

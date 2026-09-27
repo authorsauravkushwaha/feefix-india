@@ -148,3 +148,58 @@ def test_language_sticks_within_session(dataset):
     handle_message("পশ্চিমবঙ্গ", dataset, chat_id=cid)  # sets bn mid-flow
     r = handle_message("বি.টেক", dataset, chat_id=cid)
     assert BN_RE.search(r["reply"])
+
+
+# -------------------------------------------------------------------- #
+#  Tamil reach layer (V3+)                                             #
+# -------------------------------------------------------------------- #
+
+def _ta(*cps):
+    # Build Tamil strings from codepoints so tests can't be affected by
+    # mixed-script typos in source literals.
+    return "".join(chr(c) for c in cps)
+
+
+def test_detect_lang_tamil():
+    from backend.services.chat_i18n import detect_lang
+
+    assert detect_lang("மேற்கு வங்கம்") == "ta"
+    assert detect_lang("২ লাখ").strip() == "bn"
+    assert detect_lang("hello") == "en"
+
+
+def test_tamil_course_and_income_parsing():
+    from backend.services.chat import parse_course, parse_income
+    diploma = _ta(0x0B9F, 0x0BBF, 0x0BAA, 0x0BCD, 0x0BB3, 0x0BAE, 0x0BCB)  # டிப்ளமோ
+    latcham = _ta(0x0BB2, 0x0B9F, 0x0BCD, 0x0B9A, 0x0BAE, 0x0BCD)          # லட்சம்
+    assert parse_course(diploma) == CourseLevel.diploma
+    assert parse_income("2 " + latcham) == 200000
+    assert parse_income("1.5 " + latcham) == 150000
+    # no cross-language regressions
+    assert parse_income("২ লাখ") == 200000
+    assert parse_income("90k") == 90000
+
+
+def test_tamil_state_names():
+    for text, expected in [
+        ("தமிழ்நாடு", "Tamil Nadu"),
+        ("கேரளா", "Kerala"),
+        ("கர்நாடகா", "Karnataka"),
+        ("அசாம்", "Assam"),
+        ("மேற்கு வங்கம்", "West Bengal"),
+        ("மகாராஷ்டிரம்", "Maharashtra"),
+    ]:
+        assert parse_state(text) == expected, text
+
+
+def test_full_tamil_conversation(dataset):
+    cid = "test-ta-full"
+    handle_message("start", dataset, chat_id=cid)
+    r = handle_message("தமிழ்நாடு", dataset, chat_id=cid)
+    assert "கேள்வி" in r["reply"]
+    r = handle_message("engineering", dataset, chat_id=cid)
+    assert "கேள்வி" in r["reply"]
+    latcham = _ta(0x0BB2, 0x0B9F, 0x0BCD, 0x0B9A, 0x0BAE, 0x0BCD)
+    r = handle_message("2 " + latcham, dataset, chat_id=cid)
+    assert r["matches"], r["reply"]
+    assert r["full_result"]["profile_echo"]["annual_family_income"] == 200000

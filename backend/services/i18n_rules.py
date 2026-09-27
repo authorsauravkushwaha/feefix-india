@@ -21,7 +21,7 @@ from backend.matching_engine.rules import RuleResult
 EXPL_DIR = (
     Path(__file__).resolve().parents[2] / "language" / "regional_support" / "explanations"
 )
-SUPPORTED = {"en", "bn", "hi"}
+SUPPORTED = {"en", "bn", "hi", "ta"}
 
 
 class _SafeParams(dict):
