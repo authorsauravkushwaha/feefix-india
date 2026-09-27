@@ -1,0 +1,348 @@
+[
+  {
+    "id": "mahadbt-postmatric-sc",
+    "name": "Government of India Post-Matric Scholarship — SC Students (Maharashtra)",
+    "provider": "Social Justice & Special Assistance Dept., Government of Maharashtra (MahaDBT)",
+    "level": "state",
+    "summary": "Maharashtra's post-matric scholarship for SC and Neo-Buddhist students from Class XI onwards, with maintenance allowance and compulsory-fee support through MahaDBT.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 13000,
+      "amount_display": "₹6,000 – ₹13,500 / year + compulsory fees",
+      "details": "Course-group-wise maintenance allowance plus enrolment/tuition/examination fee support via DBT."
+    },
+    "deadline": {
+      "date": "2026-11-30",
+      "rolling": false,
+      "label": "2026–27 MahaDBT window"
+    },
+    "eligibility": {
+      "domicile_states": ["Maharashtra"],
+      "categories": ["sc"],
+      "max_family_income": 250000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "SC/Neo-Buddhist caste certificate of Maharashtra",
+        "Maximum two professional courses per family are covered",
+        "Gap and failure-rule exclusions apply as per the current GR"
+      ]
+    },
+    "documents": [
+      "Caste certificate of Maharashtra",
+      "Income certificate",
+      "Domicile certificate",
+      "Last exam marksheet & admission receipt",
+      "Aadhaar-seeded bank account (DBT)"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "MahaDBT",
+      "url": "https://mahadbt.maharashtra.gov.in",
+      "steps": [
+        "Aadhaar-authenticated registration on MahaDBT",
+        "Select the SC post-matric scheme and fill institution details",
+        "Upload documents",
+        "Institute → department scrutiny → DBT"
+      ]
+    },
+    "official_url": "https://mahadbt.maharashtra.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "verified",
+    "tags": ["maharashtra", "sc", "mahadbt", "post-matric"],
+    "notes": ""
+  },
+  {
+    "id": "mahadbt-postmatric-obc",
+    "name": "Post-Matric Scholarship — OBC Students (Maharashtra)",
+    "provider": "OBC, VJNT & SBC Welfare Department, Government of Maharashtra (MahaDBT)",
+    "level": "state",
+    "summary": "Post-matric maintenance allowance and fee support for OBC (non-creamy-layer) students of Maharashtra studying Class XI and above.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 9000,
+      "amount_display": "₹4,000 – ₹9,000 / year + fee support",
+      "details": "Group-wise non-refundable maintenance and non-refundable fee components, DBT-credited."
+    },
+    "deadline": {
+      "date": "2026-11-30",
+      "rolling": false,
+      "label": "2026–27 MahaDBT window"
+    },
+    "eligibility": {
+      "domicile_states": ["Maharashtra"],
+      "categories": ["obc"],
+      "max_family_income": 150000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "OBC non-creamy-layer certificate of Maharashtra",
+        "Income slab differs by scheme line — re-verify the current GR each cycle"
+      ]
+    },
+    "documents": [
+      "OBC non-creamy-layer certificate",
+      "Income certificate",
+      "Domicile of Maharashtra",
+      "Last marksheet & fee receipt",
+      "Aadhaar + DBT bank account"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "MahaDBT",
+      "url": "https://mahadbt.maharashtra.gov.in",
+      "steps": [
+        "Register on MahaDBT",
+        "Choose the OBC post-matric scheme",
+        "Upload documents",
+        "Institute verification → DBT"
+      ]
+    },
+    "official_url": "https://mahadbt.maharashtra.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "pending_review",
+    "tags": ["maharashtra", "obc", "mahadbt", "post-matric"],
+    "notes": "OBC income slab moves with government resolutions — flagged for re-verification."
+  },
+  {
+    "id": "mahadbt-postmatric-vjnt",
+    "name": "Post-Matric Scholarship — VJNT / SBC Students (Maharashtra)",
+    "provider": "OBC, VJNT & SBC Welfare Department, Government of Maharashtra (MahaDBT)",
+    "level": "state",
+    "summary": "Post-matric scholarship and freeship lines for Vimukta Jati, Nomadic Tribes and Special Backward Class students of Maharashtra.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 10000,
+      "amount_display": "₹5,000 – ₹10,000 / year + fee support",
+      "details": "Maintenance allowance plus tuition/exam fee support under VJNT scheme lines."
+    },
+    "deadline": {
+      "date": "2026-11-30",
+      "rolling": false,
+      "label": "2026–27 MahaDBT window"
+    },
+    "eligibility": {
+      "domicile_states": ["Maharashtra"],
+      "categories": ["obc"],
+      "max_family_income": 150000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "VJNT/SBC caste certificate of Maharashtra (distinct from general OBC)",
+        "Freeship lines cover tuition+exam fees at higher income slabs"
+      ]
+    },
+    "documents": [
+      "VJNT/SBC caste certificate",
+      "Income certificate",
+      "Domicile of Maharashtra",
+      "Last marksheet & fee receipt",
+      "Aadhaar + DBT bank account"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "MahaDBT",
+      "url": "https://mahadbt.maharashtra.gov.in",
+      "steps": [
+        "Register on MahaDBT",
+        "Choose the VJNT/SBC line",
+        "Upload documents",
+        "Institute verification → DBT"
+      ]
+    },
+    "official_url": "https://mahadbt.maharashtra.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "pending_review",
+    "tags": ["maharashtra", "vjnt", "sbc", "mahadbt"],
+    "notes": "Modelled on the OBC category slot — the VJNT nuance lives in special_conditions."
+  },
+  {
+    "id": "mahadbt-ebc-shahu",
+    "name": "Rajarshi Chhatrapati Shahu Maharaj Shikshan Shulkh Shishyavrutti Yojana (EBC, Maharashtra)",
+    "provider": "Higher & Technical Education Department, Government of Maharashtra (MahaDBT)",
+    "level": "state",
+    "summary": "50% tuition and examination fee reimbursement for open-category (EBC) students admitted to professional and technical courses through the CAP round in Maharashtra.",
+    "benefit": {
+      "type": "fee_waiver",
+      "amount_annual_inr": 45000,
+      "amount_display": "50% of tuition & exam fees (professional courses)",
+      "details": "Reimbursement of half the tuition + examination fees for EBC students in professional/technical courses."
+    },
+    "deadline": {
+      "date": "2027-01-31",
+      "rolling": false,
+      "label": "2026–27 AY window"
+    },
+    "eligibility": {
+      "domicile_states": ["Maharashtra"],
+      "categories": ["general"],
+      "max_family_income": 800000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["diploma", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Admission through the centralized admission process (CAP) in a government/aided/unaided Maharashtra institution",
+        "EBC eligibility certificate showing family income within ₹8,00,000",
+        "Only two children per family under the scheme",
+        "Student must not be drawing an overlapping fee benefit"
+      ]
+    },
+    "documents": [
+      "EBC eligibility certificate (income-based)",
+      "CAP admission allotment & fee receipt",
+      "Domicile of Maharashtra",
+      "Last exam marksheet",
+      "Aadhaar + bank details"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "MahaDBT",
+      "url": "https://mahadbt.maharashtra.gov.in",
+      "steps": [
+        "Register on MahaDBT after CAP admission",
+        "Apply under the Shahu Maharaj EBC scheme",
+        "Upload fee receipts and EBC certificate",
+        "Institute confirmation → reimbursement"
+      ]
+    },
+    "official_url": "https://mahadbt.maharashtra.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "verified",
+    "tags": ["maharashtra", "ebc", "fee-reimbursement", "professional-courses", "mahadbt"],
+    "notes": ""
+  },
+  {
+    "id": "mahadbt-freeship-sc",
+    "name": "Tuition Fee & Examination Fee Freeship — SC Students (Maharashtra)",
+    "provider": "Social Justice & Special Assistance Dept., Government of Maharashtra (MahaDBT)",
+    "level": "state",
+    "summary": "Full tuition and examination fee exemption for SC/Neo-Buddhist students of Maharashtra whose family income crosses the post-matric scholarship cap — the freeship lane.",
+    "benefit": {
+      "type": "fee_waiver",
+      "amount_annual_inr": 30000,
+      "amount_display": "100% tuition + exam fee exemption",
+      "details": "Course fee waived for eligible SC students studying post-matric courses in Maharashtra."
+    },
+    "deadline": {
+      "date": "2026-11-30",
+      "rolling": false,
+      "label": "2026–27 MahaDBT window"
+    },
+    "eligibility": {
+      "domicile_states": ["Maharashtra"],
+      "categories": ["sc"],
+      "max_family_income": null,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "diploma", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Aimed at students just over the ₹2.5 lakh scholarship cap — no strict income bar for the freeship lane",
+        "SC/Neo-Buddhist caste certificate of Maharashtra",
+        "Maximum two professional courses per family"
+      ]
+    },
+    "documents": [
+      "Caste certificate of Maharashtra",
+      "Income declaration",
+      "Domicile of Maharashtra",
+      "Admission & fee receipts",
+      "Aadhaar + bank details"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "MahaDBT",
+      "url": "https://mahadbt.maharashtra.gov.in",
+      "steps": [
+        "Register on MahaDBT",
+        "Choose the SC freeship scheme",
+        "Upload receipts",
+        "Institute verification → fee adjustment"
+      ]
+    },
+    "official_url": "https://mahadbt.maharashtra.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "verified",
+    "tags": ["maharashtra", "sc", "freeship", "mahadbt"],
+    "notes": ""
+  },
+  {
+    "id": "mahadbt-postmatric-st",
+    "name": "Post-Matric Scholarship — ST Students (Maharashtra)",
+    "provider": "Tribal Development Department, Government of Maharashtra (MahaDBT)",
+    "level": "state",
+    "summary": "Post-matric scholarship for Scheduled Tribe students of Maharashtra covering maintenance allowance and fee components from Class XI up to research level.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 14000,
+      "amount_display": "₹6,500 – ₹14,000 / year + fees",
+      "details": "Tribal-department scheme lines with group-wise maintenance; hosteller rates higher."
+    },
+    "deadline": {
+      "date": "2026-11-30",
+      "rolling": false,
+      "label": "2026–27 MahaDBT window"
+    },
+    "eligibility": {
+      "domicile_states": ["Maharashtra"],
+      "categories": ["st"],
+      "max_family_income": 250000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "ST certificate of Maharashtra",
+        "Ashram-school and hostel lines offer additional support components"
+      ]
+    },
+    "documents": [
+      "ST caste certificate",
+      "Income certificate",
+      "Domicile of Maharashtra",
+      "Last marksheet & fee receipt",
+      "Aadhaar + DBT bank account"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "MahaDBT",
+      "url": "https://mahadbt.maharashtra.gov.in",
+      "steps": [
+        "Register on MahaDBT",
+        "Choose the ST post-matric scheme (tribal dept.)",
+        "Upload documents",
+        "Institute verification → DBT"
+      ]
+    },
+    "official_url": "https://mahadbt.maharashtra.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "verified",
+    "tags": ["maharashtra", "st", "tribal", "mahadbt"],
+    "notes": ""
+  }
+]

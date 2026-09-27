@@ -1,0 +1,283 @@
+[
+  {
+    "id": "assam-fee-waiver-bpl",
+    "name": "Assam Higher Education Fee Waiver Scheme for Low-Income Families",
+    "provider": "Directorate of Higher Education, Government of Assam",
+    "level": "state",
+    "summary": "Free admission (full fee waiver) in Assam's government and provincialized colleges for students whose family income is below the notified ceiling — the flagship 'Assam free admission' scheme.",
+    "benefit": {
+      "type": "fee_waiver",
+      "amount_annual_inr": 30000,
+      "amount_display": "100% admission & tuition fee waiver (BA/BSc/BCom & professional lines)",
+      "details": "Admission fee, tuition, lab & related fees waived at admission itself; renewal requires continuity of study."
+    },
+    "deadline": {
+      "date": null,
+      "rolling": true,
+      "label": "Applied at college admission (DARPAN portal)"
+    },
+    "eligibility": {
+      "domicile_states": ["Assam"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": 200000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "diploma", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Family income below ₹2,00,000 (BPL certificate or parental income proof)",
+        "Admission to a government/provincialized college of Assam via DARPAN",
+        "Either parent's income from state government services may disqualify — check current order"
+      ]
+    },
+    "documents": [
+      "Income certificate / BPL proof",
+      "Domicile of Assam (PRC)",
+      "DARPAN admission confirmation",
+      "Last exam marksheet"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "DARPAN Admission Portal",
+      "url": "https://dheonline.admissions.ac.in",
+      "steps": [
+        "Apply for admission through DARPAN",
+        "Tick the fee-waiver option and upload income proof",
+        "College verifies and admits without fees"
+      ]
+    },
+    "official_url": "https://dhe.assam.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "verified",
+    "tags": ["assam", "fee-waiver", "free-admission", "bpl"],
+    "notes": ""
+  },
+  {
+    "id": "assam-postmatric-sc",
+    "name": "Post-Matric Scholarship for SC Students (Assam)",
+    "provider": "Welfare of Scheduled Castes, Government of Assam",
+    "level": "state",
+    "summary": "State-operated post-matric scholarship for Assam's SC students from Class XI to research level, paid through the National Scholarship Portal / Assam portal.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 12000,
+      "amount_display": "₹6,000 – ₹13,500 / year + fee support",
+      "details": "Maintenance allowance by course group plus compulsory fee coverage via DBT."
+    },
+    "deadline": {
+      "date": "2026-11-30",
+      "rolling": false,
+      "label": "2026–27 NSP/state window"
+    },
+    "eligibility": {
+      "domicile_states": ["Assam"],
+      "categories": ["sc"],
+      "max_family_income": 250000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "SC caste certificate of Assam",
+        "Studying in a recognised institution"
+      ]
+    },
+    "documents": [
+      "Caste certificate (Assam)",
+      "Income certificate",
+      "Domicile (PRC) of Assam",
+      "Last marksheet",
+      "Bank + Aadhaar details"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "National Scholarship Portal",
+      "url": "https://scholarships.gov.in",
+      "steps": [
+        "Register on NSP",
+        "Choose Assam SC post-matric scheme",
+        "Upload documents",
+        "Institute → district verification → DBT"
+      ]
+    },
+    "official_url": "https://scholarships.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "verified",
+    "tags": ["assam", "sc", "post-matric"],
+    "notes": ""
+  },
+  {
+    "id": "assam-postmatric-obc",
+    "name": "Post-Matric Scholarship for OBC / MOBC Students (Assam)",
+    "provider": "Welfare of Backward Classes, Government of Assam",
+    "level": "state",
+    "summary": "Post-matric scholarship for Assam's OBC and MOBC (More Other Backward Class / tea-garden community) students studying Class XI and above.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 9000,
+      "amount_display": "₹4,000 – ₹9,000 / year",
+      "details": "Maintenance allowance by course group, DBT-credited after verification."
+    },
+    "deadline": {
+      "date": "2026-11-30",
+      "rolling": false,
+      "label": "2026–27 window"
+    },
+    "eligibility": {
+      "domicile_states": ["Assam"],
+      "categories": ["obc"],
+      "max_family_income": 250000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "OBC/MOBC certificate of Assam",
+        "Tea-garden community lines have dedicated windows"
+      ]
+    },
+    "documents": [
+      "OBC/MOBC caste certificate (Assam)",
+      "Income certificate",
+      "Domicile (PRC) of Assam",
+      "Last marksheet & fee receipt",
+      "Bank + Aadhaar details"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "National Scholarship Portal",
+      "url": "https://scholarships.gov.in",
+      "steps": [
+        "Register on NSP",
+        "Choose Assam OBC post-matric scheme",
+        "Upload documents",
+        "Verification → DBT"
+      ]
+    },
+    "official_url": "https://scholarships.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "pending_review",
+    "tags": ["assam", "obc", "mobc", "post-matric"],
+    "notes": "MOBC/tea-garden provisions revise periodically."
+  },
+  {
+    "id": "assam-abhinandan",
+    "name": "Abhinandan Education Loan Subsidy Scheme (Assam)",
+    "provider": "Finance Department, Government of Assam",
+    "level": "state",
+    "summary": "One-time ₹50,000 subsidy against outstanding education loans taken by Assam students — the state directly reduces your education-loan principal.",
+    "benefit": {
+      "type": "grant",
+      "amount_annual_inr": 50000,
+      "amount_display": "₹50,000 one-time education-loan subsidy",
+      "details": "Subsidy credited against the education loan account for loans of ₹1 lakh and above."
+    },
+    "deadline": {
+      "date": null,
+      "rolling": true,
+      "label": "Portal windows announced periodically"
+    },
+    "eligibility": {
+      "domicile_states": ["Assam"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": null,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["ug", "pg", "phd", "diploma"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Education loan of ₹1,00,000+ sanctioned after the notified date by a scheduled bank",
+        "Loan must not be an NPA",
+        "Applicant / parents domiciled in Assam",
+        "One subsidy per student across phases"
+      ]
+    },
+    "documents": [
+      "Loan sanction letter & account details",
+      "Domicile (PRC) of Assam",
+      "Educational certificates",
+      "Bank statement (loan not NPA)"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "Assam Finance Portal",
+      "url": "https://finance.assam.gov.in",
+      "steps": [
+        "Apply in the announced window",
+        "Bank verifies the loan account",
+        "Subsidy credited to the loan account"
+      ]
+    },
+    "official_url": "https://finance.assam.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "pending_review",
+    "tags": ["assam", "education-loan", "subsidy"],
+    "notes": "Runs in phases (Abhinandan 2.0 etc.) — each phase re-notifies windows."
+  },
+  {
+    "id": "assam-pragyan-bharati",
+    "name": "Pragyan Bharati Scooty Scheme — Meritorious Girls (Assam)",
+    "provider": "Directorate of Higher Education, Government of Assam",
+    "level": "state",
+    "summary": "Free scooter to every Assam girl who secures 60%+ in the Higher Secondary exam from a government school — a mobility grant to keep girls in college.",
+    "benefit": {
+      "type": "grant",
+      "amount_annual_inr": 60000,
+      "amount_display": "Scooter (indicative value ₹60,000)",
+      "details": "Value-in-kind reward; beneficiary chooses petrol or electric variant."
+    },
+    "deadline": {
+      "date": null,
+      "rolling": true,
+      "label": "Automatic on HS merit lists"
+    },
+    "eligibility": {
+      "domicile_states": ["Assam"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": null,
+      "genders": ["female"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "ug"],
+      "min_marks_percent": 60,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Girls who secured first division (60%+) in HS final from Assam govt/provincialized schools",
+        "Distribution happens post-results at the district level"
+      ]
+    },
+    "documents": [
+      "HS marksheet (60%+)",
+      "School certificate (govt school)",
+      "ID & domicile proof of Assam"
+    ],
+    "application": {
+      "mode": "hybrid",
+      "portal": "District Administration / DHE",
+      "url": "https://dhe.assam.gov.in",
+      "steps": [
+        "Merit list published by districts",
+        "Verify documents at the notified venue",
+        "Scooter handed over at distribution events"
+      ]
+    },
+    "official_url": "https://dhe.assam.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "verified",
+    "tags": ["assam", "girls", "merit", "scooty"],
+    "notes": "Value-in-kind grant — not a cash scholarship."
+  }
+]
