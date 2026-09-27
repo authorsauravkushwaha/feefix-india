@@ -64,11 +64,11 @@ def test_phase_states_present(schemes):
     for s in schemes:
         if s.eligibility.domicile_states:
             states.update(s.eligibility.domicile_states)
-    # Phase 1 = West Bengal · Phase 2 = Bihar + Odisha · Phase 5 = Uttar Pradesh
-    assert "West Bengal" in states
-    assert "Bihar" in states
-    assert "Odisha" in states
-    assert "Uttar Pradesh" in states
+    # Phase 1 = West Bengal · Phase 2 = Bihar + Odisha
+    # Phase 5 = Uttar Pradesh + Maharashtra + Jharkhand + Tamil Nadu
+    for state in ("West Bengal", "Bihar", "Odisha", "Uttar Pradesh",
+                  "Maharashtra", "Jharkhand", "Tamil Nadu"):
+        assert state in states
 
 
 def test_scheme_files_are_valid_json():
@@ -114,3 +114,53 @@ def test_up_schoolgirl_prematric(dataset):
     ids = {m["id"] for m in match_profile(profile, dataset)["matches"]}
     assert "up-prematric" in ids
     assert "kanya-sumangala-up" in ids
+
+
+def _match_ids(dataset, **kw):
+    from backend.services.matching import match_profile
+    from backend.models.student import StudentProfile
+
+    return {m["id"] for m in match_profile(StudentProfile(**kw), dataset)["matches"]}
+
+
+def test_maharashtra_profiles(dataset):
+    from backend.models.student import Category, CourseLevel, Gender
+
+    sc = _match_ids(dataset, domicile_state="Maharashtra", category=Category.sc,
+                    annual_family_income=180_000, course_level=CourseLevel.ug,
+                    gender=Gender.male, last_exam_percentage=70)
+    assert "mahadbt-postmatric-sc" in sc and "mahadbt-freeship-sc" in sc
+    assert "mahadbt-postmatric-obc" not in sc
+
+    ebc = _match_ids(dataset, domicile_state="Maharashtra", category=Category.general,
+                     annual_family_income=600_000, course_level=CourseLevel.ug,
+                     gender=Gender.female, last_exam_percentage=88)
+    assert "mahadbt-ebc-shahu" in ebc
+    assert "mahadbt-postmatric-sc" not in ebc
+
+
+def test_jharkhand_profiles(dataset):
+    from backend.models.student import Category, CourseLevel, Gender
+
+    st = _match_ids(dataset, domicile_state="Jharkhand", category=Category.st,
+                    annual_family_income=200_000, course_level=CourseLevel.higher_secondary,
+                    gender=Gender.female)
+    assert "jharkhand-ekalyan-scst" in st
+    assert "jharkhand-ekalyan-obc" not in st
+
+    muslim = _match_ids(dataset, domicile_state="Jharkhand", category=Category.general,
+                        annual_family_income=150_000, course_level=CourseLevel.ug,
+                        gender=Gender.male, is_minority=True, minority_community="muslim")
+    assert "jharkhand-ekalyan-minority" in muslim
+
+
+def test_tamil_nadu_profiles(dataset):
+    from backend.models.student import Category, CourseLevel, Gender
+
+    girl = _match_ids(dataset, domicile_state="Tamil Nadu", category=Category.obc,
+                      annual_family_income=180_000, course_level=CourseLevel.ug,
+                      gender=Gender.female, last_exam_percentage=75)
+    assert "tn-pudhumai-penn" in girl
+    assert "tn-bcmbc-postmatric" in girl
+    assert "tn-first-graduate" in girl  # income-free waiver
+    assert "tn-postmatric-scst" not in girl

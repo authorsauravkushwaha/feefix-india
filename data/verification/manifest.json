@@ -49,6 +49,22 @@
     { "scheme_id": "up-prematric", "verified_by": "curator", "verified_on": "2026-09-27", "source": "https://scholarship.up.gov.in" },
     { "scheme_id": "kanya-sumangala-up", "verified_by": "curator", "verified_on": "2026-09-26", "source": "https://mksy.up.gov.in" },
     { "scheme_id": "rani-laxmibai-kosh-up", "verified_by": "curator", "verified_on": "2026-09-26", "source": "https://mahilakalyan.up.nic.in" },
-    { "scheme_id": "cm-abhyudaya-up", "verified_by": "curator", "verified_on": "2026-09-26", "source": "https://abhyuday.up.gov.in" }
+    { "scheme_id": "cm-abhyudaya-up", "verified_by": "curator", "verified_on": "2026-09-26", "source": "https://abhyuday.up.gov.in" },
+    { "scheme_id": "mahadbt-postmatric-sc", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://mahadbt.maharashtra.gov.in" },
+    { "scheme_id": "mahadbt-postmatric-obc", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://mahadbt.maharashtra.gov.in" },
+    { "scheme_id": "mahadbt-postmatric-vjnt", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://mahadbt.maharashtra.gov.in" },
+    { "scheme_id": "mahadbt-ebc-shahu", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://mahadbt.maharashtra.gov.in" },
+    { "scheme_id": "mahadbt-freeship-sc", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://mahadbt.maharashtra.gov.in" },
+    { "scheme_id": "mahadbt-postmatric-st", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://mahadbt.maharashtra.gov.in" },
+    { "scheme_id": "jharkhand-ekalyan-scst", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://ekalyan.cgg.gov.in" },
+    { "scheme_id": "jharkhand-ekalyan-obc", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://ekalyan.cgg.gov.in" },
+    { "scheme_id": "jharkhand-ekalyan-minority", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://ekalyan.cgg.gov.in" },
+    { "scheme_id": "marang-gomke-munda-jh", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://ekalyan.cgg.gov.in" },
+    { "scheme_id": "jharkhand-ekalyan-outside", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://ekalyan.cgg.gov.in" },
+    { "scheme_id": "tn-postmatric-scst", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://tnscholarships.tn.gov.in" },
+    { "scheme_id": "tn-bcmbc-postmatric", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://tnscholarships.tn.gov.in" },
+    { "scheme_id": "tn-first-graduate", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://www.tn.gov.in" },
+    { "scheme_id": "tn-pudhumai-penn", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://penkalvi.tn.gov.in" },
+    { "scheme_id": "tn-farmers-scholarship", "verified_by": "curator", "verified_on": "2026-09-28", "source": "https://www.tn.gov.in" }
   ]
 }

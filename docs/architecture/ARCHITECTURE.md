@@ -110,5 +110,8 @@ engine do not change.**
   conversations with native-script parsing, and `i18n_rules.py` + the
   `language/regional_support/explanations/` templates localize every match
   explanation (`match_profile(..., lang=)` → `POST /api/match` `lang`).
-* **V4 next:** more states roll out on the same engine; richer regional language
-  coverage (te/ta/mr) is a matter of adding template files, no engine changes.
+* **V4 — state expansion (shipped):** seven states roll on the same engine —
+  West Bengal, Bihar, Odisha, Uttar Pradesh, Maharashtra, Jharkhand,
+  Tamil Nadu (55 schemes). Chat parses every state's Bengali/Hindi name.
+* **Next:** richer regional language coverage (te/ta/mr) is a matter of adding
+  template files, no engine changes; more states follow the same dataset shape.

@@ -1,0 +1,283 @@
+[
+  {
+    "id": "tn-postmatric-scst",
+    "name": "Post-Matric Scholarship — SC / ST / SCC Students (Tamil Nadu)",
+    "provider": "Adi Dravidar & Tribal Welfare Department, Government of Tamil Nadu",
+    "level": "state",
+    "summary": "Tamil Nadu's post-matric scholarship for Adi Dravidar (SC), Tribal and Converted Christian (SCC) students covering maintenance allowance and special fees from +1 to research.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 12000,
+      "amount_display": "₹6,000 – ₹12,000 / year + special fee & exam fee coverage",
+      "details": "Course-group-wise maintenance plus special/exam fee reimbursement; SCC students also covered."
+    },
+    "deadline": {
+      "date": "2026-12-31",
+      "rolling": false,
+      "label": "2026–27 cycle"
+    },
+    "eligibility": {
+      "domicile_states": ["Tamil Nadu"],
+      "categories": ["sc", "st"],
+      "max_family_income": 250000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Community certificate (SC/ST/SCC) of Tamil Nadu",
+        "SCC (SC-converted Christian) students apply under the same line",
+        "District ADTW office scrutiny"
+      ]
+    },
+    "documents": [
+      "Community certificate (Tamil Nadu)",
+      "Income certificate",
+      "Last marksheet & fee receipts",
+      "Bank + Aadhaar details",
+      "Hostel certificate (if hosteller)"
+    ],
+    "application": {
+      "mode": "hybrid",
+      "portal": "Institution / ADTW portal",
+      "url": "https://tnscholarships.tn.gov.in",
+      "steps": [
+        "Apply through the institution's scholarship nodal officer",
+        "Fill TN scholarship portal entry",
+        "District ADTW verification",
+        "DBT disbursement"
+      ]
+    },
+    "official_url": "https://tnscholarships.tn.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "verified",
+    "tags": ["tamil-nadu", "sc", "st", "post-matric"],
+    "notes": ""
+  },
+  {
+    "id": "tn-bcmbc-postmatric",
+    "name": "BC / MBC / DNC Post-Matric Scholarship (Tamil Nadu)",
+    "provider": "Backward Classes, Most Backward Classes & Minorities Welfare Dept., Government of Tamil Nadu",
+    "level": "state",
+    "summary": "Post-matric scholarship and fee support for Backward Class, Most Backward Class and Denotified Community students of Tamil Nadu.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 9000,
+      "amount_display": "₹4,000 – ₹9,000 / year + special fee support",
+      "details": "Maintenance + special fee components; government hostel students get board support in addition."
+    },
+    "deadline": {
+      "date": "2026-12-31",
+      "rolling": false,
+      "label": "2026–27 cycle"
+    },
+    "eligibility": {
+      "domicile_states": ["Tamil Nadu"],
+      "categories": ["obc"],
+      "max_family_income": 200000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "BC/MBC/DNC community certificate of Tamil Nadu",
+        "Income ceiling notified per department — verify current G.O."
+      ]
+    },
+    "documents": [
+      "Community certificate (BC/MBC/DNC)",
+      "Income certificate",
+      "Last marksheet & fee receipt",
+      "Bank + Aadhaar details"
+    ],
+    "application": {
+      "mode": "hybrid",
+      "portal": "Institution / BC Welfare portal",
+      "url": "https://tnscholarships.tn.gov.in",
+      "steps": [
+        "Apply through the institution",
+        "District BCW office verification",
+        "DBT disbursement"
+      ]
+    },
+    "official_url": "https://tnscholarships.tn.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "pending_review",
+    "tags": ["tamil-nadu", "obc", "mbc", "post-matric"],
+    "notes": "Income ceiling varies by G.O. — flagged for re-verification."
+  },
+  {
+    "id": "tn-first-graduate",
+    "name": "First Graduate Tuition Fee Concession (Tamil Nadu)",
+    "provider": "Directorate of Technical Education / Higher Education Dept., Government of Tamil Nadu",
+    "level": "state",
+    "summary": "Full tuition-fee concession for students who are the first graduate of their family, admitted to professional/arts & science courses in Tamil Nadu through counselling.",
+    "benefit": {
+      "type": "fee_waiver",
+      "amount_annual_inr": 50000,
+      "amount_display": "Tuition fee fully waived (govt quota seats)",
+      "details": "Tuition fee borne by the government for first-graduate students in counselling-admitted seats."
+    },
+    "deadline": {
+      "date": null,
+      "rolling": true,
+      "label": "Applied during counselling/admission"
+    },
+    "eligibility": {
+      "domicile_states": ["Tamil Nadu"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": null,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["diploma", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "No graduate in the student's family (father/mother/siblings) — First Graduate certificate from the Tahsildar",
+        "Applies to counselling/government-quota seats",
+        "One family-member limit: the concession can be claimed for only one son or one daughter; revised guidelines allow re-verified second-child claims in some cycles"
+      ]
+    },
+    "documents": [
+      "First Graduate certificate (Tahsildar)",
+      "Counselling allotment order",
+      "Fee structure of the course",
+      "Community certificate (if applicable)"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "Counselling / College admission",
+      "url": "https://www.tn.gov.in",
+      "steps": [
+        "Obtain the First Graduate certificate from the e-Sevai/Tahsildar office",
+        "Claim the concession during counselling/admission",
+        "College applies the waiver at admission"
+      ]
+    },
+    "official_url": "https://www.tn.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "verified",
+    "tags": ["tamil-nadu", "first-graduate", "tuition-waiver"],
+    "notes": ""
+  },
+  {
+    "id": "tn-pudhumai-penn",
+    "name": "Moovalur Ramamirtham Ammaiyar Pudhumai Penn Scheme (Tamil Nadu)",
+    "provider": "Department of Social Welfare & Women Empowerment, Government of Tamil Nadu",
+    "level": "state",
+    "summary": "₹1,000/month paid to girls who studied Class VI–XII in Tamil Nadu government schools and go on to higher education — designed to keep girls in college instead of early marriage.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 12000,
+      "amount_display": "₹1,000 per month (₹12,000/year) through the course",
+      "details": "Monthly DBT through the entire UG/diploma programme for eligible government-school girls."
+    },
+    "deadline": {
+      "date": null,
+      "rolling": true,
+      "label": "Registered at college admission"
+    },
+    "eligibility": {
+      "domicile_states": ["Tamil Nadu"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": null,
+      "genders": ["female"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["diploma", "ug"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Girl studied Class VI to XII in a Tamil Nadu government school (EMIS-verified)",
+        "Enrolled in a recognised UG/diploma/professional course",
+        "Continues while attending college; stops on drop-out/marriage as per guidelines",
+        "Students receiving other government scholarships may still be eligible — verify current clarification"
+      ]
+    },
+    "documents": [
+      "EMIS-linked school records (Class VI–XII govt school)",
+      "College admission proof & bonafide",
+      "Aadhaar + bank account of the student",
+      "Community/income certificates not required (school-record based)"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "Pudhumai Penn Portal (pen kalvi)",
+      "url": "https://penkalvi.tn.gov.in",
+      "steps": [
+        "College registers/verifies the student on the portal",
+        "EMIS school-record verification",
+        "Monthly DBT from admission onward"
+      ]
+    },
+    "official_url": "https://penkalvi.tn.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "verified",
+    "tags": ["tamil-nadu", "girls", "monthly", "govt-school"],
+    "notes": ""
+  },
+  {
+    "id": "tn-farmers-scholarship",
+    "name": "Tamil Nadu Farmers' Welfare Scholarship (Uzhavar Nal Variyam)",
+    "provider": "Tamil Nadu Farmers' Welfare Board / Agriculture Department, Government of Tamil Nadu",
+    "level": "state",
+    "summary": "Scholarship and book/instrument allowances for children of registered farmers' welfare board members studying higher-education courses.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 10000,
+      "amount_display": "₹1,500 – ₹10,000/year + one-time book/instrument allowances",
+      "details": "Annual scholarship varies by course (UG/PG/professional) with girls rated higher; separate book allowances."
+    },
+    "deadline": {
+      "date": "2026-12-31",
+      "rolling": false,
+      "label": "2026–27 board window"
+    },
+    "eligibility": {
+      "domicile_states": ["Tamil Nadu"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": null,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Parent must be a registered member of the Tamil Nadu Farmers' Welfare Board",
+        "Girl students receive higher slabs",
+        "Two children per registered member"
+      ]
+    },
+    "documents": [
+      "Parent's Uzhavar welfare board membership proof",
+      "Student's admission proof & marksheets",
+      "Bank + Aadhaar details"
+    ],
+    "application": {
+      "mode": "hybrid",
+      "portal": "District Collectorate / Welfare Board",
+      "url": "https://www.tn.gov.in",
+      "steps": [
+        "Collect the form at the district/collector office or welfare board",
+        "Attach membership & admission proof",
+        "Board scrutiny → disbursement"
+      ]
+    },
+    "official_url": "https://www.tn.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "pending_review",
+    "tags": ["tamil-nadu", "farmers", "welfare-board"],
+    "notes": "Board schemes revise rates periodically — flagged for re-verification."
+  }
+]
