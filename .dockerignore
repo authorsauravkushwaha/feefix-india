@@ -1,0 +1,10 @@
+.git
+.venv
+.venv-win
+__pycache__
+*.pyc
+.pytest_cache
+data/*.db
+data/*.db-*
+data/events.jsonl
+.github
