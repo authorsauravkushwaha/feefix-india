@@ -1,0 +1,289 @@
+[
+  {
+    "id": "karnataka-postmatric-scst",
+    "name": "Post-Matric Scholarship — SC / ST Students (Karnataka)",
+    "provider": "Social Welfare / Tribal Welfare Departments, Government of Karnataka (ePASS → SSP)",
+    "level": "state",
+    "summary": "Karnataka's post-matric scholarship for SC/ST students from PUC to research level, administered through the State Scholarship Portal with maintenance and fee components.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 13000,
+      "amount_display": "₹6,000 – ₹13,500 / year + fee coverage",
+      "details": "Course-group-wise maintenance allowance plus tuition/exam fee support via DBT."
+    },
+    "deadline": {
+      "date": "2026-12-31",
+      "rolling": false,
+      "label": "2026–27 SSP window"
+    },
+    "eligibility": {
+      "domicile_states": ["Karnataka"],
+      "categories": ["sc", "st"],
+      "max_family_income": 250000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Caste certificate (RD number) of Karnataka",
+        "Institution mapped on SSP",
+        "Hosteller/day-scholar rates differ"
+      ]
+    },
+    "documents": [
+      "Caste certificate with RD number",
+      "Income certificate",
+      "SSLC & last exam marksheets",
+      "Fee receipts",
+      "Aadhaar + DBT bank account"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "State Scholarship Portal (SSP)",
+      "url": "https://ssp.postmatric.karnataka.gov.in",
+      "steps": [
+        "Create an SSP account with Aadhaar/SATS ID",
+        "Apply under the SC/ST post-matric scheme",
+        "e-attestation of documents",
+        "College verification → DBT"
+      ]
+    },
+    "official_url": "https://ssp.postmatric.karnataka.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "verified",
+    "tags": ["karnataka", "sc", "st", "ssp", "post-matric"],
+    "notes": ""
+  },
+  {
+    "id": "karnataka-vidyasiri-obc",
+    "name": "Vidyasiri (ePASS) Scholarship — OBC / EBC Students (Karnataka)",
+    "provider": "Backward Classes Welfare Department, Government of Karnataka",
+    "level": "state",
+    "summary": "Fee concession + maintenance for OBC and economically backward students of Karnataka in post-matric courses, including the food & accommodation lane for hostellers.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 15000,
+      "amount_display": "₹7,000 – ₹15,000 / year (fee concession + food & accommodation support)",
+      "details": "PMS fee concession for all-day scholars plus F&A support for government/hostel residents."
+    },
+    "deadline": {
+      "date": "2026-12-31",
+      "rolling": false,
+      "label": "2026–27 SSP window"
+    },
+    "eligibility": {
+      "domicile_states": ["Karnataka"],
+      "categories": ["obc"],
+      "max_family_income": 250000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "OBC certificate (Category 1/2A/2B/3A/3B) of Karnataka with valid RD",
+        "Income cap lines differ for fee concession vs full support",
+        "EBC line for general-category students notified separately"
+      ]
+    },
+    "documents": [
+      "Caste + income certificate (RD number)",
+      "SSLC marksheet & last exam results",
+      "Fee receipts",
+      "Hostel confirmation (for F&A)",
+      "Aadhaar + bank details"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "State Scholarship Portal (SSP)",
+      "url": "https://ssp.postmatric.karnataka.gov.in",
+      "steps": [
+        "Register on SSP",
+        "Apply under Vidyasiri BCW scheme lines",
+        "e-attestation",
+        "College verification → DBT"
+      ]
+    },
+    "official_url": "https://ssp.postmatric.karnataka.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "pending_review",
+    "tags": ["karnataka", "obc", "vidyasiri", "ssp"],
+    "notes": "Line-specific income caps revised cycle to cycle."
+  },
+  {
+    "id": "karnataka-prize-money-scst",
+    "name": "Prize Money Scholarship — SC / ST Meritorious Students (Karnataka)",
+    "provider": "Social Welfare Department, Government of Karnataka",
+    "level": "state",
+    "summary": "One-time prize money for Karnataka SC/ST students who clear SSLC, PUC, degree and professional courses with first class (60%+).",
+    "benefit": {
+      "type": "grant",
+      "amount_annual_inr": 35000,
+      "amount_display": "₹25,000 – ₹35,000 one-time (course wise)",
+      "details": "Prize money credited after first-class completion; professional courses carry the largest awards."
+    },
+    "deadline": {
+      "date": "2027-02-28",
+      "rolling": false,
+      "label": "Annual prize-money window"
+    },
+    "eligibility": {
+      "domicile_states": ["Karnataka"],
+      "categories": ["sc", "st"],
+      "max_family_income": null,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "diploma", "ug", "pg"],
+      "min_marks_percent": 60,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "First-class (60%+) completion in the qualifying exam",
+        "Apply within the notified prize-money window of the same year",
+        "Caste certificate of Karnataka"
+      ]
+    },
+    "documents": [
+      "Caste certificate (Karnataka)",
+      "Qualifying exam marks card (60%+)",
+      "Completion/study certificate",
+      "Aadhaar + bank details"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "SWD Portal / District Office",
+      "url": "https://swdoms.karnataka.gov.in",
+      "steps": [
+        "Apply in the prize-money window",
+        "Upload marks cards",
+        "District verification",
+        "DBT disbursement"
+      ]
+    },
+    "official_url": "https://swdoms.karnataka.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "verified",
+    "tags": ["karnataka", "sc", "st", "prize-money", "merit"],
+    "notes": ""
+  },
+  {
+    "id": "kmdc-arivu-loan",
+    "name": "Arivu Education Loan — Minority Students (Karnataka, KMDC)",
+    "provider": "Karnataka Minorities Development Corporation (KMDC)",
+    "level": "state",
+    "summary": "Low-interest education loan (Arivu scheme) for students of Karnataka's notified minority communities studying professional/technical courses — effectively near-zero-interest support routed as a loan.",
+    "benefit": {
+      "type": "grant",
+      "amount_annual_inr": 50000,
+      "amount_display": "Education loan up to ~₹50,000/year (low/simple interest; skill & professional lines vary)",
+      "details": "KMDC Arivu loan at nominal interest for professional courses; recovered in easy instalments after study."
+    },
+    "deadline": {
+      "date": "2026-12-15",
+      "rolling": false,
+      "label": "2026–27 KMDC window"
+    },
+    "eligibility": {
+      "domicile_states": ["Karnataka"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": 800000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": true,
+      "minority_communities": ["muslim", "christian", "sikh", "buddhist", "jain", "parsi"],
+      "disability_required": false,
+      "course_levels": ["iti", "diploma", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Notified minority community of Karnataka (religious minority certificate)",
+        "Merit-based admission to a professional/technical course",
+        "It's a loan, not a grant — repayment starts after course completion + moratorium",
+        "Annual family income ceilings differ for loan slabs"
+      ]
+    },
+    "documents": [
+      "Minority-community certificate (Karnataka)",
+      "Income certificate",
+      "Admission & fee letter of the course",
+      "Co-applicant details",
+      "Aadhaar + bank details"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "KMDC Portal",
+      "url": "https://kmdc.karnataka.gov.in",
+      "steps": [
+        "Apply under Arivu on the KMDC portal",
+        "Document scrutiny + co-applicant verification",
+        "Sanction letter",
+        "Disbursement to the institution"
+      ]
+    },
+    "official_url": "https://kmdc.karnataka.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "pending_review",
+    "tags": ["karnataka", "minority", "education-loan", "kmdc"],
+    "notes": "Loan product — modelled as grant type with the loan nature spelled out in the scheme text."
+  },
+  {
+    "id": "karnataka-labour-welfare",
+    "name": "Karnataka Labour Welfare Board — Students' Scholarship",
+    "provider": "Karnataka Labour Welfare Board",
+    "level": "state",
+    "summary": "Scholarships and merit awards for children of workers registered with the Karnataka Labour Welfare Board, from school through professional degrees.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 12000,
+      "amount_display": "₹4,000 – ₹12,000 / year + merit prizes",
+      "details": "Course-wise scholarships for registered labour-welfare families; extra awards for distinction."
+    },
+    "deadline": {
+      "date": "2026-11-30",
+      "rolling": false,
+      "label": "2026–27 board window"
+    },
+    "eligibility": {
+      "domicile_states": ["Karnataka"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": null,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["school", "higher_secondary", "iti", "diploma", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Parent registered with the Karnataka Labour Welfare Board (contributing establishment)",
+        "Limited family members per worker per cycle",
+        "Merit linked continuations"
+      ]
+    },
+    "documents": [
+      "Parent's welfare-board registration proof",
+      "Student's study certificate & marks",
+      "Bank + Aadhaar details"
+    ],
+    "application": {
+      "mode": "hybrid",
+      "portal": "Karnataka Labour Welfare Board",
+      "url": "https://labour.karnataka.gov.in",
+      "steps": [
+        "Collect/apply via the welfare board portal or district office",
+        "Attach parent registration proof",
+        "Board scrutiny → disbursement"
+      ]
+    },
+    "official_url": "https://labour.karnataka.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "pending_review",
+    "tags": ["karnataka", "labour-welfare", "children"],
+    "notes": "Board rates revised periodically."
+  }
+]

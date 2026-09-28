@@ -1,0 +1,28 @@
+name: 🐞 Bug report
+description: Something in FeeFix is broken
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for the report — the more exact, the faster the fix."
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Screenshots, error text, the exact thing you clicked/typed.
+    validations:
+      required: true
+  - type: textarea
+    id: expect
+    attributes:
+      label: What did you expect?
+  - type: input
+    id: api
+    attributes:
+      label: Endpoint / page (if API)
+      placeholder: e.g. POST /api/match, dashboard, chat
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps / payload to reproduce
+      render: bash

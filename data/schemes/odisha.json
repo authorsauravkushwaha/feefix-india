@@ -1,0 +1,343 @@
+[
+  {
+    "id": "prerana-scst-od",
+    "name": "PRERANA Post-Matric Scholarship for SC/ST Students",
+    "provider": "ST & SC Development Department, Government of Odisha",
+    "level": "state",
+    "summary": "Odisha's post-matric portal scholarship for SC/ST students from Class XI onwards, covering admission fees, tuition and maintenance allowance.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 12000,
+      "amount_display": "₹5,000 – ₹12,000 / year + fee support",
+      "details": "Maintenance allowance (hosteller/day scholar) plus compulsory fee reimbursement via DBT."
+    },
+    "deadline": {
+      "date": "2026-12-31",
+      "rolling": false,
+      "label": "2026–27 cycle"
+    },
+    "eligibility": {
+      "domicile_states": ["Odisha"],
+      "categories": ["sc", "st"],
+      "max_family_income": 250000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Caste certificate issued within Odisha",
+        "Institution must be on the PRERANA empanelled list"
+      ]
+    },
+    "documents": [
+      "Caste certificate (Odisha)",
+      "Income certificate",
+      "Domicile/residence certificate",
+      "Last exam marksheet",
+      "Aadhaar-seeded bank account",
+      "Institute verification"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "Odisha State Scholarship Portal (PRERANA)",
+      "url": "https://scholarship.odisha.gov.in",
+      "steps": [
+        "Register on scholarship.odisha.gov.in with Aadhaar",
+        "Select PRERANA SC/ST scheme and fill academic details",
+        "Upload certificates and bank details",
+        "Complete institute verification and track status"
+      ]
+    },
+    "official_url": "https://scholarship.odisha.gov.in",
+    "last_verified": "2026-09-20",
+    "verification_status": "verified",
+    "tags": ["odisha", "sc", "st", "prerana", "post-matric"],
+    "notes": ""
+  },
+  {
+    "id": "prerana-obc-od",
+    "name": "PRERANA Post-Matric Scholarship for OBC / SEBC / EBC Students",
+    "provider": "ST & SC Development Department, Government of Odisha",
+    "level": "state",
+    "summary": "Post-matric support for OBC/SEBC students and Economically Backward (General) students of Odisha studying Class XI and above.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 8000,
+      "amount_display": "₹3,000 – ₹8,000 / year",
+      "details": "Course-wise maintenance allowance credited by DBT after verification."
+    },
+    "deadline": {
+      "date": "2026-12-31",
+      "rolling": false,
+      "label": "2026–27 cycle"
+    },
+    "eligibility": {
+      "domicile_states": ["Odisha"],
+      "categories": ["obc", "general"],
+      "max_family_income": 250000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "OBC/SEBC certificate of Odisha, or EWS/EBC income certificate for General-category applicants",
+        "Income cap has shifted between cycles — re-verify current order"
+      ]
+    },
+    "documents": [
+      "OBC/SEBC caste certificate or EBC declaration",
+      "Income certificate",
+      "Domicile certificate of Odisha",
+      "Last marksheet",
+      "Bank + Aadhaar details"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "Odisha State Scholarship Portal (PRERANA)",
+      "url": "https://scholarship.odisha.gov.in",
+      "steps": [
+        "Register on the scholarship portal",
+        "Choose the OBC/SEBC/EBC scheme",
+        "Upload documents and submit",
+        "Institute + district verification, then DBT"
+      ]
+    },
+    "official_url": "https://scholarship.odisha.gov.in",
+    "last_verified": "2026-09-20",
+    "verification_status": "pending_review",
+    "tags": ["odisha", "obc", "sebc", "ebc", "prerana"],
+    "notes": "General-category EBC inclusion and income caps vary by order; flagged for re-verification."
+  },
+  {
+    "id": "nua-o-scholarship",
+    "name": "Nua-O Scholarship (Odisha)",
+    "provider": "Higher Education Department, Government of Odisha",
+    "level": "state",
+    "summary": "New-age scholarship for UG/PG students of Odisha government and government-aided colleges & universities, launched to cut dropouts after +2.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 10000,
+      "amount_display": "₹9,000 – ₹11,000 / year (boys/girls; hosteller rates higher)",
+      "details": "Annual amount over the course duration, DBT-credited after college verification."
+    },
+    "deadline": {
+      "date": "2027-02-28",
+      "rolling": false,
+      "label": "2026–27 academic year window"
+    },
+    "eligibility": {
+      "domicile_states": ["Odisha"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": null,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Student of a government/government-aided college, university or SAMS-covered institution",
+        "Students already drawing a state/central scholarship for the same component are excluded",
+        "Income bar, where notified, applies — check the current guidelines"
+      ]
+    },
+    "documents": [
+      "+2 marksheet and college admission proof",
+      "Domicile certificate of Odisha",
+      "Aadhaar-seeded bank account",
+      "College verification certificate"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "Odisha State Scholarship Portal",
+      "url": "https://scholarship.odisha.gov.in",
+      "steps": [
+        "Register/Aadhaar-verify on the scholarship portal",
+        "Select Nua-O and confirm college details",
+        "College verifies enrolment",
+        "Track disbursement status"
+      ]
+    },
+    "official_url": "https://scholarship.odisha.gov.in",
+    "last_verified": "2026-09-20",
+    "verification_status": "pending_review",
+    "tags": ["odisha", "nua-o", "ug", "pg", "higher-education"],
+    "notes": "Recent scheme — guidelines and exclusion list get frequent clarifications."
+  },
+  {
+    "id": "medhabruti-od",
+    "name": "Chief Minister's Medhabruti Scholarship (Odisha)",
+    "provider": "Higher Education Department, Government of Odisha",
+    "level": "state",
+    "summary": "Merit scholarship for bright Odisha students in UG/PG and technical & professional courses through the e-Medhabruti portal.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 10000,
+      "amount_display": "₹5,000 – ₹10,000 / year (course wise)",
+      "details": "Annual stipend for the programme duration subject to renewal merit."
+    },
+    "deadline": {
+      "date": "2026-12-31",
+      "rolling": false,
+      "label": "2026–27 cycle"
+    },
+    "eligibility": {
+      "domicile_states": ["Odisha"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": null,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["ug", "pg"],
+      "min_marks_percent": 60,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Merit lists prepared from qualifying-exam marks (55–60% bands)",
+        "Technical/professional streams have separate Medhabruti lines"
+      ]
+    },
+    "documents": [
+      "Qualifying exam marksheet",
+      "Domicile certificate of Odisha",
+      "Admission proof",
+      "Bank + Aadhaar details"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "Odisha State Scholarship Portal (e-Medhabruti)",
+      "url": "https://scholarship.odisha.gov.in",
+      "steps": [
+        "Register on the scholarship portal",
+        "Choose Medhabruti and enter qualifying marks",
+        "Upload documents",
+        "Merit list publication → institute verification → DBT"
+      ]
+    },
+    "official_url": "https://scholarship.odisha.gov.in",
+    "last_verified": "2026-09-20",
+    "verification_status": "verified",
+    "tags": ["odisha", "merit", "medhabruti"],
+    "notes": ""
+  },
+  {
+    "id": "banishree-od",
+    "name": "Banishree Scholarship (Students with Special Needs, Odisha)",
+    "provider": "Social Security & Empowerment of Persons with Disabilities Dept., Government of Odisha",
+    "level": "state",
+    "summary": "Scholarship and reader/transport allowances for students with benchmark disability from middle school up to postgraduate study in Odisha.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 5000,
+      "amount_display": "₹4,000 – ₹6,000 / year + reader/transport allowances",
+      "details": "Base scholarship phased by class, with additional allowances for readers and commuting."
+    },
+    "deadline": {
+      "date": null,
+      "rolling": true,
+      "label": "Rolling — applications accepted all year"
+    },
+    "eligibility": {
+      "domicile_states": ["Odisha"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": null,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": true,
+      "course_levels": ["school", "higher_secondary", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Benchmark disability (40%+) with Odisha UDID/disability ID",
+        "Regular attendance required for continuation"
+      ]
+    },
+    "documents": [
+      "Disability certificate / UDID",
+      "School/college enrolment certificate",
+      "Domicile of Odisha",
+      "Bank + Aadhaar details"
+    ],
+    "application": {
+      "mode": "hybrid",
+      "portal": "SSEPD / District Office",
+      "url": "https://ssepd.gov.in",
+      "steps": [
+        "Collect the Banishree form (online or district office)",
+        "Attach disability and enrolment certificates",
+        "Submit through school/college or DSSO office",
+        "Track sanction and yearly continuation"
+      ]
+    },
+    "official_url": "https://ssepd.gov.in",
+    "last_verified": "2026-09-19",
+    "verification_status": "verified",
+    "tags": ["odisha", "disability", "banishree"],
+    "notes": ""
+  },
+  {
+    "id": "kalia-scholarship-od",
+    "name": "KALIA Scholarship (Children of KALIA Beneficiary Farmers, Odisha)",
+    "provider": "Department of Agriculture & Farmers' Empowerment, Government of Odisha",
+    "level": "state",
+    "summary": "Full course-fee support for children of KALIA-listed farmers taking admission in government professional/technical courses — agriculture-linked families study free in government colleges.",
+    "benefit": {
+      "type": "fee_waiver",
+      "amount_annual_inr": 45000,
+      "amount_display": "Actual course fees in government colleges (Nursing, Polytechnic, ITI, Agri, etc.)",
+      "details": "Tuition/annual course fee paid to the institution for eligible KALIA farmer households."
+    },
+    "deadline": {
+      "date": null,
+      "rolling": true,
+      "label": "Rolling with admission cycles"
+    },
+    "eligibility": {
+      "domicile_states": ["Odisha"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": null,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["iti", "diploma", "ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Parent must be an approved KALIA beneficiary on the Krushak Odisha list",
+        "Merit-based admission in a government institution (fee support in government colleges)",
+        "Only one child per family per cycle"
+      ]
+    },
+    "documents": [
+      "KALIA beneficiary ID of the parent (Krushak Odisha)",
+      "Admission & fee receipt of a government institution",
+      "Domicile certificate of Odisha",
+      "Bank + Aadhaar details of the student"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "Agri Extension Portal / District Agriculture Office",
+      "url": "https://kalia.odisha.gov.in",
+      "steps": [
+        "Verify the parent's KALIA beneficiary status",
+        "Apply via the district agriculture office / portal with admission proof",
+        "Verification by the agriculture department",
+        "Fee support paid to the institution"
+      ]
+    },
+    "official_url": "https://kalia.odisha.gov.in",
+    "last_verified": "2026-09-19",
+    "verification_status": "pending_review",
+    "tags": ["odisha", "farmers", "fee-support", "technical"],
+    "notes": "Eligibility hinges on the KALIA beneficiary list — flagged as a special condition rather than a machine rule."
+  }
+]

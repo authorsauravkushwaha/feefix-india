@@ -1,0 +1,1005 @@
+[
+  {
+    "id": "nsp-central-sector",
+    "name": "Central Sector Scheme of Scholarships for College & University Students",
+    "provider": "Department of Higher Education, Ministry of Education (NSP)",
+    "level": "central",
+    "summary": "Merit-based national scholarship for the top ~20% of Class XII board performers joining regular UG/PG courses, ran through the National Scholarship Portal.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 12000,
+      "amount_display": "₹12,000 / year (UG) · ₹20,000 / year (PG)",
+      "details": "Paid for up to 5 years of the degree including integrated courses; requires 50%+ marks and 75% attendance for renewal."
+    },
+    "deadline": {
+      "date": "2026-10-31",
+      "rolling": false,
+      "label": "NSP 2026–27 window (tentative close)"
+    },
+    "eligibility": {
+      "domicile_states": null,
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
+      "max_family_income": 450000,
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": [
+        "ug",
+        "pg"
+      ],
+      "min_marks_percent": 80,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Must be above the 80th percentile of the Class XII board — modelled as 80% aggregate",
+        "Regular full-time course only; not for distance learning or diploma",
+        "No other scholarship may be held concurrently"
+      ]
+    },
+    "documents": [
+      "Class XII marksheet",
+      "Income certificate",
+      "Bank account (Aadhaar-seeded)",
+      "Institute verification form",
+      "Domicile certificate"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "National Scholarship Portal",
+      "url": "https://scholarships.gov.in",
+      "steps": [
+        "Register on scholarships.gov.in (fresh registration)",
+        "Select 'Central Sector Scheme' under Department of Higher Education",
+        "Fill academic and bank details, upload documents",
+        "Complete institute and board verification",
+        "Monitor NSP dashboard for payment"
+      ]
+    },
+    "official_url": "https://scholarships.gov.in",
+    "last_verified": "2026-09-18",
+    "verification_status": "verified",
+    "tags": [
+      "central",
+      "nsp",
+      "merit",
+      "ug",
+      "pg"
+    ],
+    "notes": ""
+  },
+  {
+    "id": "nsp-post-matric-minority",
+    "name": "Post Matric Scholarship for Students from Minority Communities",
+    "provider": "Ministry of Minority Affairs (NSP)",
+    "level": "central",
+    "summary": "Central post-matric scholarship for students of six notified minority communities studying Class XI to PhD with family income within ₹2 lakh.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 12000,
+      "amount_display": "₹5,000 – ₹12,000 / year + course fee support",
+      "details": "Maintenance allowance (hosteller/day scholar) plus course fee reimbursement subject to limits."
+    },
+    "deadline": {
+      "date": "2026-10-25",
+      "rolling": false,
+      "label": "NSP 2026–27 window (tentative close)"
+    },
+    "eligibility": {
+      "domicile_states": null,
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
+      "max_family_income": 200000,
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
+      "minority_only": true,
+      "minority_communities": [
+        "muslim",
+        "christian",
+        "sikh",
+        "buddhist",
+        "jain",
+        "parsee"
+      ],
+      "disability_required": false,
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
+      "min_marks_percent": 50,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "30% of scholarships earmarked for girl students",
+        "State domicile applies — apply under your home state quota"
+      ]
+    },
+    "documents": [
+      "Minority community certificate/declaration",
+      "Previous marksheet (≥50%)",
+      "Income certificate",
+      "Fee receipt",
+      "Bank passbook + Aadhaar"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "National Scholarship Portal",
+      "url": "https://scholarships.gov.in",
+      "steps": [
+        "Register on NSP and choose Ministry of Minority Affairs schemes",
+        "Score ≥50% in the last exam: upload marksheet",
+        "Provide community and income proofs",
+        "Complete institute verification"
+      ]
+    },
+    "official_url": "https://scholarships.gov.in",
+    "last_verified": "2026-09-18",
+    "verification_status": "verified",
+    "tags": [
+      "central",
+      "nsp",
+      "minority",
+      "post-matric"
+    ],
+    "notes": ""
+  },
+  {
+    "id": "nsp-post-matric-disabilities",
+    "name": "Post Matric Scholarship for Students with Disabilities",
+    "provider": "Department of Empowerment of Persons with Disabilities (NSP)",
+    "level": "central",
+    "summary": "Central scholarship for students with 40%+ benchmark disability from Class XI onwards, including maintenance, disability allowance and fee support.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 23500,
+      "amount_display": "₹7,000 – ₹23,500 / year (incl. disability allowance)",
+      "details": "Maintenance allowance + disability allowance + book allowance; hosteller rates higher."
+    },
+    "deadline": {
+      "date": "2026-10-31",
+      "rolling": false,
+      "label": "NSP 2026–27 window (tentative close)"
+    },
+    "eligibility": {
+      "domicile_states": null,
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
+      "max_family_income": 250000,
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": true,
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Benchmark disability = 40% or more with valid UDID/disability certificate",
+        "50% reservation for girl candidates — unfilled seats transferable"
+      ]
+    },
+    "documents": [
+      "Disability certificate / UDID card",
+      "Income certificate",
+      "Last marksheet",
+      "Bank details + Aadhaar",
+      "Fee receipt"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "National Scholarship Portal",
+      "url": "https://scholarships.gov.in",
+      "steps": [
+        "Register on NSP under Department of Empowerment of PwD",
+        "Upload UDID and income certificate",
+        "Complete institute verification",
+        "Track application until DBT"
+      ]
+    },
+    "official_url": "https://scholarships.gov.in",
+    "last_verified": "2026-09-18",
+    "verification_status": "verified",
+    "tags": [
+      "central",
+      "nsp",
+      "disability"
+    ],
+    "notes": ""
+  },
+  {
+    "id": "nsp-merit-cum-means",
+    "name": "Merit Cum Means Scholarship for Professional & Technical Courses (CS)",
+    "provider": "Ministry of Minority Affairs (NSP)",
+    "level": "central",
+    "summary": "For minority-community students in professional/technical UG & PG courses (engineering, medicine, management, law, CA etc.) with income up to ₹2.5 lakh.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 32000,
+      "amount_display": "₹20,000 course fee + ₹12,000 maintenance / year",
+      "details": "Course fee reimbursement up to ₹20,000 + maintenance allowance (hosteller/day scholar)."
+    },
+    "deadline": {
+      "date": "2026-10-31",
+      "rolling": false,
+      "label": "NSP 2026–27 window (tentative close)"
+    },
+    "eligibility": {
+      "domicile_states": null,
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
+      "max_family_income": 250000,
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
+      "minority_only": true,
+      "minority_communities": [
+        "muslim",
+        "christian",
+        "sikh",
+        "buddhist",
+        "jain",
+        "parsee"
+      ],
+      "disability_required": false,
+      "course_levels": [
+        "ug",
+        "pg"
+      ],
+      "min_marks_percent": 50,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Only professional/technical courses on the approved list (85 listed courses)",
+        "Admission through a competitive entrance exam or 50% in qualifying exam"
+      ]
+    },
+    "documents": [
+      "Community certificate",
+      "Income certificate",
+      "Entrance/admission proof in professional course",
+      "Fee structure from institute",
+      "Last marksheet (≥50%)"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "National Scholarship Portal",
+      "url": "https://scholarships.gov.in",
+      "steps": [
+        "Register on NSP → Ministry of Minority Affairs",
+        "Select Merit Cum Means and verify course is on approved list",
+        "Upload proofs and complete institute verification",
+        "Renew annually with 50%+ marks"
+      ]
+    },
+    "official_url": "https://scholarships.gov.in",
+    "last_verified": "2026-09-18",
+    "verification_status": "verified",
+    "tags": [
+      "central",
+      "nsp",
+      "minority",
+      "professional"
+    ],
+    "notes": ""
+  },
+  {
+    "id": "nsp-top-class-sc",
+    "name": "Top Class Education Scheme for SC Students",
+    "provider": "Ministry of Social Justice & Empowerment (NSP)",
+    "level": "central",
+    "summary": "Premier-institute scholarship for SC students admitted to notified 'top class' institutions (IITs, NITs, AIIMS, NLUs etc.) — full tuition plus living and device allowances.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 86000,
+      "amount_display": "Full tuition + up to ₹86,000 / year",
+      "details": "Full tuition waived/deposited + ₹86,000 living & other allowances in the first year incl. laptop/books, ~₹41,000 for later years."
+    },
+    "deadline": {
+      "date": "2026-10-31",
+      "rolling": false,
+      "label": "NSP 2026–27 window (tentative close)"
+    },
+    "eligibility": {
+      "domicile_states": null,
+      "categories": [
+        "sc"
+      ],
+      "max_family_income": 350000,
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": [
+        "ug",
+        "pg"
+      ],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Institution must be on the notified Top Class institution list",
+        "Income cap revised in recent cycles (₹3.5 lakh) — verify current order",
+        "All SC students of the institution within income limit are covered (no slot lottery)"
+      ]
+    },
+    "documents": [
+      "SC certificate",
+      "Income certificate",
+      "Admission proof in a Top Class institution",
+      "Fee structure",
+      "Bank + Aadhaar"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "National Scholarship Portal",
+      "url": "https://scholarships.gov.in",
+      "steps": [
+        "Register on NSP → Ministry of Social Justice",
+        "Confirm your institution is on the notified list",
+        "Upload SC + income proofs and submit",
+        "Institute forwards to the Ministry for sanction"
+      ]
+    },
+    "official_url": "https://scholarships.gov.in",
+    "last_verified": "2026-09-18",
+    "verification_status": "verified",
+    "tags": [
+      "central",
+      "nsp",
+      "sc",
+      "top-class",
+      "high-value"
+    ],
+    "notes": ""
+  },
+  {
+    "id": "inspire-she",
+    "name": "INSPIRE Scholarship (SHE) — Department of Science & Technology",
+    "provider": "Department of Science & Technology, Government of India",
+    "level": "central",
+    "summary": "Flagship science-attraction scholarship for top board performers joining BSc/BS/Integrated MSc in Basic & Natural Sciences — ₹80,000 per year.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 80000,
+      "amount_display": "₹80,000 / year (₹60,000 + ₹20,000 summer research)",
+      "details": "₹5,000/month scholarship plus ₹20,000 annual Mentorship/Summer attachment; up to 5 years including integrated MSc."
+    },
+    "deadline": {
+      "date": "2026-10-15",
+      "rolling": false,
+      "label": "SHE 2026 application window"
+    },
+    "eligibility": {
+      "domicile_states": null,
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
+      "max_family_income": null,
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": [
+        "ug",
+        "pg"
+      ],
+      "min_marks_percent": 90,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Top 1% of Class XII board (cut-off published per board) — modelled as 90%+",
+        "Only Basic & Natural Science subjects (Physics, Chemistry, Maths, Biology, Statistics, Geology, etc.)",
+        "Also open to JEE/NEET top-10,000 and KVPY/NTSE/NTS scholars"
+      ]
+    },
+    "documents": [
+      "Class XII marksheet and board certificate",
+      "Board cut-off eligibility confirmation",
+      "Admission proof in an eligible science programme",
+      "Bank details",
+      "Passport photo + ID"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "INSPIRE / DST Portal",
+      "url": "https://online-inspire.gov.in",
+      "steps": [
+        "Check the published top-1% cut-off for your board",
+        "Register on online-inspire.gov.in when the SHE window opens",
+        "Upload marksheet and admission proof",
+        "Await provisional offer, then maintain performance for renewal"
+      ]
+    },
+    "official_url": "https://online-inspire.gov.in",
+    "last_verified": "2026-09-14",
+    "verification_status": "verified",
+    "tags": [
+      "central",
+      "science",
+      "merit",
+      "high-value"
+    ],
+    "notes": "No income criterion — purely merit/national-rank based."
+  },
+  {
+    "id": "begum-hazrat-mahal",
+    "name": "Begum Hazrat Mahal National Scholarship",
+    "provider": "Maulana Azad Education Foundation, Ministry of Minority Affairs",
+    "level": "central",
+    "summary": "National scholarship for meritorious girl students of minority communities studying in Class IX–XII.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 6000,
+      "amount_display": "₹5,000 (IX–X) · ₹6,000 (XI–XII) / year",
+      "details": "One-time annual assistance credited via DBT."
+    },
+    "deadline": {
+      "date": "2026-10-31",
+      "rolling": false,
+      "label": "2026–27 cycle (tentative close)"
+    },
+    "eligibility": {
+      "domicile_states": null,
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
+      "max_family_income": 200000,
+      "genders": [
+        "female"
+      ],
+      "minority_only": true,
+      "minority_communities": [
+        "muslim",
+        "christian",
+        "sikh",
+        "buddhist",
+        "jain",
+        "parsee"
+      ],
+      "disability_required": false,
+      "course_levels": [
+        "school",
+        "higher_secondary"
+      ],
+      "min_marks_percent": 50,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Girl students of minority communities only",
+        "50%+ marks in the last exam required"
+      ]
+    },
+    "documents": [
+      "Minority certificate",
+      "Girl student's Aadhaar",
+      "Income certificate",
+      "Last marksheet",
+      "School verification"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "MAEF / NSP Portal",
+      "url": "https://www.bhmnsp.maefcloud.com",
+      "steps": [
+        "Register on the scholarship portal when the cycle opens",
+        "Fill personal, school and bank details",
+        "Upload proofs and submit",
+        "Verify selection status on the portal"
+      ]
+    },
+    "official_url": "https://www.bhmnsp.maefcloud.com",
+    "last_verified": "2026-08-30",
+    "verification_status": "pending_review",
+    "tags": [
+      "central",
+      "minority",
+      "girls",
+      "school"
+    ],
+    "notes": "Portal/schedule seen to shift between years — re-verify when the cycle opens."
+  },
+  {
+    "id": "aicte-pragati",
+    "name": "AICTE Pragati Scholarship for Girls (Technical Education)",
+    "provider": "All India Council for Technical Education",
+    "level": "central",
+    "summary": "₹50,000/year for girl students admitted to AICTE-approved UG degree or diploma programmes via centralised admission.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 50000,
+      "amount_display": "₹50,000 / year",
+      "details": "Lump-sum annual amount for fees, books, equipment and contingencies; duration of the programme."
+    },
+    "deadline": {
+      "date": "2026-10-31",
+      "rolling": false,
+      "label": "2026–27 cycle on NSP"
+    },
+    "eligibility": {
+      "domicile_states": null,
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
+      "max_family_income": 800000,
+      "genders": [
+        "female"
+      ],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": [
+        "diploma",
+        "ug"
+      ],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Admission to an AICTE-approved technical programme in the first year (or lateral entry)",
+        "Maximum two girl children per family",
+        "Merit of the qualifying admission exam decides selection — 10,000 seats/year"
+      ]
+    },
+    "documents": [
+      "Admission letter to AICTE-approved course",
+      "Income certificate (≤₹8 lakh)",
+      "Aadhaar + bank details",
+      "Qualifying exam marksheet"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "National Scholarship Portal (AICTE)",
+      "url": "https://scholarships.gov.in",
+      "steps": [
+        "Register on NSP → AICTE schemes",
+        "Select Pragati and enter institute AISHE details",
+        "Upload admission + income proofs",
+        "Institute verifies; renewal each year on promotion"
+      ]
+    },
+    "official_url": "https://scholarships.gov.in",
+    "last_verified": "2026-09-16",
+    "verification_status": "verified",
+    "tags": [
+      "central",
+      "aicte",
+      "girls",
+      "technical"
+    ],
+    "notes": ""
+  },
+  {
+    "id": "aicte-saksham",
+    "name": "AICTE Saksham Scholarship (Students with Disability, Technical Education)",
+    "provider": "All India Council for Technical Education",
+    "level": "central",
+    "summary": "₹50,000/year for students with 40%+ disability admitted to AICTE-approved technical degree or diploma programmes.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 50000,
+      "amount_display": "₹50,000 / year",
+      "details": "Lump sum towards academic expenses for the programme duration."
+    },
+    "deadline": {
+      "date": "2026-10-31",
+      "rolling": false,
+      "label": "2026–27 cycle on NSP"
+    },
+    "eligibility": {
+      "domicile_states": null,
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
+      "max_family_income": 800000,
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": true,
+      "course_levels": [
+        "diploma",
+        "ug"
+      ],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Disability of 40%+ certified as per RPwD Act",
+        "First-year (or lateral entry) admission in AICTE-approved course required"
+      ]
+    },
+    "documents": [
+      "Disability certificate (40%+)",
+      "Admission proof (AICTE-approved)",
+      "Income certificate (≤₹8 lakh)",
+      "Bank + Aadhaar"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "National Scholarship Portal (AICTE)",
+      "url": "https://scholarships.gov.in",
+      "steps": [
+        "Register on NSP → AICTE → Saksham",
+        "Upload disability and admission proofs",
+        "Complete institute verification",
+        "Renew annually on successful promotion"
+      ]
+    },
+    "official_url": "https://scholarships.gov.in",
+    "last_verified": "2026-09-16",
+    "verification_status": "verified",
+    "tags": [
+      "central",
+      "aicte",
+      "disability",
+      "technical"
+    ],
+    "notes": ""
+  },
+  {
+    "id": "ugc-pg-single-girl-child",
+    "name": "PG Indira Gandhi Scholarship for Single Girl Child",
+    "provider": "University Grants Commission (UGC)",
+    "level": "central",
+    "summary": "Supports the family's only girl child through her postgraduate degree — ₹36,200 per year for the duration of a full-time regular PG course.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 36200,
+      "amount_display": "₹3,100 / month (~₹36,200 / year)",
+      "details": "Paid via DBT for two years for a full-time regular PG programme."
+    },
+    "deadline": {
+      "date": "2026-12-31",
+      "rolling": false,
+      "label": "UGC-NSP cycle (tentative close)"
+    },
+    "eligibility": {
+      "domicile_states": null,
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
+      "max_family_income": null,
+      "genders": [
+        "female"
+      ],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": [
+        "pg"
+      ],
+      "min_marks_percent": null,
+      "single_girl_child_required": true,
+      "special_conditions": [
+        "Must be the only girl child (no brother, or twin/fraternal sisters)",
+        "Age below 30 years at PG admission",
+        "Regular full-time PG course in a recognised institution"
+      ]
+    },
+    "documents": [
+      "Affidavit of single girl child status",
+      "UG marksheet",
+      "PG admission proof",
+      "Age proof + Aadhaar + bank"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "National Scholarship Portal (UGC)",
+      "url": "https://scholarships.gov.in",
+      "steps": [
+        "Register on NSP under UGC schemes",
+        "Select PG Indira Gandhi scholarship",
+        "Upload affidavit and PG admission proof",
+        "Institute verifies; continue for the PG duration"
+      ]
+    },
+    "official_url": "https://scholarships.gov.in",
+    "last_verified": "2026-09-11",
+    "verification_status": "verified",
+    "tags": [
+      "central",
+      "ugc",
+      "girls",
+      "pg"
+    ],
+    "notes": ""
+  },
+  {
+    "id": "ugc-pg-merit-rank-holders",
+    "name": "PG Merit Scholarship for University Rank Holders",
+    "provider": "University Grants Commission (UGC)",
+    "level": "central",
+    "summary": "Rewards first and second rank holders at UG level who join a PG programme — ₹3,100 per month for the PG duration.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 37200,
+      "amount_display": "₹3,100 / month (~₹37,200 / year)",
+      "details": "For the duration of the PG course, subject to performance."
+    },
+    "deadline": {
+      "date": "2026-12-31",
+      "rolling": false,
+      "label": "UGC-NSP cycle (tentative close)"
+    },
+    "eligibility": {
+      "domicile_states": null,
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
+      "max_family_income": null,
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": [
+        "pg"
+      ],
+      "min_marks_percent": 60,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Must be a 1st/2nd university rank holder at UG level (manual verification)",
+        "At least 60% in graduation",
+        "Full-time regular PG in a recognised university"
+      ]
+    },
+    "documents": [
+      "University rank certificate",
+      "UG degree / marksheet",
+      "PG admission proof",
+      "Bank + Aadhaar"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "National Scholarship Portal (UGC)",
+      "url": "https://scholarships.gov.in",
+      "steps": [
+        "Register on NSP under UGC schemes",
+        "Upload rank certificate and admission proof",
+        "Institute verification then UGC sanction"
+      ]
+    },
+    "official_url": "https://scholarships.gov.in",
+    "last_verified": "2026-09-11",
+    "verification_status": "verified",
+    "tags": [
+      "central",
+      "ugc",
+      "merit",
+      "pg"
+    ],
+    "notes": "Rank-holder condition can't be machine-verified — flagged as an assumption during matching."
+  },
+  {
+    "id": "nmms-central",
+    "name": "National Means-cum-Merit Scholarship (NMMS)",
+    "provider": "Department of School Education & Literacy, Ministry of Education",
+    "level": "central",
+    "summary": "Arrests school drop-out after Class VIII: ₹12,000/year for talented students from low-income families from Class IX to XII.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 12000,
+      "amount_display": "₹12,000 / year (₹1,000 / month)",
+      "details": "For Classes IX–XII in government/government-aided/local-body schools; state NMMS exam selects awardees."
+    },
+    "deadline": {
+      "date": "2026-12-15",
+      "rolling": false,
+      "label": "State NMMS exam windows (Nov–Dec)"
+    },
+    "eligibility": {
+      "domicile_states": null,
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
+      "max_family_income": 350000,
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": [
+        "school",
+        "higher_secondary"
+      ],
+      "min_marks_percent": 55,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Selection through the State NMMS examination (MAT + SAT) in Class VIII",
+        "Continuation in Class IX–XII requires qualifying the NMMS exam",
+        "55%+ in Class VII (50% for reserved categories) — modelled as 55%"
+      ]
+    },
+    "documents": [
+      "NMMS exam selection letter",
+      "Income certificate",
+      "School enrolment (govt/aided school)",
+      "Bank + Aadhaar of the student"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "State SCERT / NSP",
+      "url": "https://scholarships.gov.in",
+      "steps": [
+        "Apply for the state NMMS exam via SCERT in Class VIII",
+        "Clear MAT & SAT cut-offs fixed by the state",
+        "Open the NSP application within the national window",
+        "Get school + district verification for disbursement"
+      ]
+    },
+    "official_url": "https://scholarships.gov.in",
+    "last_verified": "2026-09-06",
+    "verification_status": "verified",
+    "tags": [
+      "central",
+      "school",
+      "merit",
+      "means",
+      "nmms"
+    ],
+    "notes": "Exam-based — the match assumes NMMS selection; confirm your state exam date."
+  },
+  {
+    "id": "ishan-uday-ner",
+    "name": "Ishan Uday Special Scholarship Scheme (North Eastern Region, UGC)",
+    "provider": "University Grants Commission (UGC)",
+    "level": "national",
+    "summary": "UGC's scholarship for students domiciled in the eight North-Eastern states pursuing the first year of a general/professional/technical/medical/paramedical degree course anywhere in India.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 64800,
+      "amount_display": "₹5,400/month (general degree) · ₹7,800/month (professional/technical/medical)",
+      "details": "Monthly scholarship for the full duration of the first degree course (10 months/year)."
+    },
+    "deadline": {
+      "date": "2026-11-30",
+      "rolling": false,
+      "label": "Annual NSP window"
+    },
+    "eligibility": {
+      "domicile_states": [
+        "Assam",
+        "Arunachal Pradesh",
+        "Manipur",
+        "Meghalaya",
+        "Mizoram",
+        "Nagaland",
+        "Tripura",
+        "Sikkim"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
+      "max_family_income": 450000,
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": [
+        "ug"
+      ],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Domicile of one of the eight NER states",
+        "First-year UG student in a recognised institution (not open/distance mode, not already drawing another scholarship)",
+        "Admission within the notified time after +2"
+      ]
+    },
+    "documents": [
+      "Domicile certificate of the NER state",
+      "Income certificate",
+      "+2 marksheet",
+      "Admission proof of the first-year UG course",
+      "Bank + Aadhaar details"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "National Scholarship Portal",
+      "url": "https://scholarships.gov.in",
+      "steps": [
+        "Register on NSP",
+        "Choose Ishan Uday (UGC schemes)",
+        "Upload documents",
+        "Institute verification -> DBT"
+      ]
+    },
+    "official_url": "https://www.ugc.gov.in",
+    "last_verified": "2026-09-28",
+    "verification_status": "verified",
+    "tags": [
+      "north-east",
+      "ugc",
+      "ug",
+      "ner"
+    ],
+    "notes": ""
+  }
+]

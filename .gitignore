@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Runtime stores (local tracker + notification outbox)
+runtime/*.json
+runtime/*.jsonl
+runtime/*.tmp
+runtime/*.db
+runtime/*.db-wal
+runtime/*.db-shm
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

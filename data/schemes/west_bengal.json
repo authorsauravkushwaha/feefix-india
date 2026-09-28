@@ -1,0 +1,522 @@
+[
+  {
+    "id": "sv-mcm-wb",
+    "name": "Swami Vivekananda Merit-cum-Means Scholarship (SVMCM)",
+    "provider": "Government of West Bengal — Higher Education Department",
+    "level": "state",
+    "summary": "West Bengal's flagship merit-cum-means scholarship supporting students from Class XI up to postgraduate, diploma and technical courses in state institutions.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 24000,
+      "amount_display": "₹12,000 – ₹60,000 / year (course-wise)",
+      "details": "Direct benefit transfer credited annually; amount depends on level and stream (₹1,000–₹5,000 per month)."
+    },
+    "deadline": {
+      "date": "2026-11-30",
+      "rolling": false,
+      "label": "Fresh applications, 2026–27 cycle"
+    },
+    "eligibility": {
+      "domicile_states": ["West Bengal"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": 250000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "diploma", "ug", "pg"],
+      "min_marks_percent": 75,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Must be enrolled in a regular course in an institution recognised by a WB board/university authority",
+        "Only one scholarship of this kind may be held at a time"
+      ]
+    },
+    "documents": [
+      "Madhyamik admit card / last qualifying exam marksheet",
+      "Annual family income certificate (Competent authority)",
+      "Domicile (voter/Aadhaar/ration card) proof",
+      "Aadhaar-seeded bank account details",
+      "Recent passport-size photograph",
+      "Institution verification form signed by the head of institution"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "SVMCM Portal",
+      "url": "https://svmcm.wb.gov.in",
+      "steps": [
+        "Register on svmcm.wb.gov.in with a valid mobile number",
+        "Fill academic and personal details and choose your course",
+        "Upload marksheet, income certificate and bank details",
+        "Submit and note the generated applicant ID",
+        "Complete institute verification (hoi approval) within the window"
+      ]
+    },
+    "official_url": "https://svmcm.wb.gov.in",
+    "last_verified": "2026-09-12",
+    "verification_status": "verified",
+    "tags": ["west-bengal", "merit", "means", "flagship", "ug", "pg"],
+    "notes": "Marks criterion is indicative of recent cycles (75% for fresh HS→UG entry); renewal criteria differ. Re-verify on portal."
+  },
+  {
+    "id": "kanyashree-k2",
+    "name": "Kanyashree Prakalpa — K2 (One-Time Grant)",
+    "provider": "Department of Women & Child Development and Social Welfare, Government of West Bengal",
+    "level": "state",
+    "summary": "One-time grant of ₹25,000 for unmarried girls aged 18–19 continuing education or vocational training — designed to delay early marriage and keep girls in school.",
+    "benefit": {
+      "type": "grant",
+      "amount_annual_inr": 25000,
+      "amount_display": "₹25,000 one-time",
+      "details": "Credited directly to the girl's bank account on verification of enrolment and age."
+    },
+    "deadline": {
+      "date": null,
+      "rolling": true,
+      "label": "Rolling — applications open year-round"
+    },
+    "eligibility": {
+      "domicile_states": ["West Bengal"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": 120000,
+      "genders": ["female"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["school", "higher_secondary", "iti", "diploma", "ug"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Applicant must be unmarried and between 18 and 19 years of age when applying",
+        "Must be enrolled in an educational institution or institute of vocational/technical training",
+        "Income criterion may be relaxed for girls with disability and orphans"
+      ]
+    },
+    "documents": [
+      "Birth certificate / age proof",
+      "Unmarried declaration",
+      "Family income certificate",
+      "School/college enrolment certificate",
+      "Bank account (in the girl's name)"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "WB Kanyashree Portal",
+      "url": "https://www.wbkanyashree.gov.in",
+      "steps": [
+        "Collect or download the K2 application form",
+        "Get institution attestation of enrolment and age",
+        "Submit through the institution or Kanyashree portal",
+        "Track sanction status using the application number"
+      ]
+    },
+    "official_url": "https://www.wbkanyashree.gov.in",
+    "last_verified": "2026-09-05",
+    "verification_status": "verified",
+    "tags": ["west-bengal", "girls", "kanyashree", "grant"],
+    "notes": "K2 is the one-time component; K1 (annual ₹750) covers girls aged 13–17."
+  },
+  {
+    "id": "aikyashree-wb",
+    "name": "Aikyashree — WB Merit-cum-Means Scholarship for Minority Students",
+    "provider": "West Bengal Minorities Development & Finance Corporation (WBMDFC)",
+    "level": "state",
+    "summary": "State merit-cum-means support for students of notified minority communities from Class XI to PhD, covering engineering, medical, management, law and general streams.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 33000,
+      "amount_display": "₹11,000 – ₹33,000 / year (day scholar & hosteller rates)",
+      "details": "Admission + tuition fee support plus maintenance allowance; higher rates for professional courses and hostellers."
+    },
+    "deadline": {
+      "date": "2026-10-31",
+      "rolling": false,
+      "label": "2026–27 fresh & renewal applications"
+    },
+    "eligibility": {
+      "domicile_states": ["West Bengal"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": 250000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": true,
+      "minority_communities": ["muslim", "christian", "sikh", "buddhist", "jain", "parsee"],
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "diploma", "iti", "ug", "pg", "phd"],
+      "min_marks_percent": 50,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Institution must be located in West Bengal (some exceptions for courses unavailable in the state)",
+        "Income limits: typically ₹1 lakh for school level and up to ₹2.5 lakh for higher study — modelled here at the higher limit"
+      ]
+    },
+    "documents": [
+      "Minority community certificate / self-declaration",
+      "Last marksheet (≥50%)",
+      "Family income certificate",
+      "Domicile proof",
+      "Bank passbook (Aadhaar-seeded)",
+      "Fee receipt / institute verification form"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "WBMDFC Scholarship Portal",
+      "url": "https://wbmdfcscholarship.gov.in",
+      "steps": [
+        "Register on wbmdfcscholarship.gov.in",
+        "Select Aikyashree and fill academic details",
+        "Upload community, income and domicile proofs",
+        "Submit and complete institute verification",
+        "Track payment status on the portal"
+      ]
+    },
+    "official_url": "https://wbmdfcscholarship.gov.in",
+    "last_verified": "2026-09-08",
+    "verification_status": "verified",
+    "tags": ["west-bengal", "minority", "merit", "means"],
+    "notes": "Tier-wise income caps apply; verify the exact cap for your course level on the portal."
+  },
+  {
+    "id": "oasis-sc-st-wb",
+    "name": "Post-Matric Scholarship for SC/ST Students (OASIS)",
+    "provider": "Backward Classes Welfare Department, Government of West Bengal",
+    "level": "state",
+    "summary": "Post-matric scholarship for SC/ST students of West Bengal from Class IX onwards, covering course fees and maintenance allowance through the OASIS portal.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 13000,
+      "amount_display": "₹5,000 – ₹13,000 / year (course & accommodation wise)",
+      "details": "Maintenance allowance plus compulsory fee reimbursement; hosteller rates are higher."
+    },
+    "deadline": {
+      "date": "2026-11-30",
+      "rolling": false,
+      "label": "2026–27 cycle (fresh & renewal)"
+    },
+    "eligibility": {
+      "domicile_states": ["West Bengal"],
+      "categories": ["sc", "st"],
+      "max_family_income": 250000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["school", "higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "School level applies only from Class IX onwards",
+        "Caste certificate must be issued by a competent WB authority"
+      ]
+    },
+    "documents": [
+      "Caste certificate (SC/ST)",
+      "Income certificate",
+      "Domicile certificate",
+      "Last exam marksheet",
+      "Bank details + Aadhaar",
+      "Institute verification"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "OASIS Portal",
+      "url": "https://oasis.gov.in",
+      "steps": [
+        "Register on oasis.gov.in → Student's Corner",
+        "Verify caste certificate number online",
+        "Fill course and bank details, upload documents",
+        "Submit to Block/District verification queue",
+        "Track status until DBT credit"
+      ]
+    },
+    "official_url": "https://oasis.gov.in",
+    "last_verified": "2026-09-10",
+    "verification_status": "verified",
+    "tags": ["west-bengal", "sc", "st", "oasis", "post-matric"],
+    "notes": ""
+  },
+  {
+    "id": "oasis-obc-wb",
+    "name": "Post-Matric Scholarship for OBC Students (OASIS)",
+    "provider": "Backward Classes Welfare Department, Government of West Bengal",
+    "level": "state",
+    "summary": "Post-matric support for OBC (OBC-A / OBC-B) students of West Bengal with maintenance allowance and fee support from Class XI onwards.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 10000,
+      "amount_display": "₹4,000 – ₹10,000 / year",
+      "details": "Course-group wise maintenance allowance plus compulsory fee reimbursement."
+    },
+    "deadline": {
+      "date": "2026-11-30",
+      "rolling": false,
+      "label": "2026–27 cycle (fresh & renewal)"
+    },
+    "eligibility": {
+      "domicile_states": ["West Bengal"],
+      "categories": ["obc"],
+      "max_family_income": 100000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Valid OBC-A or OBC-B certificate of West Bengal required",
+        "Family income cap is tighter than SC/ST (₹1 lakh) — verify current order"
+      ]
+    },
+    "documents": [
+      "OBC-A / OBC-B certificate (issued after cut-off year check)",
+      "Income certificate",
+      "Domicile proof",
+      "Last marksheet",
+      "Bank + Aadhaar details"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "OASIS Portal",
+      "url": "https://oasis.gov.in",
+      "steps": [
+        "Register on oasis.gov.in",
+        "Verify OBC certificate number",
+        "Complete the application and upload documents",
+        "Complete block-level verification and track DBT"
+      ]
+    },
+    "official_url": "https://oasis.gov.in",
+    "last_verified": "2026-09-10",
+    "verification_status": "verified",
+    "tags": ["west-bengal", "obc", "oasis", "post-matric"],
+    "notes": ""
+  },
+  {
+    "id": "oasis-pre-sc-wb",
+    "name": "Pre-Matric Scholarship for SC Students (Class IX & X, OASIS)",
+    "provider": "Backward Classes Welfare Department, Government of West Bengal",
+    "level": "state",
+    "summary": "Pre-matric scholarship for SC students studying in Class IX and X in West Bengal schools, easing the school-to-HS transition.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 4500,
+      "amount_display": "Up to ₹4,500 / year",
+      "details": "Day scholar and hosteller rates; includes maintenance allowance."
+    },
+    "deadline": {
+      "date": "2026-12-31",
+      "rolling": false,
+      "label": "2026–27 cycle"
+    },
+    "eligibility": {
+      "domicile_states": ["West Bengal"],
+      "categories": ["sc"],
+      "max_family_income": 200000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["school"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Only Class IX and X are covered under pre-matric",
+        "Parents' income certificate from competent authority required"
+      ]
+    },
+    "documents": [
+      "SC certificate of student or parent",
+      "Income certificate",
+      "School enrolment certificate (Class IX/X)",
+      "Bank + Aadhaar details"
+    ],
+    "application": {
+      "mode": "online",
+      "portal": "OASIS Portal",
+      "url": "https://oasis.gov.in",
+      "steps": [
+        "Register as pre-matric applicant on oasis.gov.in",
+        "Upload caste and income certificates",
+        "Get school verification",
+        "Track DBT status"
+      ]
+    },
+    "official_url": "https://oasis.gov.in",
+    "last_verified": "2026-09-10",
+    "verification_status": "verified",
+    "tags": ["west-bengal", "sc", "pre-matric", "school"],
+    "notes": ""
+  },
+  {
+    "id": "nabanna-wb",
+    "name": "Nabanna Scholarship (WB Chief Minister's Relief Fund — Educational Assistance)",
+    "provider": "Chief Minister's Office, Government of West Bengal",
+    "level": "state",
+    "summary": "One-time education assistance to deserving students of West Bengal facing acute financial hardship, disbursed from the Chief Minister's Relief Fund.",
+    "benefit": {
+      "type": "grant",
+      "amount_annual_inr": 10000,
+      "amount_display": "₹10,000 / year (one-time, per course)",
+      "details": "Sanction letter mailed on approval; amount credited to the student's bank account."
+    },
+    "deadline": {
+      "date": null,
+      "rolling": true,
+      "label": "Rolling — no fixed deadline"
+    },
+    "eligibility": {
+      "domicile_states": ["West Bengal"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": 60000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["ug", "pg"],
+      "min_marks_percent": 65,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Very low income cap (around ₹60,000/year) — aimed at acute hardship cases",
+        "Must produce MLA/local representative recommendation in most cycles",
+        "Should not be receiving any other government scholarship"
+      ]
+    },
+    "documents": [
+      "Application letter to the Hon'ble Chief Minister",
+      "Last exam marksheet (≥65%)",
+      "Income certificate (monthly family income)",
+      "Recommendation letter (MLA / MP / municipality)",
+      "Admission proof and fee structure",
+      "Bank passbook copy"
+    ],
+    "application": {
+      "mode": "hybrid",
+      "portal": "CM Relief Fund Cell, Nabanna",
+      "url": "https://wbcmo.gov.in",
+      "steps": [
+        "Write the application addressed to the Chief Minister with full academic details",
+        "Attach marksheet, income proof, recommendation and bank documents",
+        "Submit at Nabanna (HRBC Building, Howrah) or upload via CMO portal",
+        "Retain the receipt number for tracking"
+      ]
+    },
+    "official_url": "https://wbcmo.gov.in",
+    "last_verified": "2026-09-02",
+    "verification_status": "pending_review",
+    "tags": ["west-bengal", "hardship", "grant", "nabanna"],
+    "notes": "Physical submission is still common; assistance is discretionary."
+  },
+  {
+    "id": "wbfs-freeship-wb",
+    "name": "West Bengal Freeship Scheme (Tuition Fee Waiver)",
+    "provider": "Department of Higher Education, Government of West Bengal",
+    "level": "state",
+    "summary": "Tuition-fee waiver for deserving UG/PG students of West Bengal state-aided institutions whose families cannot bear course fees.",
+    "benefit": {
+      "type": "fee_waiver",
+      "amount_annual_inr": 30000,
+      "amount_display": "Full / partial tuition fee waiver",
+      "details": "Full or half freeship on tuition fees, adjusted directly by the institution on recommendation."
+    },
+    "deadline": {
+      "date": "2026-11-15",
+      "rolling": false,
+      "label": "Typically aligned with the academic session"
+    },
+    "eligibility": {
+      "domicile_states": ["West Bengal"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": 250000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["ug", "pg"],
+      "min_marks_percent": null,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Available only in state-aided colleges/universities of West Bengal",
+        "Recommended by the institution based on financial need and attendance",
+        "Cannot be combined with equivalent fee-waiver benefits"
+      ]
+    },
+    "documents": [
+      "Income certificate",
+      "Admission / fee receipt",
+      "Institution recommendation form",
+      "Bank details for any refundable component"
+    ],
+    "application": {
+      "mode": "offline",
+      "portal": "Through the college/university",
+      "url": "https://wbhed.gov.in",
+      "steps": [
+        "Collect the freeship application form from the college office",
+        "Attach income certificate and fee receipts",
+        "Submit before the institution's internal deadline",
+        "Confirm waiver appears on the fee book/receipt"
+      ]
+    },
+    "official_url": "https://wbhed.gov.in",
+    "last_verified": "2026-09-01",
+    "verification_status": "pending_review",
+    "tags": ["west-bengal", "fee-waiver", "ug", "pg"],
+    "notes": "Sanction is institution-driven — benefit value varies by course fee."
+  },
+  {
+    "id": "hindi-scholarship-wb",
+    "name": "Hindi Scholarship Scheme — West Bengal",
+    "provider": "Department of School Education, Government of West Bengal",
+    "level": "state",
+    "summary": "Encourages students of non-Hindi-speaking West Bengal to pursue higher study in Hindi-medium institutions, promoting national language learning.",
+    "benefit": {
+      "type": "scholarship",
+      "amount_annual_inr": 6000,
+      "amount_display": "₹3,000 – ₹10,000 / year (course wise)",
+      "details": "Stipend tied to the level of study pursued in Hindi medium."
+    },
+    "deadline": {
+      "date": "2026-12-15",
+      "rolling": false,
+      "label": "Annual cycle (indicative)"
+    },
+    "eligibility": {
+      "domicile_states": ["West Bengal"],
+      "categories": ["general", "sc", "st", "obc"],
+      "max_family_income": 300000,
+      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "minority_only": false,
+      "minority_communities": null,
+      "disability_required": false,
+      "course_levels": ["higher_secondary", "ug", "pg"],
+      "min_marks_percent": 60,
+      "single_girl_child_required": false,
+      "special_conditions": [
+        "Course must be pursued in a Hindi-medium/recognised institution",
+        "Hindi must be one of the subjects in the qualifying exam"
+      ]
+    },
+    "documents": [
+      "Qualifying exam marksheet with Hindi subject",
+      "Admission proof in Hindi-medium institution",
+      "Domicile certificate of West Bengal",
+      "Bank details"
+    ],
+    "application": {
+      "mode": "offline",
+      "portal": "Through District Inspector of Schools",
+      "url": "https://school.wb.gov.in",
+      "steps": [
+        "Obtain the scholarship form from DI Schools (SE)",
+        "Fill and attach enrolment and marksheet proofs",
+        "Submit via the school/institution",
+        "Await district verification and sanction order"
+      ]
+    },
+    "official_url": "https://school.wb.gov.in",
+    "last_verified": "2026-08-28",
+    "verification_status": "stale",
+    "tags": ["west-bengal", "language", "hindi"],
+    "notes": "Record flagged for re-verification — recent circular pending."
+  }
+]

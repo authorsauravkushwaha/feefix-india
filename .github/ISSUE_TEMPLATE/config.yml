@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 🔐 Security vulnerability
+    url: https://github.com/authorsauravkushwaha/feefix-india/security/advisories/new
+    about: Please do NOT report security issues publicly — use a private advisory (see docs/security/SECURITY.md).
+  - name: 💬 Discussions — ideas, state requests, questions
+    url: https://github.com/authorsauravkushwaha/feefix-india/discussions
+    about: Which state should we add next? What should the mobile app do first?
