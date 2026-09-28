@@ -1,0 +1,51 @@
+name: FeeFix CI
+
+on:
+  push:
+    branches: [main, "arena/**"]
+  pull_request:
+  schedule:
+    - cron: "30 18 * * 1"  # weekly dataset health (Tue 00:00 IST)
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Full test suite
+        run: python -m pytest
+
+      - name: Dataset Verification Agent (offline)
+        run: python -m agents.verify_dataset
+
+      - name: ML ranking experiment (sanity)
+        run: python -m ml.experiments.simulate_outcomes
+
+      - name: Agent dry-run (reminder scheduler)
+        run: python -m agents.reminder_scheduler --dry-run
+
+  dataset-liveness:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Probe official portal URLs
+        run: python -m agents.verify_dataset --check-urls

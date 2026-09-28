@@ -1,0 +1,35 @@
+name: 📚 Scheme data correction / new scheme
+description: Wrong figures, changed window, or a scheme FeeFix should know about
+labels: [data, scheme]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Accuracy beats confidence in this project — thank you for keeping the
+        dataset honest.
+  - type: input
+    id: scheme
+    attributes:
+      label: Scheme id / name
+      placeholder: e.g. sv-mcm-wb or "Nua-O Scholarship"
+    validations:
+      required: true
+  - type: textarea
+    id: correction
+    attributes:
+      label: What is wrong / missing?
+      description: Exact field(s) and their correct values (or "add this scheme").
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Official source URL (required)
+      description: Government portal / GR / gazette notice. HTTPS please.
+    validations:
+      required: true
+  - type: input
+    id: verified_on
+    attributes:
+      label: Checked on (date)
+      placeholder: YYYY-MM-DD
