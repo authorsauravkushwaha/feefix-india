@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from backend.api.schemas import (
     AskRequest,
@@ -14,6 +15,8 @@ from backend.api.schemas import (
     EventRequest,
     LinkSessionRequest,
     LoginRequest,
+    OtpRequestBody,
+    OtpVerifyBody,
     ProfileUpsertRequest,
     RegisterRequest,
     TrackRequest,
@@ -156,6 +159,114 @@ def delete_account(request: Request) -> dict:
     user = _require_user(request)
     auth_svc.delete_account(user["id"])
     return {"deleted": True}
+
+
+# -- OTP sign-in (email & international phone) ---------------------------------
+def _auth_payload(user: dict, request: Request) -> dict:
+    """Uniform {token, expires_at, user, session_id} for every sign-in door."""
+    from backend.services import auth as auth_svc
+
+    token, expires = auth_svc.create_session(user["id"])
+    tracker = _tracker(request)
+    session_for_user = getattr(tracker, "session_for_user", None)
+    return {
+        "token": token,
+        "expires_at": expires.isoformat(timespec="seconds"),
+        "user": user,
+        "session_id": session_for_user(user["id"]) if session_for_user else None,
+    }
+
+
+@router.post("/auth/otp/request")
+def otp_request(body: OtpRequestBody, request: Request) -> dict:
+    """Send a 6-digit code (5-min expiry, 40s resend cooldown, ≤5 codes/hour)."""
+    from backend.services import otp as otp_svc
+    from backend.services import ratelimit
+
+    client = request.client.host if request.client else "unknown"
+    if not ratelimit.check_auth(client, "otp-req"):
+        raise HTTPException(status_code=429, detail="Too many attempts — try again later.")
+    try:
+        return otp_svc.request_code(body.channel, body.address, client)
+    except otp_svc.auth_svc.AuthError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/auth/otp/verify")
+def otp_verify(body: OtpVerifyBody, request: Request) -> dict:
+    """Burn the code → mint a session. Wrong code and unknown account both
+    answer 401 identically (no user-enumeration)."""
+    from backend.services import otp as otp_svc
+    from backend.services import ratelimit
+
+    client = request.client.host if request.client else "unknown"
+    if not ratelimit.check_auth(client, f"otp-verify:{body.address.strip().lower()}"):
+        raise HTTPException(status_code=429, detail="Too many attempts — try again later.")
+    try:
+        user = otp_svc.verify_code(body.channel, body.address, body.code, body.name)
+    except otp_svc.auth_svc.AuthError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired code — request a new one.")
+    return _auth_payload(user, request)
+
+
+# -- GitHub OAuth ---------------------------------------------------------------
+@router.get("/auth/methods")
+def auth_methods() -> dict:
+    """Which sign-in doors are live on this deployment (UI dims unavailable)."""
+    from backend.services import otp as otp_svc
+
+    return otp_svc.methods()
+
+
+@router.get("/auth/github")
+def github_start(request: Request) -> RedirectResponse:
+    from backend.services import otp as otp_svc
+
+    try:
+        url = otp_svc.github_start()
+    except otp_svc.auth_svc.AuthError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    return RedirectResponse(url, status_code=302)
+
+
+@router.get("/auth/github/callback")
+def github_callback(request: Request, code: str | None = None, state: str | None = None):
+    from backend.services import otp as otp_svc
+
+    if not code or not state:
+        return RedirectResponse("/#auth=failed", status_code=302)
+    try:
+        user = otp_svc.github_finish(code, state)
+    except otp_svc.auth_svc.AuthError:
+        return RedirectResponse("/#auth=failed", status_code=302)
+    from backend.services import auth as auth_svc
+
+    tracker = _tracker(request)
+    token, _expires = auth_svc.create_session(user["id"])
+    session_for_user = getattr(tracker, "session_for_user", None)
+    sid = session_for_user(user["id"]) if session_for_user else None
+    # JSON-safe-into-HTML: neutralise </script> breakouts from hostile profile
+    # names (\u003c /\u003e) — the payload lands in a data block.
+    payload_js = json.dumps({"token": token, "user": user, "session_id": sid})
+    payload_js = payload_js.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    return HTMLResponse(_HANDOFF_HTML.replace("__PAYLOAD__", payload_js))
+
+
+# Handoff page: CSP (script-src 'self') never allows inline JS, so the token
+# lives in a non-executable JSON data block and /gh-handoff.js (same-origin,
+# static) moves it to localStorage. The token never touches a URL or a log.
+_HANDOFF_HTML = """<!DOCTYPE html><html><head><meta charset="utf-8" />
+<title>Signed in — FeeFix</title></head>
+<body style="font-family:system-ui;background:#0b0f19;color:#dbe6ff;display:grid;place-items:center;height:100vh;margin:0">
+<div style="text-align:center">
+  <div style="font-size:2rem">🔐</div>
+  <p>Signed in — returning you to FeeFix…</p>
+</div>
+<script type="application/json" id="p">__PAYLOAD__</script>
+<script src="/gh-handoff.js"></script>
+</body></html>"""
 
 
 # -- meta -----------------------------------------------------------------------

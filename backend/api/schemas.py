@@ -62,3 +62,15 @@ class LoginRequest(BaseModel):
 
 class LinkSessionRequest(BaseModel):
     session_id: str = Field(min_length=4, max_length=64)
+
+
+class OtpRequestBody(BaseModel):
+    channel: str = Field(description="email | phone")
+    address: str = Field(min_length=3, max_length=64)
+
+
+class OtpVerifyBody(BaseModel):
+    channel: str = Field(description="email | phone")
+    address: str = Field(min_length=3, max_length=64)
+    code: str = Field(min_length=4, max_length=8)
+    name: str | None = Field(default=None, max_length=80)

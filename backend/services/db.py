@@ -22,7 +22,7 @@ from pathlib import Path
 RUNTIME_DIR = Path(__file__).resolve().parents[2] / "runtime"
 DEFAULT_DB = RUNTIME_DIR / "feefix.db"
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
@@ -114,6 +114,34 @@ _MIGRATIONS = {
             action      TEXT NOT NULL,
             detail      TEXT,
             occurred_at TEXT NOT NULL
+        )""",
+    ],
+    2: [
+        # v2 — passwordless sign-in: OTP challenges, federated identities (email
+        # / phone / GitHub), one-time OAuth state rows. All additive.
+        """CREATE TABLE IF NOT EXISTS otp_challenges (
+            id            TEXT PRIMARY KEY,
+            channel       TEXT NOT NULL,
+            address       TEXT NOT NULL,
+            code_hash     TEXT NOT NULL,
+            salt          TEXT NOT NULL,
+            attempts_left INTEGER NOT NULL,
+            expires_at    TEXT NOT NULL,
+            resend_after  TEXT NOT NULL,
+            created_at    TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_otp_address ON otp_challenges(channel, address)",
+        """CREATE TABLE IF NOT EXISTS auth_identities (
+            kind      TEXT NOT NULL,
+            key       TEXT NOT NULL,
+            user_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (kind, key)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_identity_user ON auth_identities(user_id)",
+        """CREATE TABLE IF NOT EXISTS oauth_states (
+            state      TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL
         )""",
     ],
 }
