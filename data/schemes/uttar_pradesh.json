@@ -12,25 +12,46 @@
       "details": "Course-group-wise maintenance allowance (day scholar / hosteller rates) plus reimbursement of enrolment & tuition fees via DBT."
     },
     "deadline": {
-      "date": "2026-12-31",
+      "date": "2026-10-31",
       "rolling": false,
-      "label": "2026–27 cycle (institute deadlines cascade earlier)"
+      "label": "UP Dashmottar (post-matric) fresh applications close 31 Oct 2026"
     },
     "eligibility": {
-      "domicile_states": ["Uttar Pradesh"],
-      "categories": ["sc", "st"],
+      "domicile_states": [
+        "Uttar Pradesh"
+      ],
+      "categories": [
+        "sc",
+        "st"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["school", "higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "course_levels": [
+        "school",
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
         "SC/ST certificate issued in Uttar Pradesh",
         "Enrolled in a recognised institution with the portal dashboard entry",
-        "Institute type and course group decide the exact slab"
+        "Institute type and course group decide the exact slab",
+        "Applications must be LOCKED after submission — an unlocked form is not treated as submitted",
+        "DigiLocker and OTP authentication are part of the submission flow",
+        "Class 11–12 post-matric closed on 21 Sep 2026; only Dashmottar (UG/PG/Diploma/ITI) remains open to 31 Oct 2026"
       ]
     },
     "documents": [
@@ -53,10 +74,16 @@
       ]
     },
     "official_url": "https://scholarship.up.gov.in",
-    "last_verified": "2026-09-27",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["uttar-pradesh", "sc", "st", "post-matric", "dashmottar"],
-    "notes": ""
+    "tags": [
+      "uttar-pradesh",
+      "sc",
+      "st",
+      "post-matric",
+      "dashmottar"
+    ],
+    "notes": "Uttar Pradesh runs TWO separate post-matric windows in the same year and conflating them is the most common mistake here. (1) Class 11–12 post-matric: fresh applications ran 11 August to 21 September 2026 and renewals closed 25 August 2026 — both CLOSED. (2) Dashmottar, covering UG, PG, Diploma, ITI and other post-matric courses: fresh applications run 15 September to 31 October 2026, renewals 15 September to 15 October 2026. The date shown is the Dashmottar fresh deadline, which is the one still open. Portal scholarship.up.gov.in is confirmed correct. Renewal applicants must complete DigiLocker and OTP authentication and LOCK the application — an unlocked form is not submitted. Disbursal for Dashmottar fresh is 27–31 January 2027. Scheme notifications for both were issued 20 July 2026 by the Social Welfare Department."
   },
   {
     "id": "up-postmatric-obc-general",
@@ -71,24 +98,42 @@
       "details": "Course-group-wise maintenance allowance and fee reimbursement, DBT-credited."
     },
     "deadline": {
-      "date": "2026-12-31",
+      "date": "2026-10-31",
       "rolling": false,
-      "label": "2026–27 cycle (institute deadlines cascade earlier)"
+      "label": "UP Dashmottar (post-matric) fresh applications close 31 Oct 2026"
     },
     "eligibility": {
-      "domicile_states": ["Uttar Pradesh"],
-      "categories": ["obc", "general"],
+      "domicile_states": [
+        "Uttar Pradesh"
+      ],
+      "categories": [
+        "obc",
+        "general"
+      ],
       "max_family_income": 200000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
         "OBC (non-creamy-layer) certificate of UP for OBC; EWS/income certificate for General; community certificate for minority applicants",
-        "Income caps are notified per cycle — re-verify the current slab"
+        "Income caps are notified per cycle — re-verify the current slab",
+        "Applications must be LOCKED after submission — an unlocked form is not treated as submitted"
       ]
     },
     "documents": [
@@ -111,10 +156,16 @@
       ]
     },
     "official_url": "https://scholarship.up.gov.in",
-    "last_verified": "2026-09-27",
-    "verification_status": "pending_review",
-    "tags": ["uttar-pradesh", "obc", "general", "minority", "post-matric"],
-    "notes": "Income slabs for OBC/General/minority lines changed in recent cycles; re-verify each admission season."
+    "last_verified": "2026-10-15",
+    "verification_status": "verified",
+    "tags": [
+      "uttar-pradesh",
+      "obc",
+      "general",
+      "minority",
+      "post-matric"
+    ],
+    "notes": "Same two-window structure as the SC/ST record: Class 11–12 closed 21 September 2026, Dashmottar (UG/PG/Diploma/ITI) fresh runs to 31 October 2026 with renewal closing 15 October 2026. Administered by the Backward Classes Welfare Department alongside the Social Welfare and Minority Welfare Departments."
   },
   {
     "id": "up-prematric",
@@ -129,19 +180,33 @@
       "details": "Annual maintenance allowance credited by DBT after school verification."
     },
     "deadline": {
-      "date": "2026-11-30",
+      "date": "2026-09-21",
       "rolling": false,
-      "label": "2026–27 school cycle"
+      "label": "UP Pre-Matric (Class 9–10) 2026–27 CLOSED on 21 Sep 2026"
     },
     "eligibility": {
-      "domicile_states": ["Uttar Pradesh"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Uttar Pradesh"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": 100000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["school"],
+      "course_levels": [
+        "school"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -167,10 +232,14 @@
       ]
     },
     "official_url": "https://scholarship.up.gov.in",
-    "last_verified": "2026-09-27",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["uttar-pradesh", "pre-matric", "school"],
-    "notes": ""
+    "tags": [
+      "uttar-pradesh",
+      "pre-matric",
+      "school"
+    ],
+    "notes": "CLOSED. Fresh applications for Class 9–10 ran 11 August to 21 September 2026; renewal applications closed earlier, on 25 August 2026. The previously recorded 30 November date was never published. Hard copies had to reach the institution between 16 September and 4 November 2026. Disbursal for Class 9–12 fresh applications is scheduled 25–31 January 2027. Expect the next cycle to open around August 2027."
   },
   {
     "id": "kanya-sumangala-up",
@@ -190,14 +259,28 @@
       "label": "Rolling — apply in the stage window"
     },
     "eligibility": {
-      "domicile_states": ["Uttar Pradesh"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Uttar Pradesh"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": 300000,
-      "genders": ["female"],
+      "genders": [
+        "female"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["school", "higher_secondary", "diploma", "ug"],
+      "course_levels": [
+        "school",
+        "higher_secondary",
+        "diploma",
+        "ug"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -225,10 +308,15 @@
       ]
     },
     "official_url": "https://mksy.up.gov.in",
-    "last_verified": "2026-09-26",
-    "verification_status": "verified",
-    "tags": ["uttar-pradesh", "girls", "girl-child", "stages"],
-    "notes": ""
+    "last_verified": "2026-10-15",
+    "verification_status": "pending_review",
+    "tags": [
+      "uttar-pradesh",
+      "girls",
+      "girl-child",
+      "stages"
+    ],
+    "notes": "No 2026–27 notification located in this review pass; the 'rolling' designation is carried forward and unverified. Kanya Sumangala is a conditional cash transfer paid in instalments tied to birth, school enrolment and age milestones rather than an annual scholarship application, which is why it does not follow the scholarship.up.gov.in cycle — applications are filed on mksy.up.gov.in. Confirm the current instalment schedule there."
   },
   {
     "id": "rani-laxmibai-kosh-up",
@@ -248,14 +336,28 @@
       "label": "Rolling / window-based (district wise)"
     },
     "eligibility": {
-      "domicile_states": ["Uttar Pradesh"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Uttar Pradesh"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": 200000,
-      "genders": ["female"],
+      "genders": [
+        "female"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "diploma", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -283,10 +385,15 @@
       ]
     },
     "official_url": "https://mahilakalyan.up.nic.in",
-    "last_verified": "2026-09-26",
+    "last_verified": "2026-10-15",
     "verification_status": "pending_review",
-    "tags": ["uttar-pradesh", "girls", "one-time", "women-welfare"],
-    "notes": "Windows open district-wise and guidelines shift — flagged pending review."
+    "tags": [
+      "uttar-pradesh",
+      "girls",
+      "one-time",
+      "women-welfare"
+    ],
+    "notes": "No 2026–27 notification located in this review pass; the 'rolling' designation is carried forward and unverified. Portal mahilakalyan.up.nic.in is the Women's Welfare department site rather than a scheme-specific application page."
   },
   {
     "id": "cm-abhyudaya-up",
@@ -306,14 +413,30 @@
       "label": "Rolling — batch-wise registration"
     },
     "eligibility": {
-      "domicile_states": ["Uttar Pradesh"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Uttar Pradesh"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": 200000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -339,9 +462,13 @@
       ]
     },
     "official_url": "https://abhyuday.up.gov.in",
-    "last_verified": "2026-09-26",
+    "last_verified": "2026-10-15",
     "verification_status": "pending_review",
-    "tags": ["uttar-pradesh", "coaching", "competitive-exams"],
-    "notes": "Value-in-kind (coaching) rather than cash — benefit amount is indicative."
+    "tags": [
+      "uttar-pradesh",
+      "coaching",
+      "competitive-exams"
+    ],
+    "notes": "No 2026–27 notification located in this review pass; the 'rolling' designation is carried forward and unverified. Abhyudaya is primarily a free-coaching scheme for competitive examinations, so like the central Free Coaching scheme its benefit is a seat at a centre rather than a cash award."
   }
 ]

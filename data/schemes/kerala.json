@@ -12,25 +12,44 @@
       "details": "Monthly stipend plus yearly lump-sum grants for study materials; hostellers get boarding support."
     },
     "deadline": {
-      "date": null,
-      "rolling": true,
-      "label": "Institution-led registration (cycle-based)"
+      "date": "2026-11-30",
+      "rolling": false,
+      "label": "E-Grantz 3.0, 2026–27 closes 30 Nov 2026"
     },
     "eligibility": {
-      "domicile_states": ["Kerala"],
-      "categories": ["sc", "st"],
+      "domicile_states": [
+        "Kerala"
+      ],
+      "categories": [
+        "sc",
+        "st"
+      ],
       "max_family_income": null,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
         "SC/ST/OEC community certificate of Kerala",
         "No strict income bar for SC/OEC in the stipend lane; OBC(H) lane has an income ceiling",
-        "Institution must be E-Grantz listed; Aadhaar-seeded bank required"
+        "Institution must be E-Grantz listed; Aadhaar-seeded bank required",
+        "Minimum 75% attendance is required",
+        "Sub-schemes on the same portal close on different dates — check your own scheme's window, not just the portal's"
       ]
     },
     "documents": [
@@ -51,10 +70,16 @@
       ]
     },
     "official_url": "https://egrantz.kerala.gov.in",
-    "last_verified": "2026-09-28",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["kerala", "sc", "st", "egrantz", "post-matric"],
-    "notes": ""
+    "tags": [
+      "kerala",
+      "sc",
+      "st",
+      "egrantz",
+      "post-matric"
+    ],
+    "notes": "Was recorded as 'rolling', which is wrong — E-Grantz runs an annual window. The 2026–27 close is 30 November 2026 on the E-Grantz 3.0 portal (egrantz.kerala.gov.in, confirmed). Note that individual sub-schemes on the same portal close earlier: the Kedavilakku scheme closed 30 September 2026, and school data entry for SC/ST/OBC students closed 31 July 2026, so a student who waits for the portal deadline can still miss their own scheme. Income: no ceiling for SC/ST/OEC, ₹1,00,000 for OBC/general. Minimum 75% attendance."
   },
   {
     "id": "kerala-higher-education",
@@ -74,14 +99,29 @@
       "label": "2026–27 KSHEC window"
     },
     "eligibility": {
-      "domicile_states": ["Kerala"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Kerala"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": 175000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["ug", "pg"],
+      "course_levels": [
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": 50,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -108,10 +148,14 @@
       ]
     },
     "official_url": "https://hes.kerala.gov.in",
-    "last_verified": "2026-09-28",
-    "verification_status": "pending_review",
-    "tags": ["kerala", "merit-cum-means", "kshec"],
-    "notes": "Window and caps notified each academic year."
+    "last_verified": "2026-10-15",
+    "verification_status": "verified",
+    "tags": [
+      "kerala",
+      "merit-cum-means",
+      "kshec"
+    ],
+    "notes": "31 October 2026 confirmed for the central-sector scholarship routed through the Directorate of Collegiate Education."
   },
   {
     "id": "ch-muhammedkoya-kl",
@@ -128,17 +172,37 @@
     "deadline": {
       "date": "2026-11-30",
       "rolling": false,
-      "label": "2026–27 window"
+      "label": "C.H. Mohammed Koya Scholarship 2026–27 closes 30 Nov 2026"
     },
     "eligibility": {
-      "domicile_states": ["Kerala"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Kerala"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": 800000,
-      "genders": ["female"],
+      "genders": [
+        "female"
+      ],
       "minority_only": true,
-      "minority_communities": ["muslim", "christian", "sikh", "buddhist", "jain", "parsi"],
+      "minority_communities": [
+        "muslim",
+        "christian",
+        "sikh",
+        "buddhist",
+        "jain",
+        "parsi"
+      ],
       "disability_required": false,
-      "course_levels": ["higher_secondary", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": 50,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -165,10 +229,15 @@
       ]
     },
     "official_url": "https://www.collegiateedu.kerala.gov.in",
-    "last_verified": "2026-09-28",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["kerala", "girls", "minority", "muslim"],
-    "notes": ""
+    "tags": [
+      "kerala",
+      "girls",
+      "minority",
+      "muslim"
+    ],
+    "notes": "30 November 2026 confirmed; administered by the Directorate of Minority Welfare."
   },
   {
     "id": "kerala-suvarna-jubilee",
@@ -183,19 +252,34 @@
       "details": "Annual merit scholarship renewed on performance across the programme."
     },
     "deadline": {
-      "date": "2026-10-31",
+      "date": "2026-11-30",
       "rolling": false,
-      "label": "2026–27 window"
+      "label": "Suvarna Jubilee Merit Scholarship 2026–27 closes 30 Nov 2026"
     },
     "eligibility": {
-      "domicile_states": ["Kerala"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Kerala"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": 175000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["ug", "pg"],
+      "course_levels": [
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": 50,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -222,10 +306,14 @@
       ]
     },
     "official_url": "https://www.collegiateedu.kerala.gov.in",
-    "last_verified": "2026-09-28",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["kerala", "merit", "bpl"],
-    "notes": ""
+    "tags": [
+      "kerala",
+      "merit",
+      "bpl"
+    ],
+    "notes": "Deadline confirmed as 30 November 2026 (was 31 October)."
   },
   {
     "id": "vidya-samunnathi-kl",
@@ -245,14 +333,28 @@
       "label": "2026–27 KSWCFC window"
     },
     "eligibility": {
-      "domicile_states": ["Kerala"],
-      "categories": ["general"],
+      "domicile_states": [
+        "Kerala"
+      ],
+      "categories": [
+        "general"
+      ],
       "max_family_income": 200000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "ug", "pg", "diploma"],
+      "course_levels": [
+        "higher_secondary",
+        "ug",
+        "pg",
+        "diploma"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -279,9 +381,14 @@
       ]
     },
     "official_url": "https://kswcfc.org",
-    "last_verified": "2026-09-28",
+    "last_verified": "2026-10-15",
     "verification_status": "pending_review",
-    "tags": ["kerala", "forward-communities", "ews", "coaching"],
-    "notes": "Windows notified by the corporation each year."
+    "tags": [
+      "kerala",
+      "forward-communities",
+      "ews",
+      "coaching"
+    ],
+    "notes": "kswcfc.org resolves and carries the government UX4G accessibility widget, but its homepage currently renders placeholder content ('Add more content here…'), so the scheme could not be confirmed from the portal itself. The 2026-11-30 date is carried forward and unverified — contact the Kerala State Welfare Corporation directly before relying on it."
   }
 ]

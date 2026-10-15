@@ -11,10 +11,10 @@ Instead of *"Where can I find scholarships?"* — FeeFix answers
 **"Which schemes fit my profile, why do I qualify, and what should I do next?"**
 
 [![CI](https://github.com/authorsauravkushwaha/feefix-india/actions/workflows/ci.yml/badge.svg)](https://github.com/authorsauravkushwaha/feefix-india/actions)
-[![Tests](https://img.shields.io/badge/tests-151%20passing-brightgreen)](#-testing)
-[![Schemes](https://img.shields.io/badge/verified%20schemes-71-blue)](#-the-dataset)
+[![Tests](https://img.shields.io/badge/tests-323%20passing-brightgreen)](#-testing)
+[![Schemes](https://img.shields.io/badge/schemes-75%20·%2050%20verified-blue)](#-the-dataset)
 [![Languages](https://img.shields.io/badge/languages-en%20·%20বাংলা%20·%20हिन्दी%20·%20தமிழ்-orange)](#-four-languages-native-script)
-[![Security](https://img.shields.io/badge/security-PBKDF2%20·%20CSP%20·%20rate%20limit-critical)](docs/security/SECURITY.md)
+[![Security](https://img.shields.io/badge/security-hardened%20·%20152%20regression%20tests-critical)](docs/security/HARDENING.md)
 [![AI](https://img.shields.io/badge/AI-100%25%20free%20local%20%7C%20zero%20paid%20APIs-8b5cf6)](ai/README.md)
 [![Python](https://img.shields.io/badge/python-3.11+-3776ab?logo=python&logoColor=white)](#)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.1xx-009688?logo=fastapi&logoColor=white)](#)
@@ -29,8 +29,9 @@ guided questions and gets a personalised, *ranked* set of scholarships and fee
 waivers — **every match explained, every deadline tracked, every application
 nudged along**, with accounts that carry their data across devices.
 
-The dataset ships verified for **10 states + the North-East (Ishan Uday) +
-national schemes** — 71 records, machine-validated in CI.
+The dataset covers **10 states + the North-East (Ishan Uday) + national
+schemes** — 75 records, machine-validated in CI, re-audited against official
+portals on **2026-10-15**.
 
 ## 📲 Open the app on your phone
 
@@ -62,9 +63,9 @@ Wizard → explainable ranked matches → dashboard (tracker, reminders, sign-in
 | **Ranking** | `backend/matching_engine/ranker.py` | `45·clarity + urgency + benefit + verified`, deadline-aware, badges. |
 | **Free-local AI** | `ai/` | Semantic search + **grounded Q&A with citations** — answers assembled only from verified dataset fields (+ near-miss radar). In-process embeddings (`fastembed`/MiniLM or built-in sublinear-TF n-gram embedder). **No paid APIs, ever.** |
 | **ML outcome ranking (V2)** | `ml/ranking/` · `POST /api/events` · `GET /api/ml/rank` | Tracker buttons (`viewed/applied/approved/…`) stream outcome events with their V1 signal snapshots → tiny logistic model re-ranks matches (**⚡ ML preview** toggle, synthetic bootstrap until ≥25 real events). *Same signals V1 uses — no invented facts.* |
-| **Security & accounts** | `backend/services/auth.py` · `db.py` · `ratelimit.py` · `secure_headers.py` | PBKDF2-SHA256 passwords (600k rounds, per-user salt) · SHA-256-hashed revocable session tokens · sliding-window rate limits · CSP/HSTS/nosniff/no-store headers · CORS closed by default · append-only audit log · uniform login errors · **data export + right-to-erasure**. → [`docs/security/SECURITY.md`](docs/security/SECURITY.md) |
+| **Security & accounts** | `backend/services/auth.py` · `authz.py` · `security.py` · `input_guard.py` · `anti_replay.py` · `ratelimit.py` · `request_shield.py` · `uploads.py` · `secure_headers.py` | PBKDF2-SHA256 passwords (600k rounds, per-user salt) · SHA-256-hashed revocable session tokens with idle **and** absolute expiry · **write-once session ownership + per-handler authorisation** · anti-replay nonces on every mutation · linear-time input validation with hard length ceilings · 256 KB body cap · bounded rate-limiter/nonce/chat maps · separate per-IP KDF budget · CSP/HSTS/nosniff/no-store headers · CORS closed by default · append-only audit log · uniform login errors · **data export + right-to-erasure**. → [`docs/security/HARDENING.md`](docs/security/HARDENING.md) · [threat model](docs/security/SECURITY.md) |
 | **Storage** | `backend/services/sqlite_store.py` | **SQLite (WAL mode)** — ACID, crash-safe, indexed, FK-enforced, versioned migrations, legacy JSONL auto-import. Postgres swap = one module (documented). |
-| **Data & verification** | `data/` | 71 curated schemes as structured, validated records + per-record **verification manifest**; `agents/verify_dataset.py` gates CI. |
+| **Data & verification** | `data/` | 75 curated schemes as structured, validated records + per-record **verification manifest** with a confidence marker and a retirement ledger; `agents/verify_dataset.py` gates CI and reports the verified/pending split. |
 | **Reach layer** | `backend/services/chat.py` + `chat_i18n.py` | WhatsApp-style conversational matcher — *State → Course → Income → matches → free-text Q&A* — in **English, বাংলা, हिन्दी & தமிழ்** (native script detection, দেশি digits `২ লাখ`, Tamil `லட்சம்`, NFC-safe matching). |
 | **Agents** | `agents/` | Dataset verification agent (health audit + CI gate) · reminder scheduler (cron-friendly dispatcher). |
 | **Notifications** | `backend/notifications/` | Channel-agnostic reminders (console + WhatsApp outbox demo). |
@@ -100,7 +101,7 @@ flowchart LR
     users · sessions · profiles
     tracker · events · audit")]
     ME --> SC[("data/schemes
-    71 verified records")]
+    75 curated records")]
     AI --> SC
     ML --> DB
 ```
@@ -145,9 +146,19 @@ Unicode-NFC-safe keyword matching.
 
 ## 🗄 The dataset
 
-**71 verified schemes:** West Bengal · Bihar · Odisha · Uttar Pradesh ·
+**75 schemes:** West Bengal · Bihar · Odisha · Uttar Pradesh ·
 Maharashtra · Jharkhand · Tamil Nadu · Assam · Karnataka · Kerala ·
 North-East-wide Ishan Uday · national pool.
+
+Every record carries an explicit confidence marker rather than a blanket
+"verified" label: **50 `verified`** (a recent, scheme-specific official source
+confirms the current date and portal) and **25 `pending_review`** (sources
+conflict, the department has published nothing for 2026–27, or the date is
+carried forward from the previous cycle). The UI and the matcher treat those
+differently, and [`agents/verify_dataset.py`](agents/verify_dataset.py) reports
+both counts on every run. See the
+[2026-10-15 audit](docs/dataset/DATASET_SCHEMA.md#audit-2026-10-15) for what
+changed and why.
 
 Every record carries: official portal link · benefit + display string ·
 deadline or rolling flag · full eligibility DSL · documents · step-by-step
@@ -165,7 +176,7 @@ cd feefix-india
 ```
 
 ```bash
-./scripts/dev.sh --test                       # 151 tests
+./scripts/dev.sh --test                       # 323 tests
 .venv/bin/python -m agents.verify_dataset     # dataset health audit
 .venv/bin/python -m ml.experiments.simulate_outcomes   # V2 ranker demo
 ```
@@ -183,9 +194,10 @@ Export or erase your data anytime (`docs/api/API.md` → Accounts).
 |---|---|
 | `test_matching_engine` | rules, explanations, near-misses |
 | `test_ranking` | scoring, deadlines, badges, determinism |
-| `test_dataset` | 71-record integrity + per-state match scenarios |
+| `test_dataset` | 75-record integrity, manifest coverage + per-state match scenarios |
 | `test_api` · `test_ml_api` | REST contract, events, V2 compare endpoint |
 | `test_auth` | register/login, token revocation, ownership 403s, rate limits, headers, export/erase, **no-plaintext-DB proof** |
+| `test_security` | **155 regression tests, one named per attack prevented** — replay, IDOR, session hijack, OTP disclosure, ReDoS, injection, upload forgery, secret management, DoS ceilings, headers, enumeration |
 | `test_chat` · `test_i18n_rules` | 4-language parsing + full conversations + localized explanations |
 | `test_ai` · `test_agents` | grounding, search rankings, verifier, scheduler |
 
@@ -204,7 +216,7 @@ feefix-india/
 ├── ai/                      # FREE-ONLY AI: lexicon · embeddings · search · grounded Q&A
 ├── agents/                  # dataset verification agent · reminder scheduler agent
 ├── data/
-│   ├── schemes/             # 10 state files + national incl. NER Ishan Uday (71 schemes)
+│   ├── schemes/             # 10 state files + national incl. NER Ishan Uday (75 schemes)
 │   ├── eligibility_rules/   # the rule DSL documentation
 │   └── verification/        # verification manifest
 ├── docs/                    # architecture · API · security · deploy · dataset schema
@@ -214,7 +226,7 @@ feefix-india/
 ├── language/regional_support/  # en/bn/hi/ta dictionaries + explanation templates
 ├── .github/workflows/       # CI: tests + agents + ML sanity (free for public repos)
 ├── scripts/dev.sh           # one-command dev bootstrap
-└── tests/                   # 151 tests
+└── tests/                   # 323 tests
 ```
 
 ## 🗺 Roadmap
@@ -238,8 +250,11 @@ documents the verification workflow.
 ## 🤝 Contributing
 
 Adding a state is a *data* contribution, not a code one — see
-[`CONTRIBUTING.md`](CONTRIBUTING.md). Security issues: please use
-[`docs/security/SECURITY.md`](docs/security/SECURITY.md) (private advisory, not public issues).
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+**Security issues: please use a [private advisory](SECURITY.md), not a public issue.**
+Dataset contributions reach student browsers, so a payload in a scheme URL is treated as a
+security finding, not a data-quality one.
 
 ## 📄 License
 

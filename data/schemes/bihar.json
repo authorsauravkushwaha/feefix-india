@@ -12,24 +12,45 @@
       "details": "DBT into an Aadhaar-seeded account after institute + district verification."
     },
     "deadline": {
-      "date": "2026-12-31",
+      "date": "2026-09-30",
       "rolling": false,
-      "label": "Academic session 2026–27"
+      "label": "Bihar PMS 2026–27 CLOSED on 30 Sep 2026 (window was 15 Jul – 30 Sep)"
     },
     "eligibility": {
-      "domicile_states": ["Bihar"],
-      "categories": ["sc", "st"],
+      "domicile_states": [
+        "Bihar"
+      ],
+      "categories": [
+        "sc",
+        "st"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
         "Caste certificate issued by a competent Bihar authority required",
-        "Only one state scholarship may be availed at a time"
+        "Only one state scholarship may be availed at a time",
+        "An NSP One Time Registration (OTR) number is now required before the state portal will accept the application — generate it on scholarships.gov.in using Aadhaar first, it is not instant",
+        "Income certificate must be dated on or after 1 April 2026",
+        "Aadhaar seeding of the bank account is mandatory — the application cannot be finalised without it",
+        "At most three defect corrections, each re-finalised within 15 days"
       ]
     },
     "documents": [
@@ -43,7 +64,7 @@
     "application": {
       "mode": "online",
       "portal": "Bihar PMS Online Portal",
-      "url": "https://pmsonline.bih.nic.in",
+      "url": "https://scstpmsonline.bihar.gov.in",
       "steps": [
         "Register on pmsonline.bih.nic.in",
         "Fill academic details and upload caste + income certificates",
@@ -51,11 +72,17 @@
         "District/scrutiny approval, then DBT"
       ]
     },
-    "official_url": "https://pmsonline.bih.nic.in",
-    "last_verified": "2026-09-18",
+    "official_url": "https://scstpmsonline.bihar.gov.in",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["bihar", "sc", "st", "post-matric", "pms"],
-    "notes": "Portal URLs and cycles shift between years; PMS portal link may redirect."
+    "tags": [
+      "bihar",
+      "sc",
+      "st",
+      "post-matric",
+      "pms"
+    ],
+    "notes": "PORTAL CHANGE: SC/ST post-matric applications now run on scstpmsonline.bihar.gov.in, separately from the BC/EBC portal. The 2026–27 window was 15 July to 30 September 2026, extended from an original 15 September close. New for this cycle: an NSP OTR number is required to register, the income certificate must be dated on or after 1 April 2026, academic documents must fall between 1 April 2026 and 31 March 2027, Aadhaar-bank seeding is mandatory before the form can be finalised, and a student gets at most three defect corrections, each within 15 days."
   },
   {
     "id": "bihar-pms-obc",
@@ -70,24 +97,43 @@
       "details": "Course-wise maintenance allowance; hosteller rates higher."
     },
     "deadline": {
-      "date": "2026-12-31",
+      "date": "2026-09-30",
       "rolling": false,
-      "label": "Academic session 2026–27"
+      "label": "Bihar PMS 2026–27 CLOSED on 30 Sep 2026 (window was 15 Jul – 30 Sep)"
     },
     "eligibility": {
-      "domicile_states": ["Bihar"],
-      "categories": ["obc"],
+      "domicile_states": [
+        "Bihar"
+      ],
+      "categories": [
+        "obc"
+      ],
       "max_family_income": 300000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
         "BC (OBC-B type) or EBC certificate of Bihar required",
-        "Income cap has been revised upward in recent orders (₹3 lakh) — re-verify current order"
+        "Income cap has been revised upward in recent orders (₹3 lakh) — re-verify current order",
+        "An NSP One Time Registration (OTR) number is now required before the state portal will accept the application — generate it on scholarships.gov.in using Aadhaar first, it is not instant",
+        "Income certificate must be dated on or after 1 April 2026",
+        "Aadhaar seeding of the bank account is mandatory"
       ]
     },
     "documents": [
@@ -100,7 +146,7 @@
     "application": {
       "mode": "online",
       "portal": "Bihar PMS Online Portal",
-      "url": "https://pmsonline.bih.nic.in",
+      "url": "https://pmsonline.bihar.gov.in",
       "steps": [
         "Register on the PMS portal",
         "Upload caste and income proofs",
@@ -108,11 +154,16 @@
         "Track DBT credit"
       ]
     },
-    "official_url": "https://pmsonline.bih.nic.in",
-    "last_verified": "2026-09-18",
-    "verification_status": "pending_review",
-    "tags": ["bihar", "obc", "ebc", "post-matric"],
-    "notes": "Income ceiling was revised in recent cycles; flagged for order-level re-verification."
+    "official_url": "https://pmsonline.bihar.gov.in",
+    "last_verified": "2026-10-15",
+    "verification_status": "verified",
+    "tags": [
+      "bihar",
+      "obc",
+      "ebc",
+      "post-matric"
+    ],
+    "notes": "PORTAL CHANGE: BC/EBC post-matric applications run on pmsonline.bihar.gov.in. The legacy pmsonline.bih.nic.in address is still referenced by older guides. Window was 15 July to 30 September 2026. Same new prerequisites as the SC/ST portal: NSP OTR, income certificate dated on/after 1 April 2026, and mandatory Aadhaar-bank seeding."
   },
   {
     "id": "mku-medhavi-chhatra-br",
@@ -132,14 +183,26 @@
       "label": "Rolling — batches processed periodically"
     },
     "eligibility": {
-      "domicile_states": ["Bihar"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Bihar"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": null,
-      "genders": ["female"],
+      "genders": [
+        "female"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["ug", "pg"],
+      "course_levels": [
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -169,7 +232,12 @@
     "official_url": "https://medhasoft.bih.nic.in",
     "last_verified": "2026-09-15",
     "verification_status": "verified",
-    "tags": ["bihar", "girls", "graduation", "protsahan"],
+    "tags": [
+      "bihar",
+      "girls",
+      "graduation",
+      "protsahan"
+    ],
     "notes": ""
   },
   {
@@ -190,14 +258,31 @@
       "label": "Rolling — apply through DRCC any time"
     },
     "eligibility": {
-      "domicile_states": ["Bihar"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Bihar"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": null,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["iti", "diploma", "ug", "pg"],
+      "course_levels": [
+        "iti",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -228,7 +313,12 @@
     "official_url": "https://www.7nishchay-yuvaupmission.bihar.gov.in",
     "last_verified": "2026-09-15",
     "verification_status": "verified",
-    "tags": ["bihar", "loan", "credit-card", "higher-education"],
+    "tags": [
+      "bihar",
+      "loan",
+      "credit-card",
+      "higher-education"
+    ],
     "notes": "Modelled as a grant-type record (it is a government-guaranteed *loan*, not a scholarship) — the display string clarifies terms."
   },
   {
@@ -249,14 +339,29 @@
       "label": "Rolling after BSEB Inter results"
     },
     "eligibility": {
-      "domicile_states": ["Bihar"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Bihar"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": null,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "ug"],
+      "course_levels": [
+        "higher_secondary",
+        "ug"
+      ],
       "min_marks_percent": 45,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -285,7 +390,12 @@
     "official_url": "https://medhasoft.bih.nic.in",
     "last_verified": "2026-09-15",
     "verification_status": "verified",
-    "tags": ["bihar", "protsahan", "class-12", "incentive"],
+    "tags": [
+      "bihar",
+      "protsahan",
+      "class-12",
+      "incentive"
+    ],
     "notes": ""
   },
   {
@@ -306,14 +416,26 @@
       "label": "Rolling after Class XII results"
     },
     "eligibility": {
-      "domicile_states": ["Bihar"],
-      "categories": ["obc"],
+      "domicile_states": [
+        "Bihar"
+      ],
+      "categories": [
+        "obc"
+      ],
       "max_family_income": null,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "ug"],
+      "course_levels": [
+        "higher_secondary",
+        "ug"
+      ],
       "min_marks_percent": 60,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -342,7 +464,13 @@
     "official_url": "https://medhasoft.bih.nic.in",
     "last_verified": "2026-09-15",
     "verification_status": "pending_review",
-    "tags": ["bihar", "obc", "ebc", "merit", "incentive"],
+    "tags": [
+      "bihar",
+      "obc",
+      "ebc",
+      "merit",
+      "incentive"
+    ],
     "notes": "Income-bar presence varies by notification cycle — re-verify when the current order publishes."
   }
 ]

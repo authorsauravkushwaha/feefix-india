@@ -12,19 +12,35 @@
       "details": "Course-group-wise maintenance allowance plus enrolment/tuition/examination fee support via DBT."
     },
     "deadline": {
-      "date": "2026-11-30",
+      "date": "2026-09-30",
       "rolling": false,
-      "label": "2026–27 MahaDBT window"
+      "label": "MahaDBT 2026–27 CLOSED on 30 Sep 2026 (window was 1 Jun – 30 Sep)"
     },
     "eligibility": {
-      "domicile_states": ["Maharashtra"],
-      "categories": ["sc"],
+      "domicile_states": [
+        "Maharashtra"
+      ],
+      "categories": [
+        "sc"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -43,7 +59,7 @@
     "application": {
       "mode": "online",
       "portal": "MahaDBT",
-      "url": "https://mahadbt.maharashtra.gov.in",
+      "url": "https://mahadbt2.maharashtra.gov.in",
       "steps": [
         "Aadhaar-authenticated registration on MahaDBT",
         "Select the SC post-matric scheme and fill institution details",
@@ -51,11 +67,16 @@
         "Institute → department scrutiny → DBT"
       ]
     },
-    "official_url": "https://mahadbt.maharashtra.gov.in",
-    "last_verified": "2026-09-28",
+    "official_url": "https://mahadbt2.maharashtra.gov.in",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["maharashtra", "sc", "mahadbt", "post-matric"],
-    "notes": ""
+    "tags": [
+      "maharashtra",
+      "sc",
+      "mahadbt",
+      "post-matric"
+    ],
+    "notes": "TWO CORRECTIONS. (1) The window closed on 30 September 2026 — it ran 1 June to 30 September and no extension was announced, so the 30 November date previously shown here was never published. (2) The portal moved to MahaDBT 2.0 at mahadbt2.maharashtra.gov.in (previously the Aaple Sarkar portal); mahadbt.maharashtra.gov.in is the legacy address. Eight state departments administer post-matric awards through it. Maharashtra domicile is required. Expect the next cycle to open around 1 June 2027."
   },
   {
     "id": "mahadbt-postmatric-obc",
@@ -70,19 +91,34 @@
       "details": "Group-wise non-refundable maintenance and non-refundable fee components, DBT-credited."
     },
     "deadline": {
-      "date": "2026-11-30",
+      "date": "2026-09-30",
       "rolling": false,
-      "label": "2026–27 MahaDBT window"
+      "label": "MahaDBT 2026–27 CLOSED on 30 Sep 2026 (window was 1 Jun – 30 Sep)"
     },
     "eligibility": {
-      "domicile_states": ["Maharashtra"],
-      "categories": ["obc"],
+      "domicile_states": [
+        "Maharashtra"
+      ],
+      "categories": [
+        "obc"
+      ],
       "max_family_income": 150000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -100,7 +136,7 @@
     "application": {
       "mode": "online",
       "portal": "MahaDBT",
-      "url": "https://mahadbt.maharashtra.gov.in",
+      "url": "https://mahadbt2.maharashtra.gov.in",
       "steps": [
         "Register on MahaDBT",
         "Choose the OBC post-matric scheme",
@@ -108,11 +144,16 @@
         "Institute verification → DBT"
       ]
     },
-    "official_url": "https://mahadbt.maharashtra.gov.in",
-    "last_verified": "2026-09-28",
-    "verification_status": "pending_review",
-    "tags": ["maharashtra", "obc", "mahadbt", "post-matric"],
-    "notes": "OBC income slab moves with government resolutions — flagged for re-verification."
+    "official_url": "https://mahadbt2.maharashtra.gov.in",
+    "last_verified": "2026-10-15",
+    "verification_status": "verified",
+    "tags": [
+      "maharashtra",
+      "obc",
+      "mahadbt",
+      "post-matric"
+    ],
+    "notes": "TWO CORRECTIONS. (1) The window closed on 30 September 2026 — it ran 1 June to 30 September and no extension was announced, so the 30 November date previously shown here was never published. (2) The portal moved to MahaDBT 2.0 at mahadbt2.maharashtra.gov.in (previously the Aaple Sarkar portal); mahadbt.maharashtra.gov.in is the legacy address. Eight state departments administer post-matric awards through it. Maharashtra domicile is required. Expect the next cycle to open around 1 June 2027."
   },
   {
     "id": "mahadbt-postmatric-vjnt",
@@ -127,19 +168,34 @@
       "details": "Maintenance allowance plus tuition/exam fee support under VJNT scheme lines."
     },
     "deadline": {
-      "date": "2026-11-30",
+      "date": "2026-09-30",
       "rolling": false,
-      "label": "2026–27 MahaDBT window"
+      "label": "MahaDBT 2026–27 CLOSED on 30 Sep 2026 (window was 1 Jun – 30 Sep)"
     },
     "eligibility": {
-      "domicile_states": ["Maharashtra"],
-      "categories": ["obc"],
+      "domicile_states": [
+        "Maharashtra"
+      ],
+      "categories": [
+        "obc"
+      ],
       "max_family_income": 150000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -157,7 +213,7 @@
     "application": {
       "mode": "online",
       "portal": "MahaDBT",
-      "url": "https://mahadbt.maharashtra.gov.in",
+      "url": "https://mahadbt2.maharashtra.gov.in",
       "steps": [
         "Register on MahaDBT",
         "Choose the VJNT/SBC line",
@@ -165,11 +221,16 @@
         "Institute verification → DBT"
       ]
     },
-    "official_url": "https://mahadbt.maharashtra.gov.in",
-    "last_verified": "2026-09-28",
-    "verification_status": "pending_review",
-    "tags": ["maharashtra", "vjnt", "sbc", "mahadbt"],
-    "notes": "Modelled on the OBC category slot — the VJNT nuance lives in special_conditions."
+    "official_url": "https://mahadbt2.maharashtra.gov.in",
+    "last_verified": "2026-10-15",
+    "verification_status": "verified",
+    "tags": [
+      "maharashtra",
+      "vjnt",
+      "sbc",
+      "mahadbt"
+    ],
+    "notes": "TWO CORRECTIONS. (1) The window closed on 30 September 2026 — it ran 1 June to 30 September and no extension was announced, so the 30 November date previously shown here was never published. (2) The portal moved to MahaDBT 2.0 at mahadbt2.maharashtra.gov.in (previously the Aaple Sarkar portal); mahadbt.maharashtra.gov.in is the legacy address. Eight state departments administer post-matric awards through it. Maharashtra domicile is required. Expect the next cycle to open around 1 June 2027."
   },
   {
     "id": "mahadbt-ebc-shahu",
@@ -184,19 +245,32 @@
       "details": "Reimbursement of half the tuition + examination fees for EBC students in professional/technical courses."
     },
     "deadline": {
-      "date": "2027-01-31",
+      "date": "2026-09-30",
       "rolling": false,
-      "label": "2026–27 AY window"
+      "label": "MahaDBT 2026–27 CLOSED on 30 Sep 2026 (window was 1 Jun – 30 Sep)"
     },
     "eligibility": {
-      "domicile_states": ["Maharashtra"],
-      "categories": ["general"],
+      "domicile_states": [
+        "Maharashtra"
+      ],
+      "categories": [
+        "general"
+      ],
       "max_family_income": 800000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["diploma", "ug", "pg"],
+      "course_levels": [
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -216,7 +290,7 @@
     "application": {
       "mode": "online",
       "portal": "MahaDBT",
-      "url": "https://mahadbt.maharashtra.gov.in",
+      "url": "https://mahadbt2.maharashtra.gov.in",
       "steps": [
         "Register on MahaDBT after CAP admission",
         "Apply under the Shahu Maharaj EBC scheme",
@@ -224,11 +298,17 @@
         "Institute confirmation → reimbursement"
       ]
     },
-    "official_url": "https://mahadbt.maharashtra.gov.in",
-    "last_verified": "2026-09-28",
+    "official_url": "https://mahadbt2.maharashtra.gov.in",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["maharashtra", "ebc", "fee-reimbursement", "professional-courses", "mahadbt"],
-    "notes": ""
+    "tags": [
+      "maharashtra",
+      "ebc",
+      "fee-reimbursement",
+      "professional-courses",
+      "mahadbt"
+    ],
+    "notes": "TWO CORRECTIONS. (1) The window closed on 30 September 2026 — it ran 1 June to 30 September and no extension was announced, so the 30 November date previously shown here was never published. (2) The portal moved to MahaDBT 2.0 at mahadbt2.maharashtra.gov.in (previously the Aaple Sarkar portal); mahadbt.maharashtra.gov.in is the legacy address. Eight state departments administer post-matric awards through it. Maharashtra domicile is required. Expect the next cycle to open around 1 June 2027."
   },
   {
     "id": "mahadbt-freeship-sc",
@@ -243,19 +323,33 @@
       "details": "Course fee waived for eligible SC students studying post-matric courses in Maharashtra."
     },
     "deadline": {
-      "date": "2026-11-30",
+      "date": "2026-09-30",
       "rolling": false,
-      "label": "2026–27 MahaDBT window"
+      "label": "MahaDBT 2026–27 CLOSED on 30 Sep 2026 (window was 1 Jun – 30 Sep)"
     },
     "eligibility": {
-      "domicile_states": ["Maharashtra"],
-      "categories": ["sc"],
+      "domicile_states": [
+        "Maharashtra"
+      ],
+      "categories": [
+        "sc"
+      ],
       "max_family_income": null,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "diploma", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -274,7 +368,7 @@
     "application": {
       "mode": "online",
       "portal": "MahaDBT",
-      "url": "https://mahadbt.maharashtra.gov.in",
+      "url": "https://mahadbt2.maharashtra.gov.in",
       "steps": [
         "Register on MahaDBT",
         "Choose the SC freeship scheme",
@@ -282,11 +376,16 @@
         "Institute verification → fee adjustment"
       ]
     },
-    "official_url": "https://mahadbt.maharashtra.gov.in",
-    "last_verified": "2026-09-28",
+    "official_url": "https://mahadbt2.maharashtra.gov.in",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["maharashtra", "sc", "freeship", "mahadbt"],
-    "notes": ""
+    "tags": [
+      "maharashtra",
+      "sc",
+      "freeship",
+      "mahadbt"
+    ],
+    "notes": "TWO CORRECTIONS. (1) The window closed on 30 September 2026 — it ran 1 June to 30 September and no extension was announced, so the 30 November date previously shown here was never published. (2) The portal moved to MahaDBT 2.0 at mahadbt2.maharashtra.gov.in (previously the Aaple Sarkar portal); mahadbt.maharashtra.gov.in is the legacy address. Eight state departments administer post-matric awards through it. Maharashtra domicile is required. Expect the next cycle to open around 1 June 2027."
   },
   {
     "id": "mahadbt-postmatric-st",
@@ -301,19 +400,35 @@
       "details": "Tribal-department scheme lines with group-wise maintenance; hosteller rates higher."
     },
     "deadline": {
-      "date": "2026-11-30",
+      "date": "2026-09-30",
       "rolling": false,
-      "label": "2026–27 MahaDBT window"
+      "label": "MahaDBT 2026–27 CLOSED on 30 Sep 2026 (window was 1 Jun – 30 Sep)"
     },
     "eligibility": {
-      "domicile_states": ["Maharashtra"],
-      "categories": ["st"],
+      "domicile_states": [
+        "Maharashtra"
+      ],
+      "categories": [
+        "st"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -331,7 +446,7 @@
     "application": {
       "mode": "online",
       "portal": "MahaDBT",
-      "url": "https://mahadbt.maharashtra.gov.in",
+      "url": "https://mahadbt2.maharashtra.gov.in",
       "steps": [
         "Register on MahaDBT",
         "Choose the ST post-matric scheme (tribal dept.)",
@@ -339,10 +454,15 @@
         "Institute verification → DBT"
       ]
     },
-    "official_url": "https://mahadbt.maharashtra.gov.in",
-    "last_verified": "2026-09-28",
+    "official_url": "https://mahadbt2.maharashtra.gov.in",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["maharashtra", "st", "tribal", "mahadbt"],
-    "notes": ""
+    "tags": [
+      "maharashtra",
+      "st",
+      "tribal",
+      "mahadbt"
+    ],
+    "notes": "TWO CORRECTIONS. (1) The window closed on 30 September 2026 — it ran 1 June to 30 September and no extension was announced, so the 30 November date previously shown here was never published. (2) The portal moved to MahaDBT 2.0 at mahadbt2.maharashtra.gov.in (previously the Aaple Sarkar portal); mahadbt.maharashtra.gov.in is the legacy address. Eight state departments administer post-matric awards through it. Maharashtra domicile is required. Expect the next cycle to open around 1 June 2027."
   }
 ]

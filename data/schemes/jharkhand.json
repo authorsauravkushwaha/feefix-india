@@ -12,25 +12,44 @@
       "details": "Maintenance allowance phased by course group; hostellers and professional-course students get higher slabs."
     },
     "deadline": {
-      "date": "2026-12-31",
+      "date": "2026-11-20",
       "rolling": false,
-      "label": "2026–27 e-Kalyan window"
+      "label": "e-Kalyan 2026–27 student application closes 20 Nov 2026"
     },
     "eligibility": {
-      "domicile_states": ["Jharkhand"],
-      "categories": ["sc", "st"],
+      "domicile_states": [
+        "Jharkhand"
+      ],
+      "categories": [
+        "sc",
+        "st"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
         "Caste certificate issued in Jharkhand",
         "Institution must be registered on the e-Kalyan portal",
-        "Applications from outside-state institutions go through the same portal"
+        "Applications from outside-state institutions go through the same portal",
+        "An NSP One Time Registration (OTR) number is now required before the state portal will accept the application — generate it on scholarships.gov.in using Aadhaar first, it is not instant",
+        "Your institute must have completed its own e-Kalyan registration (closed 25 Sep 2026) or it cannot verify your application"
       ]
     },
     "documents": [
@@ -53,10 +72,16 @@
       ]
     },
     "official_url": "https://ekalyan.cgg.gov.in",
-    "last_verified": "2026-09-28",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["jharkhand", "sc", "st", "ekalyan", "post-matric"],
-    "notes": ""
+    "tags": [
+      "jharkhand",
+      "sc",
+      "st",
+      "ekalyan",
+      "post-matric"
+    ],
+    "notes": "Window is 25 August to 20 November 2026 for students; institute registration ran 25 August to 25 September 2026, so an institute that missed its own registration cannot verify your form. Portal ekalyan.cgg.gov.in is confirmed correct. Income ceiling ₹2,50,000 for ST/SC/BC. Helpdesk 1800-599-1289, +91-8409588101, +91-7258010024 (Mon–Fri 11:00–16:00)."
   },
   {
     "id": "jharkhand-ekalyan-obc",
@@ -71,24 +96,40 @@
       "details": "Maintenance allowance by course group, DBT-credited after verification."
     },
     "deadline": {
-      "date": "2026-12-31",
+      "date": "2026-11-20",
       "rolling": false,
-      "label": "2026–27 e-Kalyan window"
+      "label": "e-Kalyan 2026–27 student application closes 20 Nov 2026"
     },
     "eligibility": {
-      "domicile_states": ["Jharkhand"],
-      "categories": ["obc"],
+      "domicile_states": [
+        "Jharkhand"
+      ],
+      "categories": [
+        "obc"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
         "OBC (BC-I / BC-II) certificate of Jharkhand",
-        "Notified income ceiling for OBC has been revised repeatedly — re-verify the current order"
+        "Notified income ceiling for OBC has been revised repeatedly — re-verify the current order",
+        "An NSP One Time Registration (OTR) number is now required before the state portal will accept the application — generate it on scholarships.gov.in using Aadhaar first, it is not instant"
       ]
     },
     "documents": [
@@ -110,10 +151,15 @@
       ]
     },
     "official_url": "https://ekalyan.cgg.gov.in",
-    "last_verified": "2026-09-28",
-    "verification_status": "pending_review",
-    "tags": ["jharkhand", "obc", "ekalyan", "post-matric"],
-    "notes": "OBC income ceiling has shifted between cycles (₹1.5L → ₹2.5L in recent orders) — flagged for re-verification."
+    "last_verified": "2026-10-15",
+    "verification_status": "verified",
+    "tags": [
+      "jharkhand",
+      "obc",
+      "ekalyan",
+      "post-matric"
+    ],
+    "notes": "Same e-Kalyan window as the SC/ST component: 25 Aug – 20 Nov 2026."
   },
   {
     "id": "jharkhand-ekalyan-minority",
@@ -128,24 +174,50 @@
       "details": "Maintenance allowance by course group, DBT-credited."
     },
     "deadline": {
-      "date": "2026-12-31",
+      "date": "2026-11-20",
       "rolling": false,
-      "label": "2026–27 e-Kalyan window"
+      "label": "e-Kalyan 2026–27 student application closes 20 Nov 2026"
     },
     "eligibility": {
-      "domicile_states": ["Jharkhand"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Jharkhand"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": true,
-      "minority_communities": ["muslim", "christian", "sikh", "buddhist", "jain", "parsi"],
+      "minority_communities": [
+        "muslim",
+        "christian",
+        "sikh",
+        "buddhist",
+        "jain",
+        "parsi"
+      ],
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
         "Minority-community certificate/declaration",
-        "Jharkhand domicile; institute registered on e-Kalyan"
+        "Jharkhand domicile; institute registered on e-Kalyan",
+        "An NSP One Time Registration (OTR) number is now required before the state portal will accept the application — generate it on scholarships.gov.in using Aadhaar first, it is not instant"
       ]
     },
     "documents": [
@@ -167,10 +239,15 @@
       ]
     },
     "official_url": "https://ekalyan.cgg.gov.in",
-    "last_verified": "2026-09-28",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["jharkhand", "minority", "ekalyan", "muslim"],
-    "notes": ""
+    "tags": [
+      "jharkhand",
+      "minority",
+      "ekalyan",
+      "muslim"
+    ],
+    "notes": "Same e-Kalyan window: 25 Aug – 20 Nov 2026."
   },
   {
     "id": "marang-gomke-munda-jh",
@@ -190,14 +267,27 @@
       "label": "Annual selection cycle"
     },
     "eligibility": {
-      "domicile_states": ["Jharkhand"],
-      "categories": ["sc", "st"],
+      "domicile_states": [
+        "Jharkhand"
+      ],
+      "categories": [
+        "sc",
+        "st"
+      ],
       "max_family_income": 1200000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["pg", "phd"],
+      "course_levels": [
+        "pg",
+        "phd"
+      ],
       "min_marks_percent": 55,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -226,10 +316,16 @@
       ]
     },
     "official_url": "https://ekalyan.cgg.gov.in",
-    "last_verified": "2026-09-28",
+    "last_verified": "2026-10-15",
     "verification_status": "pending_review",
-    "tags": ["jharkhand", "st", "overseas", "prestigious", "transnational"],
-    "notes": "Small cohort, selection-based; guidelines refined each cycle."
+    "tags": [
+      "jharkhand",
+      "st",
+      "overseas",
+      "prestigious",
+      "transnational"
+    ],
+    "notes": "Could not be confirmed against a 2026–27 notification in this review pass. It is administered separately from the e-Kalyan post-matric schedule (which runs to 20 Nov 2026), so the 2027-03-31 date shown here is carried forward from the previous cycle and should be treated as unverified. Check ekalyan.cgg.gov.in or the Jharkhand Tribal Welfare Department before relying on it."
   },
   {
     "id": "jharkhand-ekalyan-outside",
@@ -244,25 +340,41 @@
       "details": "Maintenance + fee components scaled to the institute category."
     },
     "deadline": {
-      "date": "2026-12-31",
+      "date": "2026-11-20",
       "rolling": false,
-      "label": "2026–27 e-Kalyan window"
+      "label": "e-Kalyan 2026–27 (outside state) closes 20 Nov 2026"
     },
     "eligibility": {
-      "domicile_states": ["Jharkhand"],
-      "categories": ["sc", "st", "obc"],
+      "domicile_states": [
+        "Jharkhand"
+      ],
+      "categories": [
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["diploma", "ug", "pg"],
+      "course_levels": [
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
         "Institution must be on the outside-state approved list",
         "Jharkhand domicile + caste certificate from Jharkhand",
-        "Fee receipts and hostel certificates from the outside institution"
+        "Fee receipts and hostel certificates from the outside institution",
+        "An NSP One Time Registration (OTR) number is now required before the state portal will accept the application — generate it on scholarships.gov.in using Aadhaar first, it is not instant"
       ]
     },
     "documents": [
@@ -284,9 +396,13 @@
       ]
     },
     "official_url": "https://ekalyan.cgg.gov.in",
-    "last_verified": "2026-09-28",
-    "verification_status": "pending_review",
-    "tags": ["jharkhand", "outside-state", "ekalyan"],
-    "notes": "Approved-institute list is refreshed annually."
+    "last_verified": "2026-10-15",
+    "verification_status": "verified",
+    "tags": [
+      "jharkhand",
+      "outside-state",
+      "ekalyan"
+    ],
+    "notes": "The 'outside state' component follows the same e-Kalyan window, 25 Aug – 20 Nov 2026. Jharkhand domicile students studying elsewhere in India apply here rather than in the within-state component."
   }
 ]

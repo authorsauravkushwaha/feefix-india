@@ -12,19 +12,36 @@
       "details": "Course-group-wise maintenance plus special/exam fee reimbursement; SCC students also covered."
     },
     "deadline": {
-      "date": "2026-12-31",
+      "date": "2026-11-30",
       "rolling": false,
-      "label": "2026–27 cycle"
+      "label": "TN Post-Matric SC/ST 2026–27 closes 30 Nov 2026"
     },
     "eligibility": {
-      "domicile_states": ["Tamil Nadu"],
-      "categories": ["sc", "st"],
+      "domicile_states": [
+        "Tamil Nadu"
+      ],
+      "categories": [
+        "sc",
+        "st"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -43,7 +60,7 @@
     "application": {
       "mode": "hybrid",
       "portal": "Institution / ADTW portal",
-      "url": "https://tnscholarships.tn.gov.in",
+      "url": "https://umis.tn.gov.in",
       "steps": [
         "Apply through the institution's scholarship nodal officer",
         "Fill TN scholarship portal entry",
@@ -51,11 +68,16 @@
         "DBT disbursement"
       ]
     },
-    "official_url": "https://tnscholarships.tn.gov.in",
-    "last_verified": "2026-09-28",
-    "verification_status": "verified",
-    "tags": ["tamil-nadu", "sc", "st", "post-matric"],
-    "notes": ""
+    "official_url": "https://umis.tn.gov.in",
+    "last_verified": "2026-10-15",
+    "verification_status": "pending_review",
+    "tags": [
+      "tamil-nadu",
+      "sc",
+      "st",
+      "post-matric"
+    ],
+    "notes": "PORTAL CHANGE: Tamil Nadu scholarship applications now run through the Unified State Scholarship Portal (UMIS) at umis.tn.gov.in, administered via the department pages at bcw.tn.gov.in. The legacy tnscholarships.tn.gov.in address was previously recorded here. Deadline 30 November 2026 comes from a scheme listing retrieved 2026-10-01; marked pending_review because a second source checked in October 2026 reported the 2026–27 window as 'not yet notified' on the department page. Confirm on UMIS before relying on the date. SC/ST post-matric is administered by the Adi Dravidar and Tribal Welfare Department."
   },
   {
     "id": "tn-bcmbc-postmatric",
@@ -70,19 +92,34 @@
       "details": "Maintenance + special fee components; government hostel students get board support in addition."
     },
     "deadline": {
-      "date": "2026-12-31",
+      "date": "2026-11-30",
       "rolling": false,
-      "label": "2026–27 cycle"
+      "label": "TN BC/MBC/DNC Post-Matric 2026–27 closes 30 Nov 2026"
     },
     "eligibility": {
-      "domicile_states": ["Tamil Nadu"],
-      "categories": ["obc"],
+      "domicile_states": [
+        "Tamil Nadu"
+      ],
+      "categories": [
+        "obc"
+      ],
       "max_family_income": 200000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -99,18 +136,23 @@
     "application": {
       "mode": "hybrid",
       "portal": "Institution / BC Welfare portal",
-      "url": "https://tnscholarships.tn.gov.in",
+      "url": "https://umis.tn.gov.in",
       "steps": [
         "Apply through the institution",
         "District BCW office verification",
         "DBT disbursement"
       ]
     },
-    "official_url": "https://tnscholarships.tn.gov.in",
-    "last_verified": "2026-09-28",
+    "official_url": "https://umis.tn.gov.in",
+    "last_verified": "2026-10-15",
     "verification_status": "pending_review",
-    "tags": ["tamil-nadu", "obc", "mbc", "post-matric"],
-    "notes": "Income ceiling varies by G.O. — flagged for re-verification."
+    "tags": [
+      "tamil-nadu",
+      "obc",
+      "mbc",
+      "post-matric"
+    ],
+    "notes": "Same UMIS portal change as the SC/ST record. Two sources disagree on the income ceiling for BC/MBC/DNC post-matric (₹2,00,000 in one, ₹2,50,000 in another) and one reports the 2026–27 window as not yet notified, so this is pending_review rather than verified. BC/MBC/DNC students may also apply through the National Scholarship Portal."
   },
   {
     "id": "tn-first-graduate",
@@ -130,14 +172,30 @@
       "label": "Applied during counselling/admission"
     },
     "eligibility": {
-      "domicile_states": ["Tamil Nadu"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Tamil Nadu"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": null,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["diploma", "ug", "pg"],
+      "course_levels": [
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -155,18 +213,22 @@
     "application": {
       "mode": "online",
       "portal": "Counselling / College admission",
-      "url": "https://www.tn.gov.in",
+      "url": "https://umis.tn.gov.in",
       "steps": [
         "Obtain the First Graduate certificate from the e-Sevai/Tahsildar office",
         "Claim the concession during counselling/admission",
         "College applies the waiver at admission"
       ]
     },
-    "official_url": "https://www.tn.gov.in",
-    "last_verified": "2026-09-28",
-    "verification_status": "verified",
-    "tags": ["tamil-nadu", "first-graduate", "tuition-waiver"],
-    "notes": ""
+    "official_url": "https://umis.tn.gov.in",
+    "last_verified": "2026-10-15",
+    "verification_status": "pending_review",
+    "tags": [
+      "tamil-nadu",
+      "first-graduate",
+      "tuition-waiver"
+    ],
+    "notes": "The First Graduate Concession is an Anna University fee concession with its own counselling-tied window, reported as closing 25 September 2026 — not the 30 November scholarship cycle, and not rolling as previously recorded. It is also a fee CONCESSION applied at admission rather than a cash award, so it may not be something a student applies for separately at all. Confirm with the institution's admissions office."
   },
   {
     "id": "tn-pudhumai-penn",
@@ -181,19 +243,31 @@
       "details": "Monthly DBT through the entire UG/diploma programme for eligible government-school girls."
     },
     "deadline": {
-      "date": null,
-      "rolling": true,
-      "label": "Registered at college admission"
+      "date": "2026-10-31",
+      "rolling": false,
+      "label": "Pudhumai Penn 2026–27 closes 31 Oct 2026"
     },
     "eligibility": {
-      "domicile_states": ["Tamil Nadu"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Tamil Nadu"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": null,
-      "genders": ["female"],
+      "genders": [
+        "female"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["diploma", "ug"],
+      "course_levels": [
+        "diploma",
+        "ug"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -212,18 +286,23 @@
     "application": {
       "mode": "online",
       "portal": "Pudhumai Penn Portal (pen kalvi)",
-      "url": "https://penkalvi.tn.gov.in",
+      "url": "https://umis.tn.gov.in",
       "steps": [
         "College registers/verifies the student on the portal",
         "EMIS school-record verification",
         "Monthly DBT from admission onward"
       ]
     },
-    "official_url": "https://penkalvi.tn.gov.in",
-    "last_verified": "2026-09-28",
-    "verification_status": "verified",
-    "tags": ["tamil-nadu", "girls", "monthly", "govt-school"],
-    "notes": ""
+    "official_url": "https://umis.tn.gov.in",
+    "last_verified": "2026-10-15",
+    "verification_status": "pending_review",
+    "tags": [
+      "tamil-nadu",
+      "girls",
+      "monthly",
+      "govt-school"
+    ],
+    "notes": "Was recorded as 'rolling'; the 2026–27 listing gives 31 October 2026 for Pudhumai Penn (₹12,000) and for the related Tamil Pudhalvan scheme. Marked pending_review because the date comes from an aggregator listing rather than a department notification, and because a genuinely rolling scheme and an annual one are materially different things to tell a student. Administered by the Social Welfare and Women Empowerment Department; portal penkalvi.tn.gov.in."
   },
   {
     "id": "tn-farmers-scholarship",
@@ -243,14 +322,32 @@
       "label": "2026–27 board window"
     },
     "eligibility": {
-      "domicile_states": ["Tamil Nadu"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Tamil Nadu"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": null,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -267,17 +364,21 @@
     "application": {
       "mode": "hybrid",
       "portal": "District Collectorate / Welfare Board",
-      "url": "https://www.tn.gov.in",
+      "url": "https://umis.tn.gov.in",
       "steps": [
         "Collect the form at the district/collector office or welfare board",
         "Attach membership & admission proof",
         "Board scrutiny → disbursement"
       ]
     },
-    "official_url": "https://www.tn.gov.in",
-    "last_verified": "2026-09-28",
+    "official_url": "https://umis.tn.gov.in",
+    "last_verified": "2026-10-15",
     "verification_status": "pending_review",
-    "tags": ["tamil-nadu", "farmers", "welfare-board"],
-    "notes": "Board schemes revise rates periodically — flagged for re-verification."
+    "tags": [
+      "tamil-nadu",
+      "farmers",
+      "welfare-board"
+    ],
+    "notes": "No 2026–27 notification located in this review pass; the 2026-12-31 date is carried forward and unverified. Also note the recorded official_url (www.tn.gov.in) is the state's general portal, not a scheme page — applications run through UMIS at umis.tn.gov.in."
   }
 ]
