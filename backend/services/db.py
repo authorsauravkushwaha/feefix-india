@@ -22,7 +22,7 @@ from pathlib import Path
 RUNTIME_DIR = Path(__file__).resolve().parents[2] / "runtime"
 DEFAULT_DB = RUNTIME_DIR / "feefix.db"
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
@@ -144,6 +144,18 @@ _MIGRATIONS = {
             created_at TEXT NOT NULL
         )""",
     ],
+    3: [
+        # v3 — anti-replay session rotation. A login session is a *family*
+        # (session_key); rotation mints a new token and records the old one as
+        # superseded (replaced_by / replaced_at) so a replayed, already-rotated
+        # token can be detected and the whole family revoked. All additive.
+        "ALTER TABLE auth_sessions ADD COLUMN session_key TEXT",
+        "ALTER TABLE auth_sessions ADD COLUMN replaced_by TEXT",
+        "ALTER TABLE auth_sessions ADD COLUMN replaced_at TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_key ON auth_sessions(session_key)",
+        # Backfill legacy rows (created before v3) so family revocation works.
+        "UPDATE auth_sessions SET session_key = token_hash WHERE session_key IS NULL",
+    ],
 }
 
 
@@ -154,7 +166,9 @@ def migrate(conn: sqlite3.Connection | None = None) -> None:
         for version in range(current + 1, SCHEMA_VERSION + 1):
             for statement in _MIGRATIONS[version]:
                 conn.execute(statement)
-            conn.execute(f"PRAGMA user_version={version}")
+            # `version` is a loop-controlled int; PRAGMA takes no bind param, so
+            # coerce it defensively. This is a schema version, never user data.
+            conn.execute("PRAGMA user_version=" + str(int(version)))
         conn.commit()
 
 

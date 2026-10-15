@@ -218,6 +218,9 @@
           const digits = (e.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, 6);
           digits.split("").forEach((d, j) => { if (boxes[j]) boxes[j].value = d; });
           boxes[Math.min(digits.length, 5)].focus();
+          // Clipboard-attack hardening: a pasted one-time code must not linger
+          // in the clipboard for malware or a later stray paste to harvest.
+          window.FeeFixClipboard && window.FeeFixClipboard.clearClipboard();
         });
       });
     });

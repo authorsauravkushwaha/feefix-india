@@ -17,14 +17,31 @@
       "label": "Applied at college admission (DARPAN portal)"
     },
     "eligibility": {
-      "domicile_states": ["Assam"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Assam"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": 200000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "diploma", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -52,7 +69,12 @@
     "official_url": "https://dhe.assam.gov.in",
     "last_verified": "2026-09-28",
     "verification_status": "verified",
-    "tags": ["assam", "fee-waiver", "free-admission", "bpl"],
+    "tags": [
+      "assam",
+      "fee-waiver",
+      "free-admission",
+      "bpl"
+    ],
     "notes": ""
   },
   {
@@ -73,14 +95,30 @@
       "label": "2026–27 NSP/state window"
     },
     "eligibility": {
-      "domicile_states": ["Assam"],
-      "categories": ["sc"],
+      "domicile_states": [
+        "Assam"
+      ],
+      "categories": [
+        "sc"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -107,9 +145,13 @@
       ]
     },
     "official_url": "https://scholarships.gov.in",
-    "last_verified": "2026-09-28",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["assam", "sc", "post-matric"],
+    "tags": [
+      "assam",
+      "sc",
+      "post-matric"
+    ],
     "notes": ""
   },
   {
@@ -130,14 +172,29 @@
       "label": "2026–27 window"
     },
     "eligibility": {
-      "domicile_states": ["Assam"],
-      "categories": ["obc"],
+      "domicile_states": [
+        "Assam"
+      ],
+      "categories": [
+        "obc"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -164,9 +221,14 @@
       ]
     },
     "official_url": "https://scholarships.gov.in",
-    "last_verified": "2026-09-28",
+    "last_verified": "2026-10-15",
     "verification_status": "pending_review",
-    "tags": ["assam", "obc", "mobc", "post-matric"],
+    "tags": [
+      "assam",
+      "obc",
+      "mobc",
+      "post-matric"
+    ],
     "notes": "MOBC/tea-garden provisions revise periodically."
   },
   {
@@ -187,14 +249,31 @@
       "label": "Portal windows announced periodically"
     },
     "eligibility": {
-      "domicile_states": ["Assam"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Assam"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": null,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["ug", "pg", "phd", "diploma"],
+      "course_levels": [
+        "ug",
+        "pg",
+        "phd",
+        "diploma"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -223,7 +302,11 @@
     "official_url": "https://finance.assam.gov.in",
     "last_verified": "2026-09-28",
     "verification_status": "pending_review",
-    "tags": ["assam", "education-loan", "subsidy"],
+    "tags": [
+      "assam",
+      "education-loan",
+      "subsidy"
+    ],
     "notes": "Runs in phases (Abhinandan 2.0 etc.) — each phase re-notifies windows."
   },
   {
@@ -244,14 +327,26 @@
       "label": "Automatic on HS merit lists"
     },
     "eligibility": {
-      "domicile_states": ["Assam"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Assam"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": null,
-      "genders": ["female"],
+      "genders": [
+        "female"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "ug"],
+      "course_levels": [
+        "higher_secondary",
+        "ug"
+      ],
       "min_marks_percent": 60,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -277,7 +372,12 @@
     "official_url": "https://dhe.assam.gov.in",
     "last_verified": "2026-09-28",
     "verification_status": "verified",
-    "tags": ["assam", "girls", "merit", "scooty"],
+    "tags": [
+      "assam",
+      "girls",
+      "merit",
+      "scooty"
+    ],
     "notes": "Value-in-kind grant — not a cash scholarship."
   }
 ]

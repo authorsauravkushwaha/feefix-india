@@ -105,12 +105,26 @@ async function api(path, opts = {}) {
   const headers = { "Content-Type": "application/json" };
   if (State.token) headers.Authorization = `Bearer ${State.token}`;
   const res = await fetch(path, { headers, ...opts });
+  // Anti-replay: the server may rotate an aged session token and hand the fresh
+  // one back in this header — adopt it so the next request carries it.
+  const rotated = res.headers && res.headers.get("X-Session-Token");
+  if (rotated && rotated !== State.token) {
+    State.token = rotated;
+    localStorage.setItem("feefix.token", rotated);
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try { detail = (await res.json()).detail || detail; } catch (_) {}
     throw new Error(detail);
   }
   return res.json();
+}
+
+/* Only allow navigable http(s) URLs into href/src — neutralises a javascript:
+   or data: URL sneaking in through any interpolated value. */
+function safeUrl(u) {
+  const s = String(u ?? "").trim();
+  return /^https?:\/\//i.test(s) ? s : "#";
 }
 
 /** Minimal safe markdown: **bold**, *bold*, _em_, line breaks. */
@@ -835,7 +849,7 @@ async function openScheme(id, viaRoute = false) {
       </div>
 
       <div class="d-section" style="display:flex;gap:10px;flex-wrap:wrap">
-        <a class="btn btn-primary" href="${esc(s.application.url)}" target="_blank" rel="noopener">↗ ${esc(t("common.apply_official"))}</a>
+        <a class="btn btn-primary" href="${esc(safeUrl(s.application.url))}" target="_blank" rel="noopener noreferrer">↗ ${esc(t("common.apply_official"))}</a>
       </div>
       <p style="color:var(--text-dim);font-size:0.78rem;margin-top:22px">${esc(s.notes || "")}</p>`;
 

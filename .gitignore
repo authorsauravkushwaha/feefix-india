@@ -13,6 +13,16 @@ runtime/*.db
 runtime/*.db-wal
 runtime/*.db-shm
 
+# Secrets — the OTP server-side pepper and any local env files must NEVER be
+# committed (see docs/security/SECURITY.md). Keep secrets in the environment.
+runtime/.otp_pepper
+runtime/.*
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
 # OS / editor
 .DS_Store
 .idea/

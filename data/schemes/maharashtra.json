@@ -17,14 +17,30 @@
       "label": "2026–27 MahaDBT window"
     },
     "eligibility": {
-      "domicile_states": ["Maharashtra"],
-      "categories": ["sc"],
+      "domicile_states": [
+        "Maharashtra"
+      ],
+      "categories": [
+        "sc"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -42,8 +58,8 @@
     ],
     "application": {
       "mode": "online",
-      "portal": "MahaDBT",
-      "url": "https://mahadbt.maharashtra.gov.in",
+      "portal": "MahaDBT 2.0",
+      "url": "https://mahadbt2.maharashtra.gov.in",
       "steps": [
         "Aadhaar-authenticated registration on MahaDBT",
         "Select the SC post-matric scheme and fill institution details",
@@ -51,11 +67,16 @@
         "Institute → department scrutiny → DBT"
       ]
     },
-    "official_url": "https://mahadbt.maharashtra.gov.in",
-    "last_verified": "2026-09-28",
+    "official_url": "https://mahadbt2.maharashtra.gov.in",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["maharashtra", "sc", "mahadbt", "post-matric"],
-    "notes": ""
+    "tags": [
+      "maharashtra",
+      "sc",
+      "mahadbt",
+      "post-matric"
+    ],
+    "notes": "Portal migrated to MahaDBT 2.0 (mahadbt2.maharashtra.gov.in) from 1 Jun 2026; the legacy mahadbt.maharashtra.gov.in link now redirects. Verified 2026-10-15."
   },
   {
     "id": "mahadbt-postmatric-obc",
@@ -75,14 +96,29 @@
       "label": "2026–27 MahaDBT window"
     },
     "eligibility": {
-      "domicile_states": ["Maharashtra"],
-      "categories": ["obc"],
+      "domicile_states": [
+        "Maharashtra"
+      ],
+      "categories": [
+        "obc"
+      ],
       "max_family_income": 150000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -99,8 +135,8 @@
     ],
     "application": {
       "mode": "online",
-      "portal": "MahaDBT",
-      "url": "https://mahadbt.maharashtra.gov.in",
+      "portal": "MahaDBT 2.0",
+      "url": "https://mahadbt2.maharashtra.gov.in",
       "steps": [
         "Register on MahaDBT",
         "Choose the OBC post-matric scheme",
@@ -108,11 +144,16 @@
         "Institute verification → DBT"
       ]
     },
-    "official_url": "https://mahadbt.maharashtra.gov.in",
-    "last_verified": "2026-09-28",
+    "official_url": "https://mahadbt2.maharashtra.gov.in",
+    "last_verified": "2026-10-15",
     "verification_status": "pending_review",
-    "tags": ["maharashtra", "obc", "mahadbt", "post-matric"],
-    "notes": "OBC income slab moves with government resolutions — flagged for re-verification."
+    "tags": [
+      "maharashtra",
+      "obc",
+      "mahadbt",
+      "post-matric"
+    ],
+    "notes": "Portal migrated to MahaDBT 2.0 (mahadbt2.maharashtra.gov.in) from 1 Jun 2026; the legacy mahadbt.maharashtra.gov.in link now redirects. Verified 2026-10-15. OBC income slab moves with government resolutions — flagged for re-verification."
   },
   {
     "id": "mahadbt-postmatric-vjnt",
@@ -132,14 +173,29 @@
       "label": "2026–27 MahaDBT window"
     },
     "eligibility": {
-      "domicile_states": ["Maharashtra"],
-      "categories": ["obc"],
+      "domicile_states": [
+        "Maharashtra"
+      ],
+      "categories": [
+        "obc"
+      ],
       "max_family_income": 150000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -156,8 +212,8 @@
     ],
     "application": {
       "mode": "online",
-      "portal": "MahaDBT",
-      "url": "https://mahadbt.maharashtra.gov.in",
+      "portal": "MahaDBT 2.0",
+      "url": "https://mahadbt2.maharashtra.gov.in",
       "steps": [
         "Register on MahaDBT",
         "Choose the VJNT/SBC line",
@@ -165,11 +221,16 @@
         "Institute verification → DBT"
       ]
     },
-    "official_url": "https://mahadbt.maharashtra.gov.in",
-    "last_verified": "2026-09-28",
+    "official_url": "https://mahadbt2.maharashtra.gov.in",
+    "last_verified": "2026-10-15",
     "verification_status": "pending_review",
-    "tags": ["maharashtra", "vjnt", "sbc", "mahadbt"],
-    "notes": "Modelled on the OBC category slot — the VJNT nuance lives in special_conditions."
+    "tags": [
+      "maharashtra",
+      "vjnt",
+      "sbc",
+      "mahadbt"
+    ],
+    "notes": "Portal migrated to MahaDBT 2.0 (mahadbt2.maharashtra.gov.in) from 1 Jun 2026; the legacy mahadbt.maharashtra.gov.in link now redirects. Verified 2026-10-15. Modelled on the OBC category slot — the VJNT nuance lives in special_conditions."
   },
   {
     "id": "mahadbt-ebc-shahu",
@@ -189,14 +250,27 @@
       "label": "2026–27 AY window"
     },
     "eligibility": {
-      "domicile_states": ["Maharashtra"],
-      "categories": ["general"],
+      "domicile_states": [
+        "Maharashtra"
+      ],
+      "categories": [
+        "general"
+      ],
       "max_family_income": 800000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["diploma", "ug", "pg"],
+      "course_levels": [
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -215,8 +289,8 @@
     ],
     "application": {
       "mode": "online",
-      "portal": "MahaDBT",
-      "url": "https://mahadbt.maharashtra.gov.in",
+      "portal": "MahaDBT 2.0",
+      "url": "https://mahadbt2.maharashtra.gov.in",
       "steps": [
         "Register on MahaDBT after CAP admission",
         "Apply under the Shahu Maharaj EBC scheme",
@@ -224,11 +298,17 @@
         "Institute confirmation → reimbursement"
       ]
     },
-    "official_url": "https://mahadbt.maharashtra.gov.in",
-    "last_verified": "2026-09-28",
+    "official_url": "https://mahadbt2.maharashtra.gov.in",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["maharashtra", "ebc", "fee-reimbursement", "professional-courses", "mahadbt"],
-    "notes": ""
+    "tags": [
+      "maharashtra",
+      "ebc",
+      "fee-reimbursement",
+      "professional-courses",
+      "mahadbt"
+    ],
+    "notes": "Portal migrated to MahaDBT 2.0 (mahadbt2.maharashtra.gov.in) from 1 Jun 2026; the legacy mahadbt.maharashtra.gov.in link now redirects. Verified 2026-10-15."
   },
   {
     "id": "mahadbt-freeship-sc",
@@ -248,14 +328,28 @@
       "label": "2026–27 MahaDBT window"
     },
     "eligibility": {
-      "domicile_states": ["Maharashtra"],
-      "categories": ["sc"],
+      "domicile_states": [
+        "Maharashtra"
+      ],
+      "categories": [
+        "sc"
+      ],
       "max_family_income": null,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "diploma", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -273,8 +367,8 @@
     ],
     "application": {
       "mode": "online",
-      "portal": "MahaDBT",
-      "url": "https://mahadbt.maharashtra.gov.in",
+      "portal": "MahaDBT 2.0",
+      "url": "https://mahadbt2.maharashtra.gov.in",
       "steps": [
         "Register on MahaDBT",
         "Choose the SC freeship scheme",
@@ -282,11 +376,16 @@
         "Institute verification → fee adjustment"
       ]
     },
-    "official_url": "https://mahadbt.maharashtra.gov.in",
-    "last_verified": "2026-09-28",
+    "official_url": "https://mahadbt2.maharashtra.gov.in",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["maharashtra", "sc", "freeship", "mahadbt"],
-    "notes": ""
+    "tags": [
+      "maharashtra",
+      "sc",
+      "freeship",
+      "mahadbt"
+    ],
+    "notes": "Portal migrated to MahaDBT 2.0 (mahadbt2.maharashtra.gov.in) from 1 Jun 2026; the legacy mahadbt.maharashtra.gov.in link now redirects. Verified 2026-10-15."
   },
   {
     "id": "mahadbt-postmatric-st",
@@ -306,14 +405,30 @@
       "label": "2026–27 MahaDBT window"
     },
     "eligibility": {
-      "domicile_states": ["Maharashtra"],
-      "categories": ["st"],
+      "domicile_states": [
+        "Maharashtra"
+      ],
+      "categories": [
+        "st"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -330,8 +445,8 @@
     ],
     "application": {
       "mode": "online",
-      "portal": "MahaDBT",
-      "url": "https://mahadbt.maharashtra.gov.in",
+      "portal": "MahaDBT 2.0",
+      "url": "https://mahadbt2.maharashtra.gov.in",
       "steps": [
         "Register on MahaDBT",
         "Choose the ST post-matric scheme (tribal dept.)",
@@ -339,10 +454,15 @@
         "Institute verification → DBT"
       ]
     },
-    "official_url": "https://mahadbt.maharashtra.gov.in",
-    "last_verified": "2026-09-28",
+    "official_url": "https://mahadbt2.maharashtra.gov.in",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["maharashtra", "st", "tribal", "mahadbt"],
-    "notes": ""
+    "tags": [
+      "maharashtra",
+      "st",
+      "tribal",
+      "mahadbt"
+    ],
+    "notes": "Portal migrated to MahaDBT 2.0 (mahadbt2.maharashtra.gov.in) from 1 Jun 2026; the legacy mahadbt.maharashtra.gov.in link now redirects. Verified 2026-10-15."
   }
 ]
