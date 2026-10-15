@@ -4,6 +4,12 @@ FeeFix handles what students type about themselves — income, community, marks.
 This document is the threat model and how the codebase answers it, mapped to
 the **CIA triad** (Confidentiality · Integrity · Availability).
 
+> **Attack-by-attack detail:** [`HARDENING.md`](HARDENING.md) maps all 13 named
+> attack classes (replay, clipboard, SQL/NoSQL injection, secret leaks,
+> long-password DoS, ReDoS, SSTI, info leakage, file upload, secret management,
+> input validation, rate limiting, auth≠authz) to the exact file, control and
+> regression test that defeats each one.
+
 ## Confidentiality — who can see what
 
 | Threat | Control |
@@ -15,6 +21,7 @@ the **CIA triad** (Confidentiality · Integrity · Availability).
 | Response intermediaries caching data | `Cache-Control: no-store` on every `/api/*` response. |
 | Cross-account reads | Account-owned sessions require the owner's bearer token — enforced server-side (`_authorize_session`) on profile, tracker, match and ML endpoints. Anonymous sessions remain usable by random-URL knowledge only. |
 | Token replay in transit | HSTS when TLS terminates in front (`Strict-Transport-Security` behind `https`/`x-forwarded-proto: https`). |
+| Session-token replay *within* the service | Bearer tokens **auto-rotate after 24 h** (`X-Session-Token`) and a token reused after rotation **revokes its session family** — see [`HARDENING.md`](HARDENING.md) #1. |
 
 ## Integrity — who can change what
 
@@ -33,7 +40,10 @@ the **CIA triad** (Confidentiality · Integrity · Availability).
 |---|---|
 | Credential brute-force | **Sliding-window rate limit**: 10 auth attempts / 5 min per IP+account → HTTP 429. |
 | Request floods | Global limit 1000 req/min per IP on `/api/*`. |
-| Slow loris / giant payloads | FastAPI request parsing limits; quiet 500 shield (`Internal error: <Class>` — never a stack trace). |
+| Slow loris / giant payloads | **1 MB request-body limit** enforced before parsing → `413`; passwords length-capped and **pre-hashed** so KDF cost is constant (`HARDENING.md` #5/#11). |
+| ReDoS / pathological input | All user text is **length-capped before any regex runs** and income parsers use **bounded quantifiers**; a timing test keeps long inputs fast (`HARDENING.md` #6). |
+| Info leakage via errors | The catch-all handler logs the traceback **server-side** and returns an opaque `Internal server error` + `request_id` — **never** a class, message or stack. Interactive API docs (`/docs`, `/openapi.json`) are **off unless `FEEFIX_ENABLE_DOCS` is set**. |
+| Rate-limit state growth | The limiter's hit table is **memory-bounded** (pruned in O(1)) — the DoS shield can't itself become the DoS vector (`HARDENING.md` #12). |
 | Crash consistency | SQLite **WAL mode** + `busy_timeout` — power loss mid-write cannot corrupt the store. |
 
 ## Privacy guarantees

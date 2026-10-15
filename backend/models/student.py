@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from backend.services.limits import MAX_NAME_LEN
 
 
 class Gender(str, Enum):
@@ -52,12 +54,15 @@ MINORITY_COMMUNITIES = [
 ]
 
 INDIAN_STATES = [
-    "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
-    "Delhi", "Goa", "Gujarat", "Haryana", "Himachal Pradesh",
-    "Jammu and Kashmir", "Jharkhand", "Karnataka", "Kerala",
-    "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
-    "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
-    "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+    "Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam",
+    "Bihar", "Chandigarh", "Chhattisgarh",
+    "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Goa", "Gujarat",
+    "Haryana", "Himachal Pradesh",
+    "Jammu and Kashmir", "Jharkhand", "Karnataka", "Kerala", "Ladakh",
+    "Lakshadweep", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya",
+    "Mizoram", "Nagaland", "Odisha", "Puducherry", "Punjab", "Rajasthan",
+    "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh",
+    "Uttarakhand", "West Bengal",
 ]
 
 
@@ -68,8 +73,8 @@ class StudentProfile(BaseModel):
     engine; the match explanation then marks them as assumptions.
     """
 
-    name: str | None = Field(default=None, description="Optional display name")
-    domicile_state: str = Field(default="West Bengal")
+    name: str | None = Field(default=None, max_length=MAX_NAME_LEN, description="Optional display name")
+    domicile_state: str = Field(default="West Bengal", max_length=64)
     category: Category = Category.general
     annual_family_income: int | None = Field(
         default=None, ge=0, description="Annual family income in INR"
@@ -77,13 +82,34 @@ class StudentProfile(BaseModel):
     course_level: CourseLevel = CourseLevel.ug
     gender: Gender = Gender.prefer_not_to_say
     is_minority: bool = False
-    minority_community: str | None = None
+    minority_community: str | None = Field(default=None, max_length=32)
     has_disability: bool = False
     last_exam_percentage: float | None = Field(
         default=None, ge=0, le=100,
         description="Aggregate percentage in the last qualifying exam",
     )
     is_single_girl_child: bool = False
+
+    @field_validator("domicile_state")
+    @classmethod
+    def _clean_state(cls, v: str) -> str:
+        """Bound and tidy the domicile; never mis-assign an unrecognised state.
+
+        A student from a state/UT outside the list keeps their value — it simply
+        won't satisfy a *state-restricted* scheme (correct behaviour) while still
+        matching all-India schemes. Forcing a default here would wrongly surface
+        West-Bengal-only schemes to, say, a Puducherry applicant.
+        """
+        v = (v or "").strip()
+        return v or "West Bengal"
+
+    @field_validator("minority_community")
+    @classmethod
+    def _known_community(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip().lower()
+        return v if v in MINORITY_COMMUNITIES else None
 
     @property
     def is_female(self) -> bool:

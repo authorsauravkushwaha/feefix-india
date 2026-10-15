@@ -17,14 +17,31 @@
       "label": "2026–27 cycle"
     },
     "eligibility": {
-      "domicile_states": ["Odisha"],
-      "categories": ["sc", "st"],
+      "domicile_states": [
+        "Odisha"
+      ],
+      "categories": [
+        "sc",
+        "st"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg", "phd"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg",
+        "phd"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -52,9 +69,15 @@
       ]
     },
     "official_url": "https://scholarship.odisha.gov.in",
-    "last_verified": "2026-09-20",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["odisha", "sc", "st", "prerana", "post-matric"],
+    "tags": [
+      "odisha",
+      "sc",
+      "st",
+      "prerana",
+      "post-matric"
+    ],
     "notes": ""
   },
   {
@@ -75,14 +98,30 @@
       "label": "2026–27 cycle"
     },
     "eligibility": {
-      "domicile_states": ["Odisha"],
-      "categories": ["obc", "general"],
+      "domicile_states": [
+        "Odisha"
+      ],
+      "categories": [
+        "obc",
+        "general"
+      ],
       "max_family_income": 250000,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["higher_secondary", "iti", "diploma", "ug", "pg"],
+      "course_levels": [
+        "higher_secondary",
+        "iti",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -109,9 +148,15 @@
       ]
     },
     "official_url": "https://scholarship.odisha.gov.in",
-    "last_verified": "2026-09-20",
+    "last_verified": "2026-10-15",
     "verification_status": "pending_review",
-    "tags": ["odisha", "obc", "sebc", "ebc", "prerana"],
+    "tags": [
+      "odisha",
+      "obc",
+      "sebc",
+      "ebc",
+      "prerana"
+    ],
     "notes": "General-category EBC inclusion and income caps vary by order; flagged for re-verification."
   },
   {
@@ -132,14 +177,29 @@
       "label": "2026–27 academic year window"
     },
     "eligibility": {
-      "domicile_states": ["Odisha"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Odisha"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": null,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["ug", "pg"],
+      "course_levels": [
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -166,9 +226,15 @@
       ]
     },
     "official_url": "https://scholarship.odisha.gov.in",
-    "last_verified": "2026-09-20",
+    "last_verified": "2026-10-15",
     "verification_status": "pending_review",
-    "tags": ["odisha", "nua-o", "ug", "pg", "higher-education"],
+    "tags": [
+      "odisha",
+      "nua-o",
+      "ug",
+      "pg",
+      "higher-education"
+    ],
     "notes": "Recent scheme — guidelines and exclusion list get frequent clarifications."
   },
   {
@@ -189,14 +255,29 @@
       "label": "2026–27 cycle"
     },
     "eligibility": {
-      "domicile_states": ["Odisha"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Odisha"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": null,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["ug", "pg"],
+      "course_levels": [
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": 60,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -222,9 +303,13 @@
       ]
     },
     "official_url": "https://scholarship.odisha.gov.in",
-    "last_verified": "2026-09-20",
+    "last_verified": "2026-10-15",
     "verification_status": "verified",
-    "tags": ["odisha", "merit", "medhabruti"],
+    "tags": [
+      "odisha",
+      "merit",
+      "medhabruti"
+    ],
     "notes": ""
   },
   {
@@ -245,14 +330,31 @@
       "label": "Rolling — applications accepted all year"
     },
     "eligibility": {
-      "domicile_states": ["Odisha"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Odisha"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": null,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": true,
-      "course_levels": ["school", "higher_secondary", "ug", "pg"],
+      "course_levels": [
+        "school",
+        "higher_secondary",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -280,7 +382,11 @@
     "official_url": "https://ssepd.gov.in",
     "last_verified": "2026-09-19",
     "verification_status": "verified",
-    "tags": ["odisha", "disability", "banishree"],
+    "tags": [
+      "odisha",
+      "disability",
+      "banishree"
+    ],
     "notes": ""
   },
   {
@@ -301,14 +407,31 @@
       "label": "Rolling with admission cycles"
     },
     "eligibility": {
-      "domicile_states": ["Odisha"],
-      "categories": ["general", "sc", "st", "obc"],
+      "domicile_states": [
+        "Odisha"
+      ],
+      "categories": [
+        "general",
+        "sc",
+        "st",
+        "obc"
+      ],
       "max_family_income": null,
-      "genders": ["male", "female", "other", "prefer_not_to_say"],
+      "genders": [
+        "male",
+        "female",
+        "other",
+        "prefer_not_to_say"
+      ],
       "minority_only": false,
       "minority_communities": null,
       "disability_required": false,
-      "course_levels": ["iti", "diploma", "ug", "pg"],
+      "course_levels": [
+        "iti",
+        "diploma",
+        "ug",
+        "pg"
+      ],
       "min_marks_percent": null,
       "single_girl_child_required": false,
       "special_conditions": [
@@ -337,7 +460,12 @@
     "official_url": "https://kalia.odisha.gov.in",
     "last_verified": "2026-09-19",
     "verification_status": "pending_review",
-    "tags": ["odisha", "farmers", "fee-support", "technical"],
+    "tags": [
+      "odisha",
+      "farmers",
+      "fee-support",
+      "technical"
+    ],
     "notes": "Eligibility hinges on the KALIA beneficiary list — flagged as a special condition rather than a machine rule."
   }
 ]

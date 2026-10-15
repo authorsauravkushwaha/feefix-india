@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from backend.api.schemas import (
@@ -23,6 +23,7 @@ from backend.api.schemas import (
 )
 from backend.models.student import StudentProfile
 from backend.services.chat import handle_message
+from backend.services.limits import MAX_SEARCH_LEN
 from backend.services.matching import (
     match_profile,
     scheme_to_public,
@@ -53,6 +54,11 @@ def _bearer_token(request: Request) -> str | None:
 
 
 def _current_user(request: Request) -> dict | None:
+    # Populated by the session middleware (one resolve + one rotation per
+    # request). Fall back to a direct resolve for call sites outside it.
+    cached = getattr(request.state, "user", None)
+    if cached is not None:
+        return cached
     from backend.services import auth as auth_svc
 
     return auth_svc.resolve_token(_bearer_token(request))
@@ -77,14 +83,25 @@ def _authorize_session(request: Request, session_id: str) -> None:
 
 
 # -- authentication -------------------------------------------------------------
+def _enforce_auth_limit(request: Request, identifier: str) -> None:
+    """Auth rate limit with a Retry-After hint (blunts credential brute-force)."""
+    from backend.services import ratelimit
+
+    client = ratelimit.client_ip(request)
+    if not ratelimit.check_auth(client, identifier):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many attempts — try again later.",
+            headers={"Retry-After": str(ratelimit.retry_after(client, f"auth:{identifier}"))},
+        )
+
+
 @router.post("/auth/register")
 def register(body: RegisterRequest, request: Request) -> dict:
     from backend.services import auth as auth_svc
     from backend.services import ratelimit
 
-    client = request.client.host if request.client else "unknown"
-    if not ratelimit.check_auth(client, body.email.strip().lower()):
-        raise HTTPException(status_code=429, detail="Too many attempts — try again later.")
+    _enforce_auth_limit(request, body.email.strip().lower())
     try:
         user = auth_svc.register(body.email, body.password, body.name)
     except auth_svc.AuthError as exc:
@@ -99,9 +116,7 @@ def login(body: LoginRequest, request: Request) -> dict:
     from backend.services import auth as auth_svc
     from backend.services import ratelimit
 
-    client = request.client.host if request.client else "unknown"
-    if not ratelimit.check_auth(client, body.email.strip().lower()):
-        raise HTTPException(status_code=429, detail="Too many attempts — try again later.")
+    _enforce_auth_limit(request, body.email.strip().lower())
     try:
         user = auth_svc.login(body.email, body.password)
     except auth_svc.AuthError as exc:
@@ -183,9 +198,9 @@ def otp_request(body: OtpRequestBody, request: Request) -> dict:
     from backend.services import otp as otp_svc
     from backend.services import ratelimit
 
-    client = request.client.host if request.client else "unknown"
-    if not ratelimit.check_auth(client, "otp-req"):
-        raise HTTPException(status_code=429, detail="Too many attempts — try again later.")
+    from backend.services import ratelimit as _rl
+    client = _rl.client_ip(request)
+    _enforce_auth_limit(request, "otp-req")
     try:
         return otp_svc.request_code(body.channel, body.address, client)
     except otp_svc.auth_svc.AuthError as exc:
@@ -199,9 +214,9 @@ def otp_verify(body: OtpVerifyBody, request: Request) -> dict:
     from backend.services import otp as otp_svc
     from backend.services import ratelimit
 
-    client = request.client.host if request.client else "unknown"
-    if not ratelimit.check_auth(client, f"otp-verify:{body.address.strip().lower()}"):
-        raise HTTPException(status_code=429, detail="Too many attempts — try again later.")
+    from backend.services import ratelimit as _rl
+    client = _rl.client_ip(request)
+    _enforce_auth_limit(request, f"otp-verify:{body.address.strip().lower()}")
     try:
         user = otp_svc.verify_code(body.channel, body.address, body.code, body.name)
     except otp_svc.auth_svc.AuthError as exc:
@@ -247,11 +262,30 @@ def github_callback(request: Request, code: str | None = None, state: str | None
     token, _expires = auth_svc.create_session(user["id"])
     session_for_user = getattr(tracker, "session_for_user", None)
     sid = session_for_user(user["id"]) if session_for_user else None
-    # JSON-safe-into-HTML: neutralise </script> breakouts from hostile profile
-    # names (\u003c /\u003e) — the payload lands in a data block.
-    payload_js = json.dumps({"token": token, "user": user, "session_id": sid})
-    payload_js = payload_js.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    # The token lands in a <script type="application/json"> data block that a
+    # same-origin static file reads. A hostile GitHub profile name must never be
+    # able to break out of that block, so neutralise every HTML-significant
+    # character (</script>, attribute quotes, entity parsing) before splicing.
+    payload_js = _json_html_safe({"token": token, "user": user, "session_id": sid})
     return HTMLResponse(_HANDOFF_HTML.replace("__PAYLOAD__", payload_js))
+
+
+def _json_html_safe(obj) -> str:
+    """JSON-encode, then make it safe to splice into an HTML <script> data block.
+
+    Defence-in-depth against HTML/script injection via any string field (e.g. a
+    crafted display name). ``<``/``>`` block ``</script>`` breakouts; ``&`` blocks
+    HTML-entity reinterpretation; U+2028/U+2029 are escaped because they are
+    line terminators in JS even though they are legal in JSON strings.
+    """
+    encoded = json.dumps(obj, ensure_ascii=False)
+    return (
+        encoded.replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
 
 
 # Handoff page: CSP (script-src 'self') never allows inline JS, so the token
@@ -406,6 +440,7 @@ def get_board(session_id: str, request: Request) -> dict:
 # -- reminders --------------------------------------------------------------------------
 @router.get("/students/{session_id}/reminders")
 def reminders(session_id: str, request: Request) -> dict:
+    _authorize_session(request, session_id)
     tracker = _tracker(request)
     profile_dict = tracker.load_profile(session_id)
     result = match_profile(StudentProfile(**(profile_dict or {})), _dataset(request))
@@ -426,6 +461,7 @@ def dispatch_reminders(
     session_id: str, body: DispatchRequest, request: Request
 ) -> dict:
     """Push due reminders to the notification outbox (reach-layer demo)."""
+    _authorize_session(request, session_id)
     tracker = _tracker(request)
     profile_dict = tracker.load_profile(session_id)
     result = match_profile(StudentProfile(**(profile_dict or {})), _dataset(request))
@@ -443,7 +479,7 @@ def dispatch_reminders(
 
 # -- AI: semantic search & grounded Q&A ------------------------------------------------------
 @router.get("/search/semantic")
-def semantic_search(request: Request, q: str, k: int = 5) -> dict:
+def semantic_search(request: Request, q: str = Query(max_length=MAX_SEARCH_LEN), k: int = 5) -> dict:
     qa = getattr(request.app.state, "qa", None)
     if qa is None:
         raise HTTPException(status_code=503, detail="AI layer not initialised")
@@ -467,6 +503,7 @@ def ask(body: AskRequest, request: Request) -> dict:
         raise HTTPException(status_code=503, detail="AI layer not initialised")
     session_profile = None
     if body.session_id:
+        _authorize_session(request, body.session_id)
         saved = _tracker(request).load_profile(body.session_id)
         if saved:
             session_profile = StudentProfile(**saved)
@@ -489,6 +526,7 @@ def record_event(body: EventRequest, request: Request) -> dict:
     from backend.matching_engine.ranker import RankingEngine
     from backend.services import events as events_svc
 
+    _authorize_session(request, body.session_id)
     dataset = _dataset(request)
     scheme = dataset.get(body.scheme_id)
     if not scheme:

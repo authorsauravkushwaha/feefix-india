@@ -27,6 +27,9 @@ jobs:
       - name: Full test suite
         run: python -m pytest
 
+      - name: Secret scan (no committed credentials)
+        run: python -m agents.secret_scan
+
       - name: Dataset Verification Agent (offline)
         run: python -m agents.verify_dataset
 

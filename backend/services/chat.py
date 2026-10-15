@@ -92,25 +92,52 @@ _STATE_LOOKUP.update({
 
 
 def parse_income(text: str) -> int | None:
-    """Parse '₹2,00,000', '2 lakh', '১২ লাখ', '2 लाख', '2 லட்சம்', '200000'."""
-    t = _nfc(normalize_digits(text.lower()).replace("₹", "").replace(",", "").strip())
-    # Indic-script units match by containment (ASCII \b doesn't apply to them)
-    m = re.search(r"(\d+(?:\.\d+)?)\s*(லட்சம்|লাখ|लाख)", t)
+    """Parse 'Rs2,00,000', '2 lakh', Bengali/Hindi/Tamil lakh & thousand, '200000'.
+
+    Digit runs are bounded (\d{1,12}) so a long all-digit string can't trigger
+    super-linear backtracking (ReDoS); absurd magnitudes are rejected by
+    ``_safe_money`` instead of overflowing.
+    """
+    t = _nfc(normalize_digits(text.lower()).replace("\u20b9", "").replace(",", "").strip())
+    # lakh / lac (x100,000) — Tamil, Bengali, Hindi script + ASCII (word-bounded)
+    m = re.search(
+        r"(\d{1,12}(?:\.\d{1,6})?)\s*(\u0bb2\u0b9f\u0bcd\u0b9a\u0bae\u0bcd"
+        r"|\u09b2\u09be\u0996|\u0932\u093e\u0916)", t)
     if m:
-        return int(float(m.group(1)) * 100000)
-    m = re.search(r"(\d+(?:\.\d+)?)\s*(lakhs?|lac|l)\b", t)
+        return _safe_money(m.group(1), 100_000)
+    m = re.search(r"(\d{1,12}(?:\.\d{1,6})?)\s*(lakhs?|lac|l)\b", t)
     if m:
-        return int(float(m.group(1)) * 100000)
-    m = re.search(r"(\d+(?:\.\d+)?)\s*(ஆயிரம்|হাজার|हज़ार|हजार)", t)
+        return _safe_money(m.group(1), 100_000)
+    # thousand (x1,000) — Tamil, Bengali, Hindi script + ASCII
+    m = re.search(
+        r"(\d{1,12}(?:\.\d{1,6})?)\s*(\u0b86\u0baf\u0bbf\u0bb0\u0bae\u0bcd"
+        r"|\u09b9\u09be\u099c\u09be\u09b0|\u0939\u091c\u093c\u093e\u0930"
+        r"|\u0939\u091c\u093e\u0930)", t)
     if m:
-        return int(float(m.group(1)) * 1000)
-    m = re.search(r"(\d+(?:\.\d+)?)\s*(thousand|k)\b", t)
+        return _safe_money(m.group(1), 1_000)
+    m = re.search(r"(\d{1,12}(?:\.\d{1,6})?)\s*(thousand|k)\b", t)
     if m:
-        return int(float(m.group(1)) * 1000)
+        return _safe_money(m.group(1), 1_000)
     m = re.search(r"(\d{4,9})", t)
     if m:
-        return int(m.group(1))
+        return _safe_money(m.group(1), 1)
     return None
+
+
+# An annual family income beyond this is not a real figure — reject rather than
+# risk float overflow / absurd downstream arithmetic (availability guard).
+_MAX_INCOME = 10 ** 13
+
+
+def _safe_money(numstr: str, mult: int) -> int | None:
+    try:
+        value = float(numstr) * mult
+    except (ValueError, OverflowError):
+        return None
+    if value != value or value in (float("inf"), float("-inf")):  # NaN / inf
+        return None
+    as_int = int(value)
+    return as_int if 0 <= as_int <= _MAX_INCOME else None
 
 
 def parse_state(text: str) -> str | None:
