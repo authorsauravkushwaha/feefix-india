@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 
 import pytest
 
@@ -103,3 +105,77 @@ def test_all_explanation_languages_cover_same_keys():
     for lang in ("bn", "hi", "ta"):
         lang_keys = set(json.loads((root / f"{lang}.json").read_text(encoding="utf-8")))
         assert lang_keys == en_keys, f"{lang} missing: {en_keys - lang_keys}"
+
+
+# ---------------------------------------------------------------------------
+# The UI dictionary is a SEPARATE i18n layer from the rule-explanation
+# templates above, and it had no parity test at all. That is why Hindi was
+# missing 44 of 126 keys — the whole dashboard, every badge, the explore
+# filters, the footer disclaimer and all five matcher help strings — without
+# anything reporting it. Students saw a half-translated app: the questions in
+# Hindi, the answers' labels in English.
+#
+# app.js falls back to English (`State.dict[key] || State.fallback?.[key] ||
+# key`), so a gap degrades silently rather than breaking. A silent degradation
+# is exactly what a test has to catch, because nobody files a bug for "the
+# badge said Closed instead of बंद".
+# ---------------------------------------------------------------------------
+UI_DICT_ROOT = Path("language/regional_support")
+
+
+def _ui_dict(lang: str) -> dict:
+    return json.loads((UI_DICT_ROOT / f"{lang}.json").read_text(encoding="utf-8"))
+
+
+def test_all_ui_dictionary_languages_cover_same_keys():
+    en_keys = set(_ui_dict("en"))
+    for lang in ("bn", "hi", "ta"):
+        lang_keys = set(_ui_dict(lang))
+        assert lang_keys == en_keys, (
+            f"{lang}.json missing {len(en_keys - lang_keys)} UI key(s): "
+            f"{sorted(en_keys - lang_keys)[:10]}…"
+        )
+
+
+def test_ui_dictionary_placeholders_survive_translation():
+    """A translated string must keep every interpolation slot.
+
+    Dropping `{n}` from `scheme.days_left` renders a literal "{n} days left" or
+    a bare number with no unit — a visible bug in every language but English,
+    which is precisely why it survives review.
+    """
+    en = _ui_dict("en")
+    slot = re.compile(r"\{[a-zA-Z_]+\}")
+    for lang in ("bn", "hi", "ta"):
+        d = _ui_dict(lang)
+        for key, english in en.items():
+            assert set(slot.findall(english)) == set(slot.findall(d[key])), (
+                f"{lang}.{key}: placeholder set differs from English "
+                f"({english!r} vs {d[key]!r})"
+            )
+
+
+def test_ui_dictionary_translations_are_actually_translated():
+    """Guards against a "translation" that is just the English string copied in.
+
+    Filling a parity gap by copying English makes the test above pass while
+    delivering nothing to the student. Only checked for scripts that differ from
+    Latin, so it cannot false-positive on a legitimately shared token.
+    """
+    en = _ui_dict("en")
+    for lang, script in (("bn", r"[\u0980-\u09FF]"), ("hi", r"[\u0900-\u097F]"),
+                         ("ta", r"[\u0B80-\u0BFF]")):
+        d = _ui_dict(lang)
+        copied = []
+        for key, english in en.items():
+            value = d[key]
+            # Skip strings that are pure punctuation, a dash, an emoji or a brand.
+            if not re.search(r"[A-Za-z]{3}", english):
+                continue
+            if value.strip() == english.strip() and not re.search(script, value):
+                copied.append(key)
+        # Allow a small number of genuinely shared tokens (e.g. "WhatsApp",
+        # "FeeFix", "SVMCM") but not a wholesale copy.
+        assert len(copied) <= 6, (
+            f"{lang}.json has {len(copied)} untranslated English strings: {copied[:10]}"
+        )

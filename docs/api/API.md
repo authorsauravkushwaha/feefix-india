@@ -2,7 +2,89 @@
 
 Base URL: `/api` (same origin as the web app). All bodies are JSON.
 
-Interactive docs (Swagger): `GET /docs` when the server is running.
+Interactive docs (Swagger): `GET /docs` when the server is running in a
+non-production environment. **They return 404 in production** — publishing the
+full API surface to the internet is fingerprinting fuel, and this reference is
+the contract.
+
+## Request contract
+
+Every client must send these, on every request:
+
+| Header | When | Rule |
+|---|---|---|
+| `Content-Type: application/json` | any request with a body | — |
+| `X-FeeFix-Nonce` | **every non-idempotent request** (POST/PUT/PATCH/DELETE) | ≥128 bits, base64url or hex, ≤64 chars, **single use per client IP** |
+| `X-FeeFix-Ts` | same | Unix seconds, within **±300 s** of server time |
+| `Authorization: Bearer <token>` | authenticated calls | 32–128 chars, `[A-Za-z0-9_-]` |
+
+Generate a nonce with a **cryptographic** RNG. `secrets.token_urlsafe(24)` in
+Python, `crypto.getRandomValues` in the browser, `SecureRandom` on Android. A
+predictable nonce is one an attacker can pre-register, which inverts the control.
+
+`GET`, `HEAD` and `OPTIONS` are exempt — replaying a read gains nothing the
+capture did not already contain.
+
+### Status codes
+
+| Code | Meaning | Retry? |
+|---|---|---|
+| `200` | Success | — |
+| `401` | Missing, malformed, expired or revoked token | **No.** Re-authenticate. The web SPA treats 401 as "session ended" and logs out |
+| `403` | Authenticated (or anonymous) but **not permitted** — see *Authorisation* below | **No.** Retrying will not change the answer |
+| `404` | Unknown id, unknown session, or a disabled feature (incl. `/docs` in production) | No |
+| `405` | Method not allowed. `TRACE` is refused everywhere: it reflects headers, including `Authorization`, into the response body | No |
+| `409` | **Replay rejected** — reused nonce, timestamp outside the window, or missing headers | **Yes, once**, with a *fresh* nonce and timestamp. Both first-party clients do this automatically |
+| `411` | `Transfer-Encoding: chunked` on `/api/*`. A chunked body declares no length, so the 256 KB ceiling cannot be checked up front. Send `Content-Length` | No |
+| `413` | Body over **256 KB** | No |
+| `414` | URL path over **2048 chars** | No |
+| `422` | Validation failure. The response names the field; **it never echoes the rejected value** | No |
+| `429` | Rate limit. Carries a `Retry-After` header in seconds | After `Retry-After` |
+| `5xx` | Generic message only. Stack traces and exception class names are never returned | Yes |
+
+### Limits
+
+| Limit | Value |
+|---|---|
+| Request body | 256 KB |
+| Request headers | 16 KB |
+| Query string | 8 KB |
+| URL path | 2048 chars |
+| Email | 254 chars (local-part 64, domain 253) |
+| Password | 8–128 chars |
+| Session / scheme id | 64 chars, allow-listed shapes |
+| Chat message | 2000 chars |
+| Question | 1000 chars |
+| Search query | 200 chars |
+| List fields | 64 items |
+
+Rate limits: **600 req/min/IP** globally, **8 auth attempts / 5 min** per
+(IP, bucket) plus **32 / 5 min per IP** regardless of identifier, **20 password
+hashes / min / IP**, **5 OTP requests / hour / destination**.
+
+## Authorisation
+
+**Authentication is not authorisation.** A valid token says who you are, not what
+you may do. Session-scoped endpoints therefore decide per request:
+
+| State of `session_id` | Anonymous caller | Owner | Another account |
+|---|---|---|---|
+| Never written to (or written anonymously) | **allowed** — this is the product's privacy-by-design anonymous flow | — | allowed |
+| Owned by an account | **403** | allowed | **403** |
+
+Ownership is **write-once**: it is stamped when an authenticated request writes
+a profile or tracker row, and `POST /api/auth/link-session` on an already-owned
+session is **refused** (audited as `session.claim_refused`). This exists because
+a mutable owner made rebinding an account takeover — a stranger could bind
+someone else's session, read their data, and lock them out of their own account.
+
+The anonymous→linked flow is supported and tested: use FeeFix without an account,
+then sign in and call `link-session` to keep your progress.
+
+`POST /api/chat` is the same shape one level up. `chat_id` is 128-bit and
+owner-bound; a different principal presenting the same id receives a **new**
+conversation rather than a 403, so the endpoint cannot be used to enumerate
+which ids exist.
 
 ## Meta
 
@@ -37,16 +119,28 @@ POST /api/auth/login      { "email": "a@b.in", "password": "…" }
 POST /api/auth/logout                        (Bearer) → { "revoked": true }
 GET  /api/auth/me                            (Bearer) → { "user": {…} }
 POST /api/auth/link-session { "session_id": "wizard-uuid" }   (Bearer)
-  → binds the anonymous wizard session to the account — after this, data follows
-    the login on any device, and anonymous access to that session gets HTTP 403.
+  → binds an *unowned* anonymous session to the account — after this, data
+    follows the login on any device. Refused with 403 if the session is already
+    owned (ownership is write-once; see *Authorisation* above).
 GET  /api/auth/export                        (Bearer) → full account data (portability)
 DELETE /api/auth/account                     (Bearer) → erase account + all owned data
 ```
 
-Errors: wrong password and unknown email return identical `401` bodies
-(no account enumeration). Auth endpoints are rate-limited
-(10 attempts / 5 min per IP+account → `429`). All `/api/*` responses carry
-CSP/nosniff/no-store security headers. See `docs/security/SECURITY.md`.
+Errors: wrong password and unknown email return **identical `401` bodies**, and
+login always runs the password KDF even for an unknown email, so response *time*
+leaks nothing either. Auth endpoints are rate-limited (see *Limits* above). All
+`/api/*` responses carry CSP/nosniff/no-store/COOP/CORP headers and
+`Cache-Control: no-store`.
+
+Session tokens have both an **idle expiry (30 days, rolling)** and an
+**absolute expiry (90 days)** — a rolling window alone never expires for a token
+used monthly, which turns a stolen token into permanent access. Changing a
+password revokes every session. With `FEEFIX_BIND_CLIENT=1` a token replayed
+from a different user agent is revoked immediately, legitimate session included.
+
+See [`docs/security/SECURITY.md`](../security/SECURITY.md) for the threat model
+and [`docs/security/HARDENING.md`](../security/HARDENING.md) for what was
+actually exploitable and how it was fixed.
 
 ## Matching (the core)
 

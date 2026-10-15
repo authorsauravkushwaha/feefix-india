@@ -16,8 +16,11 @@ for Redis to run many workers.
 from __future__ import annotations
 
 import re
+import threading
+import time
 import unicodedata
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
 
@@ -156,9 +159,95 @@ class ChatSession:
     step: str = ASK_STATE
     answers: dict = field(default_factory=dict)
     lang: str = "en"
+    #: Who may resume this conversation. ``owner_fp`` is a non-reversible
+    #: fingerprint of the creating principal; ``owner_id`` is their account id
+    #: when they are signed in.
+    owner_id: str | None = None
+    owner_fp: str = ""
+    last_seen: float = 0.0
 
 
-_SESSIONS: dict[str, ChatSession] = {}
+# Conversation state is held in memory (swap this for Redis to run many
+# workers). Two properties are non-negotiable for a client-keyed map:
+#
+#   * **Bounded.** ``chat_id`` is attacker-chosen, so an unbounded dict is a
+#     memory-exhaustion DoS: one request per new id grows the process until the
+#     OOM killer ends it. Every entry is now evicted least-recently-used once
+#     the ceiling is reached.
+#   * **Owned.** Without an ownership check, anyone who learns or guesses a
+#     chat_id can resume that conversation — reading the answers already given
+#     (state, course, income) and steering what comes back. That is the same
+#     IDOR shape as ``session_id``, one layer up.
+_MAX_SESSIONS = 5_000
+_SESSIONS: "OrderedDict[str, ChatSession]" = OrderedDict()
+_SESSIONS_LOCK = threading.Lock()
+
+
+def _touch(session: ChatSession) -> None:
+    session.last_seen = time.monotonic()
+    with _SESSIONS_LOCK:
+        _SESSIONS[session.chat_id] = session
+        _SESSIONS.move_to_end(session.chat_id)
+        while len(_SESSIONS) > _MAX_SESSIONS:
+            _SESSIONS.popitem(last=False)
+
+
+def _get_session(chat_id: str) -> ChatSession | None:
+    with _SESSIONS_LOCK:
+        session = _SESSIONS.get(chat_id)
+        if session is not None:
+            _SESSIONS.move_to_end(chat_id)
+        return session
+
+
+def reset_sessions() -> None:
+    """Drop all in-memory conversations (tests, and a manual "start over")."""
+    with _SESSIONS_LOCK:
+        _SESSIONS.clear()
+
+
+def owner_fingerprint(principal) -> str:
+    """Stable, non-reversible identity for the caller of a chat turn.
+
+    Signed-in users are fingerprinted by account id. Anonymous callers are
+    fingerprinted by the IP the platform holds them accountable for — which is
+    coarse (a shared NAT will collide) but it is the only handle available
+    before authentication, and it is enough to stop a *remote* attacker from
+    resuming a stranger's conversation. Coarseness fails open for people on the
+    same network and closed for everyone else, which is the right trade for an
+    anonymous product surface.
+    """
+    from backend.services import security
+
+    if getattr(principal, "id", None):
+        return security.fingerprint("chat", "user", principal.id)
+    ua = (getattr(principal, "user_agent", "") or "")[:200]
+    return security.fingerprint("chat", "anon", getattr(principal, "client_ip", ""), ua)
+
+
+def resolve_chat_id(requested: str | None, *, owner_id: str | None = None,
+                    owner_fp: str = "") -> str:
+    """Decide which conversation this turn belongs to.
+
+    A caller may resume a conversation only if they are the principal that
+    started it. Anyone else — including anyone presenting a well-formed but
+    unclaimed id — gets a fresh one instead of an error. Answering with a new
+    id rather than a 403 avoids turning this into an oracle that confirms which
+    chat ids exist.
+    """
+    if not requested:
+        return uuid.uuid4().hex          # 128 bits, not the old 48-bit prefix
+
+    session = _get_session(requested)
+    if session is None:
+        # Unknown id: adopt it only if it is a well-formed, unclaimed value.
+        return requested
+
+    if session.owner_fp and owner_fp and session.owner_fp != owner_fp:
+        return uuid.uuid4().hex
+    if session.owner_id and owner_id and session.owner_id != owner_id:
+        return uuid.uuid4().hex
+    return requested
 
 
 def _answers_profile(session: ChatSession) -> StudentProfile:
@@ -174,16 +263,31 @@ def handle_message(
     dataset: DatasetService,
     chat_id: str | None = None,
     qa=None,
+    *,
+    owner_id: str | None = None,
+    owner_fp: str = "",
 ) -> dict:
     """Process one chat turn and return the reply (+ matches when ready).
 
     ``qa`` (optional): an ``ai.qa.QaEngine`` — enables grounded free-text
     follow-ups after the 3-question flow.
+
+    ``owner_id`` / ``owner_fp`` identify the caller. They are stamped onto the
+    conversation when it is created and checked on every subsequent turn, so a
+    client-supplied ``chat_id`` cannot be used to resume somebody else's chat.
     """
-    session = _SESSIONS.get(chat_id or "")
+    # The route layer has already resolved ownership; re-check here so the
+    # guarantee holds for any other caller of this function (tests, agents).
+    chat_id = resolve_chat_id(chat_id, owner_id=owner_id, owner_fp=owner_fp)
+
+    session = _get_session(chat_id)
     if session is None:
-        session = ChatSession(chat_id=chat_id or uuid.uuid4().hex[:12])
-        _SESSIONS[session.chat_id] = session
+        session = ChatSession(chat_id=chat_id, owner_id=owner_id, owner_fp=owner_fp)
+    elif owner_fp and not session.owner_fp:
+        # First turn that carries a principal claims the conversation.
+        session.owner_fp = owner_fp
+        session.owner_id = owner_id
+    _touch(session)
 
     text = (message or "").strip()
 

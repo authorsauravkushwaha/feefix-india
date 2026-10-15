@@ -67,6 +67,68 @@ web wizard ──PUT /api/students/{sid}/profile──▶ routes.py
 The same response object powers the results page, the dashboard, the Android
 client and the WhatsApp conversation — one payload, four product surfaces.
 
+## Request pipeline — what runs before any handler
+
+The order matters, because each layer exists so that a later, more expensive
+layer cannot be reached by traffic the earlier one should have stopped.
+
+```
+                 ┌── request_shield.py — runs on EVERY path ─────────────┐
+  HTTP request   │  1. method allow-list                 → 405          │
+      │          │     (TRACE refused: it reflects Authorization)       │
+      ▼          │  2. total header size     ≤16 KB      → 431          │
+  peer address   │  3. path length          ≤2048        → 414          │
+      │          │  4. NUL / CR / LF in path               → 400        │
+      │          │     (smuggling + log injection)                      │
+      │          │  ── non-/api paths stop here (static files) ──       │
+      │          │  5. client_ip(): X-Forwarded-For honoured only from  │
+      │          │     a trusted peer, FEEFIX_PROXY_HOPS from the right │
+      │          │  6. query string          ≤8 KB       → 414          │
+      │          │  7. ratelimit.check_global 600/min/IP → 429          │
+      │          │  8. Content-Length       ≤256 KB      → 413          │
+      │          │     — checked BEFORE the body is read                │
+      │          │  9. Transfer-Encoding: chunked on /api/* → 411       │
+      │          │     (no declared length ⇒ no ceiling to check)       │
+      │          │ 10. anti_replay.check() on mutating    → 409         │
+      │          │     routes: nonce single-use + ts ±300 s             │
+      │          └───────────────────────────────────────────────────────┘
+      ▼          ┌── schemas.py (Pydantic) ──────────────────────────────┐
+  Routing        │ 11. field length ceilings               → 422        │
+      │          └───────────────────────────────────────────────────────┘
+      ▼          ┌── routes.py handler ──────────────────────────────────┐
+  Response       │ 12. _guard_auth() — per-route budget    → 429        │
+      │          │ 13. _charge_kdf() — 20 hashes/min/IP    → 429        │
+      ▼          │ 14. input_guard.* — linear-time validation → 422     │
+  secure_headers │ 15. authz.authorize_* — ownership       → 403        │
+      │          │ 16. the actual work (KDF, matching, storage)         │
+      ▼          └───────────────────────────────────────────────────────┘
+  Client
+
+  Errors pass through a shield that returns a generic message and writes the
+  exception class to the audit log only — never to the response body.
+  secure_headers.py then applies CSP/COOP/CORP/nosniff/no-store to the response.
+```
+
+Four ordering decisions worth stating explicitly, because each is load-bearing:
+
+* **Framing before parsing.** A 40 MB body must be rejected without being read
+  into memory, so the ceiling is checked against `Content-Length` in middleware
+  rather than against the parsed object in a handler. Chunked requests declare
+  no length, which is why they are refused outright (411) instead of streamed —
+  and a `Content-Length` lie is closed by the same rule, since a body longer than
+  its declared length is a protocol error the server rejects.
+* **Rate limit before the rate-limitable work.** The global budget is charged in
+  middleware, before body parsing, so the cheapest possible rejection happens
+  first. The auth and KDF budgets are charged *inside* the handler but *before*
+  the KDF runs — registration is the cheapest way for an attacker to buy
+  600 000 rounds of SHA-256 per request.
+* **Authorisation before storage.** `authz.authorize_*` is called before any
+  read or write touches the store, so a refused request performs no work on
+  data it was not allowed to see.
+* **Ownership is stamped on write, not only on bind.** An authenticated write
+  that leaves `user_id` NULL makes that session look anonymous — and therefore
+  claimable by anyone. Both paths stamp it.
+
 ## Service responsibilities
 
 | Module | Responsibility |
@@ -77,10 +139,16 @@ client and the WhatsApp conversation — one payload, four product surfaces.
 | `backend/matching_engine/ranker.py` | V1 transparent ranking + badges + deadline math. |
 | `backend/services/dataset.py` | Loads/validates schemes from `data/`, catalog stats. |
 | `backend/services/matching.py` | Orchestrates engine+ranker into API payloads. |
-| `backend/services/tracker.py` + `sqlite_store.py` | Status pipeline (`saved→planning→applied→under_review→approved/rejected`). Default store is **SQLite (WAL)** with session↔account ownership binding; `FEEFIX_STORE=json` keeps the legacy JSON store. |
+| `backend/services/tracker.py` + `sqlite_store.py` | Status pipeline (`saved→planning→applied→under_review→approved/rejected`). Default store is **SQLite (WAL)** with **write-once** session↔account ownership binding; `FEEFIX_STORE=json` keeps the legacy JSON store. |
 | `backend/services/db.py` | Database engine + versioned migrations + audit log (WAL, FK on, busy-timeout; parameterized only). |
-| `backend/services/auth.py` | Accounts: PBKDF2-SHA256 (600k) password hashing, opaque hashed session tokens, register/login/link/erase. |
-| `backend/services/ratelimit.py` + `secure_headers.py` | Sliding-window rate limits (global + auth-strict) and CSP/HSTS/nosniff/no-store transport hardening. |
+| `backend/services/auth.py` | Accounts: PBKDF2-SHA256 (600k) password hashing, opaque hashed session tokens with idle **and** absolute expiry, optional client binding, register/login/link/erase. |
+| **`backend/services/security.py`** | The security kernel: environment inference (**unset ⇒ production**), all hard ceilings in one `LIMITS` object, trusted-network parsing and `client_ip()`, secret loading (0600, length-checked), audit writing, and the text helpers that strip control/bidi characters and scrub credentials. Everything else imports from here. |
+| **`backend/services/input_guard.py`** | Linear-time validation and normalisation — email, phone, ids, filenames, bearer tokens, nonces. Length is rejected before pattern matching, because length is the cheapest possible rejection and the shipped email regex was quadratic. |
+| **`backend/services/authz.py`** | Authorisation as a separate question from authentication: `owner_of`, `authorize_session`, `authorize_bind`, `authorize_chat`. Ownership is **write-once**; a refusal is audited. Every session-scoped handler calls this. |
+| **`backend/services/anti_replay.py`** | Nonce + timestamp verification on mutations, per-IP bounded nonce store, `enforce`/`optional`/`off` modes with `off` refused in production. |
+| **`backend/services/request_shield.py`** | The middleware that enforces request framing: body/header/query/path ceilings, `411` on chunked, and the global per-IP budget — before any handler runs. |
+| **`backend/services/uploads.py`** | Upload verification ahead of the feature: magic-byte sniffing, MIME-mismatch and forbidden-content rejection, dimension caps, digest-named storage, path-escape proof. |
+| `backend/services/ratelimit.py` + `secure_headers.py` | Sliding-window rate limits (global, auth, per-IP, **KDF**, OTP-destination) with an insertion-path bound on the bucket map, and CSP/HSTS/nosniff/no-store/COOP/CORP transport hardening. |
 | `backend/services/reminders.py` | Derives *actions* from deadlines + tracker state. |
 | `backend/services/chat.py` + `chat_i18n.py` | Reach-layer conversation state machine (3 questions → matches → free-text Q&A), multilingual: Bengali/Hindi script detection, native-digit/state/course parsing, localized conversation strings that stick per session. |
 | `backend/services/i18n_rules.py` + `language/regional_support/explanations/` | Rule-explanation renderer: every rule result carries `{rule, status, params}`; templates per language produce localized `why_matched` / assumption / blocker sentences. |

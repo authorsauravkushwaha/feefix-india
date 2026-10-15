@@ -73,13 +73,45 @@ class TrackerStore:
         with self._lock:
             return dict(self._data.get(session_id, {}))
 
-    def save_profile(self, session_id: str, profile: dict) -> None:
+    def save_profile(self, session_id: str, profile: dict, owner_id: str | None = None) -> None:
+        """Persist a profile, stamping ownership on first write (write-once).
+
+        Mirrors :meth:`SQLiteStore.save_profile`. Ownership lives under an
+        ``__owner__`` key so the existing ``__``-prefix filtering keeps it out
+        of tracker boards returned to clients.
+        """
         with self._lock:
-            self._data.setdefault(session_id, {})["__profile__"] = {
+            board = self._data.setdefault(session_id, {})
+            board["__profile__"] = {
                 "profile": profile,
                 "updated_at": _utcnow(),
             }
+            if owner_id and not board.get("__owner__"):
+                board["__owner__"] = owner_id
             self._persist()
+
+    def claim_owner(self, session_id: str, owner_id: str | None) -> bool:
+        if not owner_id:
+            return False
+        with self._lock:
+            board = self._data.setdefault(session_id, {})
+            existing = board.get("__owner__")
+            if existing and existing != owner_id:
+                return False
+            board["__owner__"] = owner_id
+            self._persist()
+        return True
+
+    def owner_of(self, session_id: str) -> str | None:
+        with self._lock:
+            return self._data.get(session_id, {}).get("__owner__")
+
+    def has_data(self, session_id: str) -> bool:
+        with self._lock:
+            board = self._data.get(session_id, {})
+            return bool(board.get("__profile__")) or any(
+                not k.startswith("__") for k in board
+            )
 
     def load_profile(self, session_id: str) -> dict | None:
         with self._lock:

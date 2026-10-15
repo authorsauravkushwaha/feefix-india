@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FeeFix — Find the funding you qualify for</title>
   <meta name="description" content="FeeFix matches Indian students with scholarships and fee-waiver schemes based on personal eligibility — discover, understand, apply, track." />
+  <!-- Belts and braces: the Referrer-Policy response header is authoritative,
+       but this covers the very first navigation, before any header is seen.
+       It stops session ids and query strings leaking to third parties. -->
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <!-- The app is unusable without script; say so instead of rendering an empty
+       shell that looks like a data-loss bug. -->
+  <noscript><meta http-equiv="refresh" content="0; url=/noscript.html" /></noscript>
   <link rel="icon" type="image/svg+xml" href="/assets/logo.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -80,6 +87,11 @@
     </div>
   </div>
 
+  <!-- security.js MUST load first: it defines window.FFSec (output encoding,
+       URL allow-listing, clipboard defence, anti-replay nonces) that app.js and
+       auth-gate.js both call. `defer` preserves document order, so this is a
+       hard ordering guarantee, not a race. -->
+  <script src="/security.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/auth-gate.js" defer></script>
 </body>

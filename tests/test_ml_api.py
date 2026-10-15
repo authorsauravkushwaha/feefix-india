@@ -29,10 +29,18 @@ def test_event_records_with_context(client):
 
 
 def test_event_validations(client):
+    # A malformed session id is refused at the schema boundary (422) and never
+    # reaches storage — that is the point of whitelisting the shape.
     assert client.post("/api/events", json={
-        "session_id": "x", "scheme_id": "nope", "type": "applied"}).status_code == 404
+        "session_id": "x", "scheme_id": "nope", "type": "applied"}).status_code == 422
+    # A well-formed but unknown scheme id is a 404, indistinguishable from a
+    # malformed one, so neither answer is an enumeration oracle.
     assert client.post("/api/events", json={
-        "session_id": "x", "scheme_id": "sv-mcm-wb", "type": "yay"}).status_code == 422
+        "session_id": "sess-unknown-01", "scheme_id": "nope",
+        "type": "applied"}).status_code == 404
+    assert client.post("/api/events", json={
+        "session_id": "sess-unknown-01", "scheme_id": "sv-mcm-wb",
+        "type": "yay"}).status_code == 422
 
 
 def test_ml_rank_compare_shape(client):

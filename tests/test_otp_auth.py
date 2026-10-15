@@ -121,9 +121,19 @@ def test_hourly_request_cap(client):
 
 # ---- methods & GitHub gating ---------------------------------------------- #
 def test_methods_endpoint(client):
+    """Advertised methods reflect what can actually deliver a code.
+
+    Under ``FEEFIX_ENV=test`` + ``FEEFIX_DEV_OTP_ECHO=1`` both code channels
+    are usable (the code is echoed to the requester), so both doors are open and
+    the UI is told it is in demo mode. ``tests/test_security.py`` asserts the
+    opposite for a production environment, where an unconfigured provider must
+    be advertised as *closed* rather than offered and then failed.
+    """
     m = client.get("/api/auth/methods").json()
-    assert m["password"] is True and m["otp_email"] is True
-    assert m["otp_phone"] is False and m["github"] is False   # unconfigured by default
+    assert m["password"] is True
+    assert m["otp_email"] is True and m["otp_phone"] is True
+    assert m["github"] is False                     # no OAuth app configured
+    assert m["dev_otp_echo"] is True                # UI shows the demo banner
 
 
 def test_github_start_unconfigured(client):

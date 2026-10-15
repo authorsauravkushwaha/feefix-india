@@ -50,6 +50,10 @@ from urllib import parse, request as urlreq
 
 from backend.services import auth as auth_svc
 from backend.services import db
+from backend.services import input_guard
+from backend.services import ratelimit
+from backend.services import security
+from backend.services.security import LIMITS
 
 # ------------------------------------------------------------------ config --
 CODE_LEN = 6
@@ -61,6 +65,9 @@ OAUTH_STATE_TTL_S = 600
 E164_RE = re.compile(r"^\+[1-9]\d{7,14}$")
 RUNTIME_DIR = Path(__file__).resolve().parents[2] / "runtime"
 _HTTP_TIMEOUT_S = 8
+# Outbound responses are read with a ceiling: a compromised or spoofed upstream
+# must not be able to make us allocate without limit.
+_MAX_RESPONSE_BYTES = 256 * 1024
 
 
 def _utcnow() -> datetime:
@@ -114,21 +121,37 @@ def _ensure_schema() -> None:
 
 
 def _pepper() -> bytes:
-    """Server-side pepper so a bare DB dump can't brute force 6-digit codes."""
-    env = os.environ.get("FEEFIX_OTP_PEPPER")
-    if env:
-        return env.encode()
-    path = RUNTIME_DIR / ".otp_pepper"
-    if path.exists():
-        return path.read_bytes()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    rng = secrets.token_bytes(32)
-    path.write_bytes(rng)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
-    return rng
+    """Server-side pepper so a bare DB dump can't brute force 6-digit codes.
+
+    A 6-digit code has only 10^6 possibilities. Without a pepper, anyone who
+    obtains ``otp_challenges`` can recover every live code in seconds on a
+    laptop — the salt stops precomputation but not a direct search, because the
+    search space is the code itself. The pepper is the only thing that makes
+    the stored hash useless without also having the server's key material.
+
+    Delegated to :func:`security.load_secret`, which additionally enforces a
+    length floor, creates the key file ``0600`` from birth (no window where it
+    is world-readable), and refuses to run with weak material in production.
+    Cached per process: re-reading the file on every hash would be a syscall
+    per OTP attempt and would make the pepper a hot-path dependency.
+    """
+    global _PEPPER_CACHE
+    if _PEPPER_CACHE is None:
+        _PEPPER_CACHE = security.load_secret(
+            "FEEFIX_OTP_PEPPER",
+            fallback_path=RUNTIME_DIR / ".otp_pepper",
+            min_bytes=32,
+        )
+    return _PEPPER_CACHE
+
+
+_PEPPER_CACHE: bytes | None = None
+
+
+def reset_pepper_cache() -> None:
+    """Drop the memoised pepper (tests rotate ``FEEFIX_OTP_PEPPER``)."""
+    global _PEPPER_CACHE
+    _PEPPER_CACHE = None
 
 
 def _hash_code(code: str, salt_hex: str) -> str:
@@ -138,38 +161,103 @@ def _hash_code(code: str, salt_hex: str) -> str:
 
 # ------------------------------------------------------------- normalisation --
 def normalize(channel: str, address: str) -> str:
-    address = (address or "").strip()
+    """Canonicalise a destination, or raise a uniform AuthError.
+
+    Length is checked before parsing and validation is backtracking-free
+    (:mod:`backend.services.input_guard`), so neither an oversized field nor a
+    crafted address can make this function slow. The old email pattern here was
+    the ReDoS-vulnerable ``^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$``; a 20 KB address cost
+    718 ms of CPU on an unauthenticated endpoint.
+    """
     if channel == "email":
-        address = address.lower()
-        if not auth_svc.EMAIL_RE.match(address):
+        canonical = input_guard.valid_email(address)
+        if canonical is None:
             raise auth_svc.AuthError("Enter a valid email address.")
-        return address
+        return canonical
     if channel == "phone":
-        address = re.sub(r"[\s\-()]", "", address)
-        if not address.startswith("+"):
-            guess = re.sub(r"\D", "", address)
-            if len(guess) == 10:                     # bare Indian mobile
-                address = "+91" + guess
-        if not E164_RE.match(address):
+        canonical = input_guard.valid_phone(address)
+        if canonical is None:
             raise auth_svc.AuthError("Use international format, e.g. +919876543210.")
-        return address
+        return canonical
     raise auth_svc.AuthError("Unknown channel.")
+
+
+def _canonical_channel(channel: str) -> str:
+    """Whitelist the channel value; anything else becomes unusable."""
+    return "email" if channel == "email" else ("phone" if channel == "phone" else "")
 
 
 # ------------------------------------------------------------- challenge API --
 def request_code(channel: str, address: str, client_ip: str = "unknown") -> dict:
-    """Create a challenge. Returns delivery data (incl. dev_code if applicable)."""
-    from backend.services import ratelimit
+    """Create a challenge and deliver it. Never returns the code in production.
 
+    THE BUG THIS REPLACES
+    ---------------------
+    The previous version echoed the live code in the HTTP response whenever
+    ``_deliver`` reported ``via == "dev"`` — and ``_deliver_email`` returned
+    ``"dev"`` not only when SMTP was unconfigured but also **when SMTP was
+    configured and the send failed**. Reproduced before the fix::
+
+        POST /api/auth/otp/request {"channel":"email","address":"victim@x.com"}
+        → {"sent": true, ..., "dev_code": "836443"}
+
+    That is remote account takeover of *any* address on the platform, with no
+    password and no second factor: request a code for the victim, read it out
+    of your own response, verify it, receive their session token. A single
+    mis-set ``OTP_SMTP_HOST``, one expired SMTP credential, or one attacker who
+    can make the mail relay unreachable turns the entire user base into
+    accounts that can be signed into at will.
+
+    The fix is layered, because this is the highest-impact control in the file:
+
+    1. Delivery capability is checked **before** a challenge is created, so a
+       code that cannot be delivered never exists in the first place.
+    2. A delivery *failure* deletes the challenge and surfaces an error. It
+       never falls back to an echo path.
+    3. The echo itself is gated on :func:`security.dev_code_echo_allowed`,
+       which requires a non-production environment **and** an explicit
+       ``FEEFIX_DEV_OTP_ECHO=1``. Two independent switches, both fail-closed.
+    """
     _ensure_schema()
-    channel = "email" if channel == "email" else ("phone" if channel == "phone" else "")
+    channel = _canonical_channel(channel)
     address = normalize(channel, address)
+
+    # Length ceiling before any storage work.
+    if input_guard.reject_if_overlong(address, LIMITS.MAX_EMAIL_LEN):
+        raise auth_svc.AuthError("Enter a valid email address.")
+
+    # Per-(IP, destination) budget, then a per-destination budget that does not
+    # depend on the sender at all. The second one exists to protect people who
+    # never used FeeFix: without it, an attacker can make this platform send
+    # unlimited paid SMS to an arbitrary number — a cost attack on us and a
+    # harassment attack on the recipient.
     if not ratelimit.check_auth(client_ip, f"otp:{channel}:{address}"):
         raise auth_svc.AuthError("Too many attempts — try again later.")
+    try:
+        ratelimit.guard_otp_destination(client_ip, channel, address)
+    except ratelimit.RateLimited:
+        security.audit_security_event(
+            "otp.destination_flood_blocked",
+            f"channel={channel} to={_mask(channel, address)}",
+        )
+        raise auth_svc.AuthError("Too many codes requested for this number — wait an hour.")
+
+    # 1. Capability gate — refuse before creating anything.
+    capability = _delivery_capability(channel)
+    if capability == "unavailable":
+        security.audit_security_event(
+            "otp.delivery_unconfigured", f"channel={channel} env={security.environment()}"
+        )
+        raise auth_svc.AuthError(
+            "Code sign-in isn't available on this deployment right now — "
+            "please use your password instead."
+        )
+    echo = capability == "dev" and security.dev_code_echo_allowed()
 
     conn = db.get_connection()
     now = _utcnow()
     cutoff = _iso(now - timedelta(hours=1))
+    challenge_id = uuid.uuid4().hex
 
     with db._lock:
         recent = conn.execute(
@@ -185,9 +273,8 @@ def request_code(channel: str, address: str, client_ip: str = "unknown") -> dict
             (channel, address, _iso(now)),
         ).fetchone()
         if live and _parse(live["resend_after"]) > now:
-            raise auth_svc.AuthError(
-                f"Code already sent — resend available in {max(1, int((_parse(live['resend_after']) - now).total_seconds()))} s."
-            )
+            wait = max(1, int((_parse(live["resend_after"]) - now).total_seconds()))
+            raise auth_svc.AuthError(f"Code already sent — resend available in {wait} s.")
 
         # Opportunistic sweep: expired rows are never usable anywhere again.
         conn.execute("DELETE FROM otp_challenges WHERE expires_at < ?", (_iso(now),))
@@ -199,7 +286,7 @@ def request_code(channel: str, address: str, client_ip: str = "unknown") -> dict
             " (id, channel, address, code_hash, salt, attempts_left, expires_at, resend_after, created_at)"
             " VALUES (?,?,?,?,?,?,?,?,?)",
             (
-                uuid.uuid4().hex,
+                challenge_id,
                 channel,
                 address,
                 _hash_code(code, salt),
@@ -213,7 +300,26 @@ def request_code(channel: str, address: str, client_ip: str = "unknown") -> dict
         conn.commit()
 
     delivered = _deliver(channel, address, code)
-    db.audit(None, f"otp.request.{channel}", f"to={address} via={delivered['via']}")
+
+    if delivered["via"] == "failed":
+        # 2. The code exists but nobody received it. Destroy it and tell the
+        #    user honestly — a generic "sent!" would leave them waiting for a
+        #    message that will never arrive, and leaving the row alive would
+        #    burn their resend cooldown against nothing.
+        _delete_challenge(challenge_id)
+        security.audit_security_event(
+            "otp.delivery_failed",
+            f"channel={channel} to={_mask(channel, address)} reason={delivered.get('error', '')}",
+        )
+        raise auth_svc.AuthError(
+            "We couldn't deliver that code just now. Please try again in a minute."
+        )
+
+    # The address reaches the audit log masked. It is PII, and the log is the
+    # one artefact that tends to be copied into dashboards and bug reports.
+    db.audit(None, f"otp.request.{channel}",
+             f"to={_mask(channel, address)} via={delivered['via']}")
+
     resp = {
         "sent": True,
         "channel": channel,
@@ -222,20 +328,56 @@ def request_code(channel: str, address: str, client_ip: str = "unknown") -> dict
         "ttl_s": CODE_TTL_S,
         "resend_in": RESEND_COOLDOWN_S,
     }
-    if delivered["via"] == "dev":
+    # 3. The only path by which a code ever appears in a response body.
+    if echo and delivered["via"] == "dev":
         resp["dev_code"] = code
     return resp
+
+
+def _delete_challenge(challenge_id: str) -> None:
+    conn = db.get_connection()
+    with db._lock:
+        conn.execute("DELETE FROM otp_challenges WHERE id=?", (challenge_id,))
+        conn.commit()
+
+
+def _delivery_capability(channel: str) -> str:
+    """``"live"`` | ``"dev"`` | ``"unavailable"`` — can we actually deliver?
+
+    Decided from configuration alone, before any code is generated. In
+    production an unconfigured channel is ``unavailable``; outside production
+    it is ``dev``, which keeps the demo working without ever being reachable
+    from a live deployment.
+    """
+    if channel == "email":
+        configured = bool(security.env_str("OTP_SMTP_HOST"))
+    elif channel == "phone":
+        configured = bool(
+            security.env_str("OTP_TWILIO_SID")
+            and security.env_str("OTP_TWILIO_TOKEN")
+            and security.env_str("OTP_TWILIO_FROM")
+        )
+    else:
+        return "unavailable"
+    if configured:
+        return "live"
+    return "dev" if security.unsafe_features_allowed() else "unavailable"
 
 
 def verify_code(channel: str, address: str, code: str, name: str | None = None) -> dict | None:
     """Burn the challenge and return the authenticated user, or None."""
     _ensure_schema()
-    channel = "email" if channel == "email" else ("phone" if channel == "phone" else "")
+    channel = _canonical_channel(channel)
     try:
         address = normalize(channel, address)
     except auth_svc.AuthError:
         return None
+
+    # Shape-gate the code BEFORE computing an HMAC over it. A caller who sends
+    # a megabyte of digits should cost one length check, not one hash.
     code = (code or "").strip()
+    if not code or len(code) > CODE_LEN + 2 or not code.isdigit():
+        return None
 
     conn = db.get_connection()
     row = conn.execute(
@@ -273,6 +415,11 @@ def verify_code(channel: str, address: str, code: str, name: str | None = None) 
 
 # -------------------------------------------------------------- identity mgmt --
 def _user_for_identity(kind: str, key: str, name: str | None) -> dict:
+    # The name is attacker-controlled free text that later lands in the UI and
+    # in the OAuth handoff HTML. Bound it, strip bidi/control characters and
+    # normalise it here, at the point of entry, so no downstream renderer has
+    # to remember to.
+    name = input_guard.bounded(name, LIMITS.MAX_NAME_LEN) or None
     conn = db.get_connection()
     hit = conn.execute(
         "SELECT u.id, u.email, u.name FROM auth_identities i"
@@ -320,6 +467,16 @@ def _mask(channel: str, address: str) -> str:
 
 
 # ---------------------------------------------------------------- delivery ---
+# Delivery outcomes are three-valued on purpose. The old code returned
+# ``via="dev"`` for BOTH "not configured" and "configured but the send threw",
+# and ``request_code`` echoed the live code whenever it saw ``"dev"``. Collapsing
+# a failure into a development convenience is what made that an account-takeover
+# bug. Here: "smtp"/"twilio" = delivered, "dev" = deliberately faked in a
+# non-production environment, "failed" = tried and did not work.
+FAKED = "dev"
+FAILED = "failed"
+
+
 def _deliver(channel: str, address: str, code: str) -> dict:
     if channel == "email":
         return _deliver_email(address, code)
@@ -327,13 +484,27 @@ def _deliver(channel: str, address: str, code: str) -> dict:
 
 
 def _deliver_email(address: str, code: str) -> dict:
-    host = os.environ.get("OTP_SMTP_HOST", "").strip()
+    host = security.env_str("OTP_SMTP_HOST")
     if not host:
-        return {"via": "dev", "error": "smtp not configured"}
-    port = int(os.environ.get("OTP_SMTP_PORT", "587"))
-    user = os.environ.get("OTP_SMTP_USER", "")
-    pw = os.environ.get("OTP_SMTP_PASS", "").replace(" ", "")
-    sender = os.environ.get("OTP_SMTP_FROM", user or "no-reply@feefix.local")
+        # Not configured. Whether this is acceptable was already decided by
+        # _delivery_capability(); reaching here unconfigured in production is
+        # impossible, so this branch is a dev/no-op signal only.
+        return {"via": FAKED if security.unsafe_features_allowed() else FAILED,
+                "error": "smtp not configured"}
+
+    port = security.env_int("OTP_SMTP_PORT", 587, minimum=1, maximum=65535)
+    user = security.env_str("OTP_SMTP_USER")
+    password = security.env_str("OTP_SMTP_PASS").replace(" ", "")
+    sender = security.env_str("OTP_SMTP_FROM", user or "no-reply@feefix.local")
+    timeout = security.env_int("OTP_SMTP_TIMEOUT_S", 8, minimum=2, maximum=30)
+
+    # Hostnames are allow-listed by shape before we open a socket to them. The
+    # value comes from our own environment, but an operator who pastes a URL
+    # instead of a host must not turn this into an SSRF pivot.
+    if not _SAFE_HOST_RE.match(host):
+        db.audit(None, "otp.email.error", "smtp host rejected by validation")
+        return {"via": FAILED, "error": "smtp host invalid"}
+
     try:
         msg = EmailMessage()
         msg["From"] = sender
@@ -342,34 +513,63 @@ def _deliver_email(address: str, code: str) -> dict:
         msg.set_content(
             f"Your FeeFix code is {code}\n\n"
             f"It expires in {CODE_TTL_S // 60} minutes. If you didn't request "
-            "it, ignore this email.\n"
+            "it, ignore this email and consider changing your password.\n"
         )
+        # Header injection: a newline in the recipient address would let a
+        # caller add Bcc/Cc headers and copy an attacker on someone else's code.
+        # valid_email() already forbids control characters; this asserts it.
+        if any(ord(c) < 32 for c in address):
+            return {"via": FAILED, "error": "address rejected"}
+
         ctx = ssl.create_default_context()
         if port == 465:
-            with smtplib.SMTP_SSL(host, port, timeout=8, context=ctx) as s:
+            with smtplib.SMTP_SSL(host, port, timeout=timeout, context=ctx) as s:
                 if user:
-                    s.login(user, pw)
+                    s.login(user, password)
                 s.send_message(msg)
         else:
-            with smtplib.SMTP(host, port, timeout=8) as s:
+            with smtplib.SMTP(host, port, timeout=timeout) as s:
+                # STARTTLS is mandatory, not opportunistic: an auth-less
+                # plaintext SMTP session leaks the relay credentials and the
+                # code to anyone on the path.
                 s.starttls(context=ctx)
                 if user:
-                    s.login(user, pw)
+                    s.login(user, password)
                 s.send_message(msg)
         return {"via": "smtp"}
     except Exception as exc:
-        db.audit(None, "otp.email.error", f"{exc.__class__.__name__}: {str(exc)[:120]}")
-        return {"via": "dev", "error": "smtp failed"}
+        # str(exc) from an SMTP library can contain the relay hostname, the
+        # login it failed on, or the server's own banner. scrub_text() removes
+        # credential-shaped key=value pairs and bounds the length; the class
+        # name is enough for an operator to diagnose.
+        db.audit(None, "otp.email.error",
+                 security.scrub_text(f"{exc.__class__.__name__}: {exc}", 160))
+        return {"via": FAILED, "error": "smtp failed"}
+
+
+_SAFE_HOST_RE = re.compile(r"^[A-Za-z0-9._-]{1,253}$")
 
 
 def _deliver_sms(address: str, code: str) -> dict:
-    """Twilio-compatible REST send. Free SMS gateways do not exist — this is
-    the standard paid path (~$0.01-0.05/msg with a trial credit)."""
-    sid = os.environ.get("OTP_TWILIO_SID", "").strip()
-    token = os.environ.get("OTP_TWILIO_TOKEN", "").strip()
-    sender = os.environ.get("OTP_TWILIO_FROM", "").strip()
+    """Twilio-compatible REST send.
+
+    Free SMS gateways do not exist, so this is the standard paid path
+    (~$0.01-0.05/msg with a trial credit). Credentials are read once and never
+    logged; the URL is a hardcoded HTTPS constant, so no user input can steer
+    the request to another host (SSRF).
+    """
+    sid = security.env_str("OTP_TWILIO_SID")
+    token = security.env_str("OTP_TWILIO_TOKEN")
+    sender = security.env_str("OTP_TWILIO_FROM")
     if not (sid and token and sender):
-        return {"via": "dev", "error": "sms provider not configured"}
+        return {"via": FAKED if security.unsafe_features_allowed() else FAILED,
+                "error": "sms provider not configured"}
+    # Account SID is interpolated into the URL path; constrain its shape so a
+    # malformed value cannot inject a path or query segment.
+    if not re.match(r"^AC[A-Za-z0-9]{16,40}$", sid):
+        db.audit(None, "otp.sms.error", "twilio sid rejected by validation")
+        return {"via": FAILED, "error": "sms provider misconfigured"}
+
     body = parse.urlencode({
         "To": address,
         "From": sender,
@@ -386,11 +586,13 @@ def _deliver_sms(address: str, code: str) -> dict:
     )
     try:
         with urlreq.urlopen(req, timeout=_HTTP_TIMEOUT_S) as r:
-            r.read()
+            r.read(_MAX_RESPONSE_BYTES)
         return {"via": "twilio"}
     except Exception as exc:
-        db.audit(None, "otp.sms.error", f"{exc.__class__.__name__}: {str(exc)[:120]}")
-        return {"via": "dev", "error": "sms send failed"}
+        # A Twilio error body can echo the request, including the auth header.
+        # Only the exception class survives into the log.
+        db.audit(None, "otp.sms.error", security.scrub_text(exc.__class__.__name__, 80))
+        return {"via": FAILED, "error": "sms send failed"}
 
 
 # ============================================================ GitHub OAuth ===
@@ -543,10 +745,29 @@ def github_finish(code: str, state: str) -> dict:
 
 
 def methods() -> dict:
-    """Which sign-in doors are open — the UI dims ones that are not."""
+    """Which sign-in doors are genuinely open on this deployment.
+
+    This is a capability *advertisement*, so it must not claim a door is open
+    when the code behind it would only be echoed to the caller in development.
+    An unavailable method is reported as unavailable and the UI dims it, rather
+    than letting a user request a code that can never be delivered.
+    """
+    dev_echo = security.dev_code_echo_allowed()
+    email_live = bool(security.env_str("OTP_SMTP_HOST"))
+    phone_live = bool(
+        security.env_str("OTP_TWILIO_SID")
+        and security.env_str("OTP_TWILIO_TOKEN")
+        and security.env_str("OTP_TWILIO_FROM")
+    )
     return {
         "password": True,
-        "otp_email": True,                       # dev-code fallback always works
-        "otp_phone": bool(os.environ.get("OTP_TWILIO_SID")),
+        # A door is "open" when a code can actually reach the owner of the
+        # address — either because a provider is configured, or because this is
+        # a development deployment that echoes the code to the requester.
+        "otp_email": email_live or dev_echo,
+        "otp_phone": phone_live or dev_echo,
         "github": github_configured(),
+        # The UI shows a "demo mode" banner when this is set, so a developer
+        # never mistakes an echoed code for real delivery.
+        "dev_otp_echo": dev_echo,
     }

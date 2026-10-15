@@ -9,8 +9,8 @@
 const State = {
   sid: localStorage.getItem("feefix.sid") || crypto.randomUUID(),
   lang: localStorage.getItem("feefix.lang") || "en",
-  token: localStorage.getItem("feefix.token") || null,
-  user: JSON.parse(localStorage.getItem("feefix.user") || "null"),
+  token: window.FFSec ? FFSec.token.get() : (localStorage.getItem("feefix.token") || null),
+  user: window.FFSec ? FFSec.token.user() : JSON.parse(localStorage.getItem("feefix.user") || "null"),
   dict: {},
   meta: null,
   stats: null,
@@ -47,8 +47,15 @@ async function submitAuth(mode) {
     const r = await api(`/api/auth/${mode}`, { method: "POST", body: JSON.stringify(payload) });
     State.token = r.token;
     State.user = r.user;
-    localStorage.setItem("feefix.token", r.token);
-    localStorage.setItem("feefix.user", JSON.stringify(r.user));
+    /* set() validates the shape before writing, so a malformed or mutated token
+       is never persisted and never sent as an Authorization header. */
+    if (FFSec) { FFSec.token.set(r.token); FFSec.token.setUser(r.user); }
+    else {
+      localStorage.setItem("feefix.token", r.token);
+      localStorage.setItem("feefix.user", JSON.stringify(r.user));
+    }
+    /* The password was just used; wipe it from the DOM and from autofill. */
+    if (FFSec) FFSec.clearSensitiveInputs(document.getElementById("authModal"));
     if (r.session_id) {
       // Returning on this device: adopt the account's session.
       State.sid = r.session_id;
@@ -73,8 +80,11 @@ async function logout() {
   try { await api("/api/auth/logout", { method: "POST", body: "{}" }); } catch (_) {}
   State.token = null;
   State.user = null;
-  localStorage.removeItem("feefix.token");
-  localStorage.removeItem("feefix.user");
+  if (FFSec) FFSec.token.clear();
+  else {
+    localStorage.removeItem("feefix.token");
+    localStorage.removeItem("feefix.user");
+  }
   // Fresh anonymous session after logout.
   State.sid = crypto.randomUUID();
   localStorage.setItem("feefix.sid", State.sid);
@@ -88,10 +98,16 @@ localStorage.setItem("feefix.sid", State.sid);
 /* ------------------------------------------------------------- helpers -- */
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
-const esc = (s) =>
-  String(s ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  }[c]));
+
+/* Output encoding lives in /security.js so there is exactly one implementation.
+   Kept as module-level names because every template literal in this file uses
+   them; delegating means a fix to the encoder is a fix everywhere. */
+const FFSec = window.FFSec;
+const esc = (v) => (FFSec ? FFSec.esc(v) : String(v ?? ""));
+/* The sink that escaping cannot protect: an href. `javascript:` contains no
+   character that esc() rewrites, so URL sinks must go through safeUrl(), which
+   allow-lists the scheme instead of escaping the string. */
+const safeUrl = (v, opts) => (FFSec ? FFSec.safeUrl(v, opts) : "#");
 
 function t(key, vars = {}) {
   let s = State.dict[key] || State.fallback?.[key] || key;
@@ -102,9 +118,28 @@ function t(key, vars = {}) {
 const fmtINR = (n) => "₹" + Number(n || 0).toLocaleString("en-IN");
 
 async function api(path, opts = {}) {
-  const headers = { "Content-Type": "application/json" };
-  if (State.token) headers.Authorization = `Bearer ${State.token}`;
-  const res = await fetch(path, { headers, ...opts });
+  const method = String(opts.method || "GET").toUpperCase();
+
+  /* Every mutating call carries a fresh nonce + timestamp. The server rejects a
+     request whose nonce it has already seen or whose timestamp is outside its
+     window, which makes a captured request worth exactly one use. */
+  const buildHeaders = () => ({
+    "Content-Type": "application/json",
+    ...(FFSec ? FFSec.headers(method) : {}),
+    ...(opts.headers || {}),
+    ...(State.token ? { Authorization: `Bearer ${State.token}` } : {}),
+  });
+
+  let res = await fetch(path, { ...opts, headers: buildHeaders() });
+
+  /* 409 = the replay guard fired. For a legitimate client that only happens on
+     a clock correction or a duplicate delivery, so retry once with a fresh
+     nonce rather than surfacing a confusing error. Never retry a 401/403 —
+     those are authorisation answers, not transport ones. */
+  if (res.status === 409 && method !== "GET" && FFSec) {
+    res = await fetch(path, { ...opts, headers: buildHeaders() });
+  }
+
   if (!res.ok) {
     let detail = res.statusText;
     try { detail = (await res.json()).detail || detail; } catch (_) {}
@@ -835,8 +870,12 @@ async function openScheme(id, viaRoute = false) {
       </div>
 
       <div class="d-section" style="display:flex;gap:10px;flex-wrap:wrap">
-        <a class="btn btn-primary" href="${esc(s.application.url)}" target="_blank" rel="noopener">↗ ${esc(t("common.apply_official"))}</a>
+        <a class="btn btn-primary" href="${esc(safeUrl(s.application.url))}" target="_blank"
+           rel="noopener noreferrer">↗ ${esc(t("common.apply_official"))}</a>
+        <button class="btn btn-ghost" id="copyApplyUrl" type="button"
+                data-url="${esc(safeUrl(s.application.url))}">📋 Copy link</button>
       </div>
+      <p id="ffPasteNote" class="auth-note" hidden style="margin:8px 0 0"></p>
       <p style="color:var(--text-dim);font-size:0.78rem;margin-top:22px">${esc(s.notes || "")}</p>`;
 
     scrim.classList.add("open");
@@ -851,6 +890,46 @@ async function openScheme(id, viaRoute = false) {
     };
     $("#drawerClose").addEventListener("click", close);
     scrim.onclick = close;
+
+    /* ------------------------------------------------------ clipboard ----
+     * Copying a government application URL is exactly the action a clipboard
+     * hijacker wants to intercept: swap the destination and the student pastes
+     * a phishing link into their browser, then submits Aadhaar and bank details
+     * to an attacker. So the copy is *verified*: we read the clipboard back and
+     * compare. A mismatch is reported loudly instead of failing silently.
+     *
+     * The URL is also treated as sensitive and cleared after a short TTL,
+     * because on Android any app can read the clipboard without a prompt and
+     * the value would otherwise persist indefinitely.
+     */
+    const copyBtn = $("#copyApplyUrl");
+    if (copyBtn) copyBtn.addEventListener("click", async () => {
+      const url = safeUrl(copyBtn.dataset.url, { fallback: "" });
+      const note = $("#ffPasteNote");
+      if (!url) {
+        if (note) { note.hidden = false; note.textContent = "⚠ No verified link to copy for this scheme."; }
+        return;
+      }
+      if (!FFSec) {
+        try { await navigator.clipboard.writeText(url); } catch (_) {}
+        toast("Link copied.");
+        return;
+      }
+      const result = await FFSec.clipboard.copy(url, { sensitive: true, ttlMs: 30000 });
+      if (!note) return;
+      note.hidden = false;
+      if (!result.ok) {
+        note.textContent = "⚠ Your browser blocked the copy — use the Apply button instead.";
+      } else if (result.tampered) {
+        /* This is the substitution attack being detected in the act. */
+        note.innerHTML = "🚫 <b>Clipboard blocked the copy.</b> Something else on this device "
+          + "changed the clipboard contents. Do not paste — open the link with the Apply button.";
+        toast("⚠ Clipboard tampering detected");
+      } else {
+        note.textContent = "✓ Link copied. It will be cleared from your clipboard in 30 s. "
+          + "Always check the address bar before entering Aadhaar or bank details.";
+      }
+    });
 
     $$("#trackRow .track-btn").forEach((btn) => {
       btn.addEventListener("click", async () => {

@@ -45,10 +45,39 @@ def test_urgent_deadline_beats_deadline_far_away(dataset):
 
 
 def test_days_left_computed(dataset):
+    """``days_left`` is exactly ``deadline - today``, for EVERY dated scheme.
+
+    This used to assert one hardcoded date for one scheme (`sv-mcm-wb` on
+    2026-11-30). That tested the dataset, not the arithmetic: every legitimate
+    deadline refresh broke it, which trains people to "fix" the test by pasting
+    in the new number rather than checking the computation. Deriving the
+    expectation from the dataset makes it a real property test — it now covers
+    all 60-odd dated schemes instead of one, and survives a data refresh.
+    """
     ranked = _rank(dataset)
-    by_id = {r.scheme.id: r for r in ranked}
-    svmcm = by_id["sv-mcm-wb"]
-    assert svmcm.days_left == (date(2026, 11, 30) - TODAY).days
+    by_id = {s.id: s for s in dataset.schemes}
+
+    dated = 0
+    for r in ranked:
+        deadline = by_id[r.scheme.id].deadline.date
+        if deadline is None:
+            # Rolling or undated schemes carry no countdown at all.
+            assert r.days_left is None, r.scheme.id
+            continue
+        dated += 1
+        assert r.days_left == (deadline - TODAY).days, (
+            f"{r.scheme.id}: days_left={r.days_left} but deadline={deadline} "
+            f"and today={TODAY}"
+        )
+        # The expired flag must agree with the sign of the countdown.
+        assert r.expired == (r.days_left < 0), r.scheme.id
+    # `_rank` scores the schemes a single test profile matches, so this is a
+    # subset of the dataset — but it must still be a meaningful one, or the loop
+    # above would be asserting nothing.
+    assert dated >= 8, (
+        f"only {dated} of {len(ranked)} ranked schemes carry a deadline — either "
+        "the dataset lost its dates or the test profile stopped matching"
+    )
 
 
 def test_rolling_schemes_have_no_days_left(dataset):

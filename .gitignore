@@ -4,16 +4,61 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+.mypy_cache/
+.ruff_cache/
 
-# Runtime stores (local tracker + notification outbox)
-runtime/*.json
-runtime/*.jsonl
-runtime/*.tmp
-runtime/*.db
-runtime/*.db-wal
-runtime/*.db-shm
+# ---------------------------------------------------------------------------
+# SECRETS — nothing in this block may ever be committed.
+#
+# runtime/ holds generated key material (the OTP pepper), the SQLite database
+# and the notification outbox. The old rules listed individual extensions
+# (*.json, *.db, …) and MISSED the one file that actually matters:
+# `runtime/.otp_pepper` is a dotfile with no extension, so it matched nothing
+# and would have been committed on the first `git add -A`. That is a secret key
+# leak via version control, and the pepper is what stops a database dump from
+# yielding live 6-digit sign-in codes.
+#
+# The rule is therefore "ignore everything in runtime/, allowlist the
+# placeholder" — which fails closed. A new secret file in runtime/ is ignored
+# by default rather than exposed by default.
+# ---------------------------------------------------------------------------
+runtime/*
+!runtime/.gitkeep
+
+# Environment files, by every common name.
+.env
+.env.*
+!.env.example
+
+# Key material and certificates.
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.keystore
+*.jks
+secrets/
+.otp_pepper
+*.secret
+
+# Local databases and dumps, wherever they land.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
 
 # OS / editor
 .DS_Store
+Thumbs.db
 .idea/
 .vscode/
+
+# Build artefacts — kept out of Git so the repo stays under the snapshot cap.
+dist/
+build/
+out/
+*.egg-info/
+.coverage
+htmlcov/

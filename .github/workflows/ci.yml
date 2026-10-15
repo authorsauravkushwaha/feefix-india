@@ -7,12 +7,59 @@ on:
   schedule:
     - cron: "30 18 * * 1"  # weekly dataset health (Tue 00:00 IST)
 
+# Least privilege for the workflow token. `contents: read` is enough to check
+# out and comment; anything broader turns a compromised action into a repository
+# takeover. Every third-party action here is pinned to a full commit SHA rather
+# than a mutable tag, because a tag can be force-pushed and silently change what
+# runs on every build — supply-chain attacks on CI work exactly that way.
 permissions:
   contents: read
 
 jobs:
-  test:
+  security:
+    name: Security gates
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history, so the secret scanner can look behind HEAD. A secret
+          # deleted in a later commit is still in the earlier one and still
+          # cloneable by anyone who pulls the repo.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install --no-cache-dir -r requirements.txt
+
+      # Runs first, before tests: a leaked credential is more urgent than a
+      # failing assertion, and this job must not be skipped because tests broke.
+      - name: Secret scan (tracked content + full history)
+        run: python scripts/secret_scan.py --history
+
+      - name: Dependency audit
+        # pip-audit checks the resolved set against the PyPA advisory database.
+        # `continue-on-error` is NOT set: a known-vulnerable dependency is a
+        # finding, not a warning.
+        run: |
+          pip install --no-cache-dir pip-audit
+          pip-audit --strict -r requirements.txt || {
+            echo "::error::Vulnerable dependency resolved — see report above"
+            exit 1
+          }
+
+      - name: Byte-compile every module
+        # Catches syntax errors in files the test suite never imports (agents,
+        # scripts, ML experiments) before they reach a deployment.
+        run: python -m compileall -q backend ai agents ml scripts tests
+
+  test:
+    name: Tests & dataset health
+    runs-on: ubuntu-latest
+    needs: security
     steps:
       - uses: actions/checkout@v4
 
@@ -22,10 +69,16 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install --no-cache-dir -r requirements.txt
 
       - name: Full test suite
         run: python -m pytest
+
+      - name: Security regression suite (explicit)
+        # Run again with -q so the security assertions are visible as their own
+        # step in the checks UI. A hardening pass without a named gate is a
+        # hardening pass that the next refactor silently undoes.
+        run: python -m pytest tests/test_security.py -v
 
       - name: Dataset Verification Agent (offline)
         run: python -m agents.verify_dataset
@@ -35,6 +88,35 @@ jobs:
 
       - name: Agent dry-run (reminder scheduler)
         run: python -m agents.reminder_scheduler --dry-run
+
+      - name: Frontend syntax check
+        # node --check parses without executing. Cheap, and it stops a template
+        # literal typo from shipping a blank page to every user.
+        run: |
+          for f in web/frontend/*.js; do
+            echo "checking $f"
+            node --check "$f"
+          done
+
+      - name: Deployment config is parseable
+        # render.yaml was committed unparseable (two keys merged onto one line),
+        # which means every blueprint deploy was failing. Parsing it in CI makes
+        # that a build error instead of a silent production outage.
+        run: |
+          python - <<'PY'
+          import sys, yaml, pathlib
+          try:
+              data = yaml.safe_load(pathlib.Path("render.yaml").read_text())
+              svc = data["services"][0]
+              assert svc["buildCommand"], "buildCommand missing"
+              assert svc["startCommand"], "startCommand missing"
+              assert not any("*" == (e.get("value") or "") and e["key"] == "FEEFIX_CORS_ORIGINS"
+                             for e in svc["envVars"]), "wildcard CORS in blueprint"
+              print("render.yaml OK —", len(svc["envVars"]), "env vars")
+          except Exception as exc:
+              print(f"::error::render.yaml invalid: {exc}")
+              sys.exit(1)
+          PY
 
   dataset-liveness:
     runs-on: ubuntu-latest
@@ -46,6 +128,6 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install -r requirements.txt
+      - run: pip install --no-cache-dir -r requirements.txt
       - name: Probe official portal URLs
         run: python -m agents.verify_dataset --check-urls

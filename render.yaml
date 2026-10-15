@@ -1,3 +1,20 @@
+# Render blueprint — infrastructure as code.
+#
+# THIS FILE WAS UNPARSEABLE. Line 8 read:
+#
+#   buildCommand: pip install -r requirements.txtJ    startCommand: uvicorn ...
+#
+# A stray "J" and a swallowed newline merged two keys onto one line, which is a
+# YAML syntax error ("mapping values are not allowed here"). Render would have
+# rejected the blueprint outright, so any deployment driven by this file was
+# failing — an availability bug that also means the security settings below were
+# never being applied. Verified with a YAML parser after the fix.
+#
+# Secret handling: every credential uses `sync: false`, which makes Render prompt
+# for the value in the dashboard instead of reading it from this file. A secret
+# committed to a blueprint is a secret in Git history forever, and Git history is
+# the first thing scraped from a public repository.
+
 services:
   - type: web
     name: feefix-india
@@ -5,7 +22,70 @@ services:
     plan: free
     region: singapore
     branch: main
-    buildCommand: pip install -r requirements.txtJ    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
+
+      # --- environment -----------------------------------------------------
+      # Explicit, so nothing depends on inference. This is what disables the
+      # OTP code echo and the interactive API docs.
+      - key: FEEFIX_ENV
+        value: production
+
+      # --- storage ---------------------------------------------------------
+      - key: FEEFIX_STORE
+        value: sqlite
+      - key: FEEFIX_DB
+        value: /opt/render/project/src/runtime/feefix.db
+
+      # --- rate limiting & client identity ---------------------------------
+      # Render does not expose the application port: the only thing that can
+      # open a connection to this process is Render's own proxy. That makes the
+      # socket peer trusted by construction, which is what allows per-IP rate
+      # limiting to work per *user* instead of lumping every visitor into one
+      # bucket (where a single abuser could lock out the entire customer base).
+      #
+      # This is deliberately NOT `FEEFIX_TRUSTED_PROXIES=0.0.0.0/0`. That value
+      # would behave identically here and catastrophically anywhere the app port
+      # IS reachable — it would let any client forge X-Forwarded-For and walk
+      # past every rate limit. The flag states the assumption explicitly, so it
+      # cannot be copy-pasted into a deployment where the assumption is false
+      # without someone reading what it says.
+      - key: FEEFIX_TRUST_PROXY_PEER
+        value: "1"
+      - key: FEEFIX_PROXY_HOPS
+        value: "1"
+      - key: FEEFIX_ANTI_REPLAY
+        value: enforce
+      - key: FEEFIX_BIND_CLIENT
+        value: "1"
+
+      # --- secrets: prompted in the dashboard, never stored here -----------
+      - key: FEEFIX_OTP_PEPPER
+        sync: false
+      - key: OTP_SMTP_HOST
+        sync: false
+      - key: OTP_SMTP_PORT
+        sync: false
+      - key: OTP_SMTP_USER
+        sync: false
+      - key: OTP_SMTP_PASS
+        sync: false
+      - key: OTP_SMTP_FROM
+        sync: false
+      - key: OTP_TWILIO_SID
+        sync: false
+      - key: OTP_TWILIO_TOKEN
+        sync: false
+      - key: OTP_TWILIO_FROM
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: FEEFIX_BASE_URL
+        sync: false

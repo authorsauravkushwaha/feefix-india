@@ -1,10 +1,72 @@
+# Everything here is excluded from the build context, which means it can never
+# end up inside an image layer. An image layer is an artifact: it gets pushed to
+# a registry, cached on build machines and pulled by anything that can deploy —
+# so a secret baked into a layer is a secret leaked to every one of those places,
+# permanently, even if a later layer "deletes" it.
+
+# --- version control & CI ---------------------------------------------------
 .git
-.venv
-.venv-win
-__pycache__
-*.pyc
-.pytest_cache
+.gitignore
+.github
+
+# --- secrets & key material -------------------------------------------------
+# The critical additions. `runtime/` holds the generated OTP pepper and the
+# SQLite database (real student records); `.env` holds every credential. Neither
+# belongs in an image — both are supplied at *run* time via the environment and a
+# mounted volume.
+.env
+.env.*
+!.env.example
+runtime/
+secrets/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.keystore
+*.jks
+.otp_pepper
+*.secret
+
+# --- local databases & dumps ------------------------------------------------
 data/*.db
 data/*.db-*
 data/events.jsonl
-.github
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# --- Python & tooling caches ------------------------------------------------
+.venv
+.venv-win
+venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+.coverage
+htmlcov
+
+# --- build artifacts & docs that the runtime does not need -------------------
+dist
+build
+out
+node_modules
+docs
+*.md
+!README.md
+
+# --- OS / editor ------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+Dockerfile
+.dockerignore
+docker-compose*.yml

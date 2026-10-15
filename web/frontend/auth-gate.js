@@ -215,14 +215,50 @@
         });
         b.addEventListener("paste", (e) => {
           e.preventDefault();
-          const digits = (e.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, 6);
+          /* The clipboard is unauthenticated input: it can carry bidi overrides,
+             control characters or a 1 MB blob. Sanitise for the "otp" kind
+             (digits only, capped) before anything touches the DOM. */
+          const raw = (e.clipboardData || window.clipboardData)?.getData("text") || "";
+          const digits = SEC ? SEC.clipboard.sanitizePaste(raw, "otp")
+                             : raw.replace(/\D/g, "").slice(0, 6);
           digits.split("").forEach((d, j) => { if (boxes[j]) boxes[j].value = d; });
           boxes[Math.min(digits.length, 5)].focus();
+          if (raw.replace(/\s/g, "") !== digits) {
+            const note = gate.querySelector("[data-msg]");
+            if (note) note.textContent = "⚠ Kept only the digits from what you pasted.";
+          }
         });
       });
     });
     const readCode = (pane) =>
       [...pane.querySelectorAll("[data-boxes] input")].map((b) => b.value).join("");
+
+    /* Show the "demo mode" hint WITHOUT innerHTML. The value comes from the
+       server, and the previous version interpolated it straight into markup —
+       the pattern that becomes an XSS the moment any part of that value stops
+       being six digits. Built from DOM nodes and textContent instead, so no
+       parser is involved at any point. */
+    const renderCodeHint = (msg, r) => {
+      if (!msg) return;
+      msg.textContent = "";
+      if (!r.dev_code) {
+        msg.textContent = r.channel === "email"
+          ? "📬 Check your inbox (and spam)."
+          : "📲 Check your SMS.";
+        return;
+      }
+      const code = String(r.dev_code).replace(/[^0-9]/g, "").slice(0, 8);
+      const lead = document.createElement("span");
+      lead.textContent = "⚙️ Demo mode — real delivery isn't configured, so your code is: ";
+      const strong = document.createElement("b");
+      strong.style.fontSize = "1.1rem";
+      strong.textContent = code;
+      msg.append(lead, strong);
+      /* A demo code is still a credential. Wipe it from the screen after a
+         while so it does not survive in a screenshot or an over-the-shoulder
+         glance, and never write it to storage or the clipboard. */
+      setTimeout(() => { if (msg.contains(strong)) strong.textContent = "••••••"; }, 120000);
+    };
 
     // countdown helper
     const countdown = (btn, span, seconds = 40) => {
@@ -237,18 +273,41 @@
     };
 
     const finish = (data) => {
-      localStorage.setItem(LS_TOKEN, data.token);
-      localStorage.setItem(LS_USER, JSON.stringify(data.user));
+      /* The one-time code has done its job: clear the boxes before navigating
+         so it is not left on screen, in the DOM, or in a browser screenshot. */
+      gate.querySelectorAll("[data-boxes] input").forEach((el) => { el.value = ""; });
+      if (SEC) SEC.clearSensitiveInputs(gate);
+
+      if (SEC) {
+        /* set() validates the token's shape before persisting it, so a
+           malformed value can never be stored and later sent as a header. */
+        if (!SEC.token.set(data.token)) { fail("Sign-in succeeded but the session could not be stored."); return; }
+        SEC.token.setUser(data.user);
+      } else {
+        localStorage.setItem(LS_TOKEN, data.token);
+        localStorage.setItem(LS_USER, JSON.stringify(data.user));
+      }
       if (data.session_id) localStorage.setItem("feefix.sid", data.session_id);
       location.reload();
     };
 
+    const SEC = window.FFSec;
+
+    /* Sign-in is the highest-value target for a replay attack: a captured
+       otp/verify or login request is a captured *session*. Every call therefore
+       carries a fresh nonce + timestamp, which the server rejects on reuse. */
     const api = async (path, body) => {
-      const r = await fetch(path, {
+      const payload = JSON.stringify(body || {});
+      const send = () => fetch(path, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body || {}),
+        headers: {
+          "Content-Type": "application/json",
+          ...(SEC ? SEC.replayHeaders() : {}),
+        },
+        body: payload,
       });
+      let r = await send();
+      if (r.status === 409 && SEC) r = await send();   // clock skew / duplicate
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.detail || `Error ${r.status}`);
       return d;
@@ -276,11 +335,7 @@
           stepCode.hidden = false;
           stepCode.querySelector("[data-addr]").textContent = r.address;
           const msg = stepCode.querySelector("[data-msg]");
-          if (r.dev_code) {
-            msg.innerHTML = `⚙️ <b>Demo mode</b> — real delivery isn't configured, so your code is: <b style="font-size:1.1rem">${r.dev_code}</b>`;
-          } else {
-            msg.textContent = r.channel === "email" ? "📬 Check your inbox (and spam)." : "📲 Check your SMS.";
-          }
+          renderCodeHint(msg, r);
           const rb = stepCode.querySelector('[data-act="resend"]');
           countdown(rb, stepCode.querySelector("[data-cd]"), r.resend_in);
           const name = channel === "email" ? stepTo.querySelector("#ffNameE").value.trim() : "";
@@ -308,7 +363,13 @@
             });
             form._done = true;
             finish(d);
-          } catch (err) { fail(err.message); busy(btn, false, "Verify & enter →"); }
+          } catch (err) {
+            fail(err.message);
+            busy(btn, false, "Verify & enter →");
+            /* A rejected code is still a secret someone typed. Clear it. */
+            stepCode.querySelectorAll("[data-boxes] input").forEach((el) => { el.value = ""; });
+            stepCode.querySelector("[data-boxes] input")?.focus();
+          }
         }
       });
 
@@ -318,7 +379,7 @@
         try {
           const r = await api("/api/auth/otp/request", { channel, address: address() });
           const msg = stepCode.querySelector("[data-msg]");
-          if (r.dev_code) msg.innerHTML = `⚙️ <b>Demo mode</b> — new code: <b style="font-size:1.1rem">${r.dev_code}</b>`;
+          renderCodeHint(msg, r);
           countdown(btn, stepCode.querySelector("[data-cd]"), r.resend_in);
         } catch (e2) { fail(e2.message); }
       });
