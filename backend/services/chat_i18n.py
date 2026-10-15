@@ -27,7 +27,15 @@ def detect_lang(text: str) -> str:
 
 
 def normalize_digits(text: str) -> str:
-    return text.translate(BN_DIGITS).translate(HI_DIGITS)
+    """Every supported script's digits → ASCII (table-driven).
+
+    The digit sets live in ``language/regional_support/numerals.json``; the
+    earlier two-script ``maketrans`` tables silently ignored Tamil, Gujarati,
+    Kannada, Telugu, Malayalam, Odia, Gurmukhi and Arabic-Indic input.
+    """
+    from backend.services import numerals
+
+    return numerals.normalize_digits(text)
 
 
 STR = {

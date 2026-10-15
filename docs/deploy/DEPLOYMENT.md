@@ -68,11 +68,38 @@ Spaces gives a permanent public URL (`https://<you>-feefix.hf.space`) — perfec
 
 ## Environment knobs
 
+### Must-set in production
+
 | Var | Default | Effect |
 |---|---|---|
-| `FEEFIX_DB` | `runtime/feefix.db` | SQLite path — point at a mounted volume in prod |
-| `FEEFIX_STORE` | `sqlite` | `json` reverts to the legacy JSON tracker store |
+| `FEEFIX_ENV` | *(unset)* | `production` turns on fail-closed boot guards (see below) |
+| `FEEFIX_PASSWORD_ALGO` | `auto` → argon2id in prod | Argon2id is required for new hashes; a production deploy **refuses to start** if `argon2-cffi` is missing rather than silently downgrading to PBKDF2 |
+| `FEEFIX_SECRETS_STRICT` | *prod implies 1* | `1` refuses to boot on a placeholder/missing secret. `0` is an explicit, auditable downgrade to a warning |
+| `FEEFIX_DB` | `runtime/feefix.db` | SQLite path — point at a **mounted volume**, or every deploy starts empty |
+| `FEEFIX_UPLOAD_DIR` | `runtime/uploads` | Uploaded documents — also belongs on the volume, and **not** inside a static mount |
+| `FEEFIX_REDIS_URL` | *(unset)* | **Set this whenever you run more than one worker/instance.** Without it every process keeps its own counters and the effective rate limit is `N ×` the configured one; the app warns at boot and `GET /api/health`'s `ratelimit.distributed` reads `false` |
+| `FEEFIX_TRUST_PROXY` | `0` | `1` when TLS/HTTP terminates in front (Render, Fly, nginx, k8s ingress). Without it every request looks like it came from the proxy and all users share one bucket. The forwarded header is read **rightmost** (the hop your proxy observed), so a client cannot forge its identity |
+
+### Rarely needed
+
+| Var | Default | Effect |
+|---|---|---|
 | `FEEFIX_CORS_ORIGINS` | *(empty)* | Comma-separated origins if you ever split web/API — **keep empty** otherwise |
+| `FEEFIX_STORE` | `sqlite` | `json` reverts to the legacy JSON tracker store |
+| `FEEFIX_REPLAY_POLICY` | `balanced` | `lenient` (never revoke) / `strict` (revoke the session family on any stale replay — logs users out everywhere, opt in knowingly) |
+| `FEEFIX_RATELIMIT_FAIL_MODE` | `auth` | Which buckets fail **closed** when the shared store is down (`auth`, `all`, `none`) |
+| `FEEFIX_RATELIMIT_BACKEND` | `auto` | `memory` forces the in-process store (single-worker only) |
+| `FEEFIX_MAX_*`, `FEEFIX_MAX_BODY_*` | per-endpoint defaults | Raise/lower a body cap or field length for *your* traffic without a code change; every value is clamped to `FEEFIX_ABSOLUTE_MAX_BODY_BYTES` (16 MB) |
+| `FEEFIX_DISABLE_DOCS` / `FEEFIX_ENABLE_DOCS` | *docs on* | Cosmetic only — gates `/docs`, `/redoc`, `/openapi.json`. It hides no endpoint and removes no attack surface, so it is off by default and documented as optical |
+
+### Fail-closed boot
+
+With `FEEFIX_ENV=production` (or `FEEFIX_SECRETS_STRICT=1`) the app refuses to
+start when a required secret is missing, still a `CHANGE_ME`-style placeholder,
+too short, or unaccompanied by its companion variable (`OTP_SMTP_PASS` without
+`OTP_SMTP_USER`, a Stripe secret without its publishable key). The error names
+the variable and what to fix; `FEEFIX_SECRETS_STRICT=0` downgrades it to a log
+warning if you accept the risk knowingly.
 
 ## Postgres migration path (when the workload outgrows SQLite)
 

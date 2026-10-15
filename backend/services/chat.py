@@ -31,6 +31,7 @@ from backend.models.student import (
     INDIAN_STATES,
     StudentProfile,
 )
+from backend.services import numerals
 from backend.services.chat_i18n import detect_lang, normalize_digits, tr
 from backend.services.dataset import DatasetService
 from backend.services.matching import match_profile, strip_internal
@@ -92,52 +93,15 @@ _STATE_LOOKUP.update({
 
 
 def parse_income(text: str) -> int | None:
-    """Parse 'Rs2,00,000', '2 lakh', Bengali/Hindi/Tamil lakh & thousand, '200000'.
+    """Parse 'Rs2,00,000', '2 lakh', '६५ हजार', '২ লাখ', '2 லட்சம்', '60k'.
 
-    Digit runs are bounded (\d{1,12}) so a long all-digit string can't trigger
-    super-linear backtracking (ReDoS); absurd magnitudes are rejected by
-    ``_safe_money`` instead of overflowing.
+    All vocabulary (digit sets for 14 scripts, crore/lakh/thousand words in
+    every supported language, currency tokens) lives in
+    ``language/regional_support/numerals.json`` and the matcher is built from
+    that table — no hand-written ``\\uXXXX`` escapes in this file. Amounts are
+    bounds-checked (see ``services/numerals.py``) instead of overflowing.
     """
-    t = _nfc(normalize_digits(text.lower()).replace("\u20b9", "").replace(",", "").strip())
-    # lakh / lac (x100,000) — Tamil, Bengali, Hindi script + ASCII (word-bounded)
-    m = re.search(
-        r"(\d{1,12}(?:\.\d{1,6})?)\s*(\u0bb2\u0b9f\u0bcd\u0b9a\u0bae\u0bcd"
-        r"|\u09b2\u09be\u0996|\u0932\u093e\u0916)", t)
-    if m:
-        return _safe_money(m.group(1), 100_000)
-    m = re.search(r"(\d{1,12}(?:\.\d{1,6})?)\s*(lakhs?|lac|l)\b", t)
-    if m:
-        return _safe_money(m.group(1), 100_000)
-    # thousand (x1,000) — Tamil, Bengali, Hindi script + ASCII
-    m = re.search(
-        r"(\d{1,12}(?:\.\d{1,6})?)\s*(\u0b86\u0baf\u0bbf\u0bb0\u0bae\u0bcd"
-        r"|\u09b9\u09be\u099c\u09be\u09b0|\u0939\u091c\u093c\u093e\u0930"
-        r"|\u0939\u091c\u093e\u0930)", t)
-    if m:
-        return _safe_money(m.group(1), 1_000)
-    m = re.search(r"(\d{1,12}(?:\.\d{1,6})?)\s*(thousand|k)\b", t)
-    if m:
-        return _safe_money(m.group(1), 1_000)
-    m = re.search(r"(\d{4,9})", t)
-    if m:
-        return _safe_money(m.group(1), 1)
-    return None
-
-
-# An annual family income beyond this is not a real figure — reject rather than
-# risk float overflow / absurd downstream arithmetic (availability guard).
-_MAX_INCOME = 10 ** 13
-
-
-def _safe_money(numstr: str, mult: int) -> int | None:
-    try:
-        value = float(numstr) * mult
-    except (ValueError, OverflowError):
-        return None
-    if value != value or value in (float("inf"), float("-inf")):  # NaN / inf
-        return None
-    as_int = int(value)
-    return as_int if 0 <= as_int <= _MAX_INCOME else None
+    return numerals.parse_amount(text)
 
 
 def parse_state(text: str) -> str | None:

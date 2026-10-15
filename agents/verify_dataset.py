@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import sys
+import urllib.parse
 import urllib.request
 from datetime import date, datetime
 from pathlib import Path
@@ -39,9 +40,14 @@ def _age_days(day: date) -> int:
 
 
 def check_url(url: str, timeout: float = 8.0) -> tuple[bool, str]:
+    # Only http(s) official-portal URLs are probed — never file:/ftp:/custom
+    # schemes that a corrupted dataset entry could smuggle in.
+    if urllib.parse.urlparse(url).scheme not in ("http", "https"):
+        return False, "unsupported scheme"
     req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "FeeFix-Agent/1.0"})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as res:
+        # Scheme is pinned to http(s) immediately above, so B310 is justified.
+        with urllib.request.urlopen(req, timeout=timeout) as res:  # nosec B310
             return 200 <= res.status < 400, f"HTTP {res.status}"
     except Exception as exc:
         return False, f"{exc.__class__.__name__}"

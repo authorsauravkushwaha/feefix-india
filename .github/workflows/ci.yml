@@ -13,6 +13,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # Deterministic, offline-friendly embeddings for CI (no model download).
+      FEEFIX_AI_BACKEND: ngram
     steps:
       - uses: actions/checkout@v4
 
@@ -27,8 +30,16 @@ jobs:
       - name: Full test suite
         run: python -m pytest
 
-      - name: Secret scan (no committed credentials)
-        run: python -m agents.secret_scan
+      - name: Secret scan (in-house, no committed credentials)
+        run: python -m agents.secret_scan --json secret-scan-report.json
+
+      - name: Upload secret-scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: secret-scan-report
+          path: secret-scan-report.json
+          if-no-files-found: ignore
 
       - name: Dataset Verification Agent (offline)
         run: python -m agents.verify_dataset
@@ -38,6 +49,37 @@ jobs:
 
       - name: Agent dry-run (reminder scheduler)
         run: python -m agents.reminder_scheduler --dry-run
+
+  # --- independent scanners -------------------------------------------------
+  # Separate vendors, separate heuristics: the in-house scanner above is good at
+  # repo-specific shapes, these catch what a single implementation misses. They
+  # also mean the security signal is not produced solely by the author of the
+  # code under review.
+  secret-scan-third-party:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history so historical leaks are caught too
+      - name: gitleaks (independent secret scanner)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sast-and-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install scanners
+        run: pip install bandit pip-audit
+      - name: Static security analysis (medium+ severity)
+        run: bandit -q -r backend agents ai ml -x tests -ll
+      - name: Dependency vulnerability audit
+        run: pip-audit -r requirements.txt
 
   dataset-liveness:
     runs-on: ubuntu-latest

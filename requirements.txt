@@ -2,6 +2,18 @@
 fastapi>=0.115
 uvicorn[standard]>=0.30
 
+# Password hashing — Argon2id (memory-hard). Required in production: a deploy
+# configured for Argon2id refuses to start without it rather than silently
+# downgrading to PBKDF2 (see backend/services/passwords.py).
+argon2-cffi>=23.1
+
+# Shared rate-limit counters across workers/instances. Optional locally; set
+# FEEFIX_REDIS_URL to activate (see backend/services/ratelimit.py).
+redis>=5.0
+
+# Multipart form parsing for the document-upload endpoint.
+python-multipart>=0.0.9
+
 # Free, local AI embeddings (open weights, no API keys). Optional — when the
 # model weights can't be downloaded, the built-in n-gram embedder takes over.
 fastembed>=0.3
@@ -10,3 +22,5 @@ fastembed>=0.3
 pytest>=8.0
 pytest-asyncio>=0.23
 httpx>=0.27  # TestClient transport
+hypothesis>=6.100  # property-based/fuzz tests (tests/test_fuzz_security.py)
+fakeredis>=2.20  # in-process Redis for distributed-rate-limit tests (optional)

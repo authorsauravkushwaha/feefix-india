@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+import os
+
 import pytest
+
+# Deterministic, offline embeddings for the test suite: without this the AI layer
+# tries to download the MiniLM weights on a cold cache (slow, and impossible in
+# CI or on an air-gapped machine). Tests that care about the neural backend ask
+# for it explicitly.
+os.environ.setdefault("FEEFIX_AI_BACKEND", "ngram")
 from fastapi.testclient import TestClient
 
 from backend.main import create_app

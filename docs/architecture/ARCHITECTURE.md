@@ -79,7 +79,7 @@ client and the WhatsApp conversation — one payload, four product surfaces.
 | `backend/services/matching.py` | Orchestrates engine+ranker into API payloads. |
 | `backend/services/tracker.py` + `sqlite_store.py` | Status pipeline (`saved→planning→applied→under_review→approved/rejected`). Default store is **SQLite (WAL)** with session↔account ownership binding; `FEEFIX_STORE=json` keeps the legacy JSON store. |
 | `backend/services/db.py` | Database engine + versioned migrations + audit log (WAL, FK on, busy-timeout; parameterized only). |
-| `backend/services/auth.py` | Accounts: PBKDF2-SHA256 (600k) password hashing, opaque hashed session tokens, register/login/link/erase. |
+| `backend/services/*` | `passwords.py`: **Argon2id** (PBKDF2-600k legacy, re-hashed on login) · `auth.py`: opaque hashed session tokens with rotation + replay tolerance · `ratelimit.py`: sliding-window limits, Redis-shared across workers · `limits.py` + `request_limits.py`: per-endpoint body caps enforced mid-stream · `uploads.py` + `upload.py`: the hardened upload gate · `secrets.py`: boot-time secret hygiene. |
 | `backend/services/ratelimit.py` + `secure_headers.py` | Sliding-window rate limits (global + auth-strict) and CSP/HSTS/nosniff/no-store transport hardening. |
 | `backend/services/reminders.py` | Derives *actions* from deadlines + tracker state. |
 | `backend/services/chat.py` + `chat_i18n.py` | Reach-layer conversation state machine (3 questions → matches → free-text Q&A), multilingual: Bengali/Hindi script detection, native-digit/state/course parsing, localized conversation strings that stick per session. |

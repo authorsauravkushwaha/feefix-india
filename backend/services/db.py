@@ -15,6 +15,7 @@ Integrity primitives (the *I* in CIA):
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import threading
 from pathlib import Path
@@ -22,7 +23,7 @@ from pathlib import Path
 RUNTIME_DIR = Path(__file__).resolve().parents[2] / "runtime"
 DEFAULT_DB = RUNTIME_DIR / "feefix.db"
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
@@ -156,20 +157,100 @@ _MIGRATIONS = {
         # Backfill legacy rows (created before v3) so family revocation works.
         "UPDATE auth_sessions SET session_key = token_hash WHERE session_key IS NULL",
     ],
+    4: [
+        # v4 — replay handling that cannot log a user out of every device.
+        # `fingerprint` records the client identity that created the session, so
+        # a late same-device request can be told apart from a stolen-token
+        # replay; `replay_strikes` counts replay observations per family and
+        # only escalates to family revocation past a threshold. All additive.
+        "ALTER TABLE auth_sessions ADD COLUMN fingerprint TEXT",
+        "ALTER TABLE auth_sessions ADD COLUMN replay_strikes INTEGER NOT NULL DEFAULT 0",
+    ],
+    5: [
+        # v5 — wired uploads: the hardened upload gate finally has a caller, so
+        # its metadata needs a home. Stored bytes never live in the database;
+        # this is metadata + ownership only. All additive.
+        """CREATE TABLE IF NOT EXISTS uploads (
+            id            TEXT PRIMARY KEY,
+            session_id    TEXT NOT NULL,
+            user_id       TEXT REFERENCES users(id) ON DELETE SET NULL,
+            original_name TEXT,
+            stored_name   TEXT NOT NULL,
+            content_type  TEXT,
+            kind          TEXT NOT NULL,
+            size_bytes    INTEGER NOT NULL,
+            sha256        TEXT NOT NULL,
+            created_at    TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_uploads_session ON uploads(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_uploads_user ON uploads(user_id)",
+        # Long-form application notes. A legitimately large free-text field
+        # (20 KB default) is exactly the input a one-size-fits-all body cap used
+        # to reject — its own endpoint carries its own, larger body policy.
+        """CREATE TABLE IF NOT EXISTS session_notes (
+            session_id TEXT PRIMARY KEY,
+            notes      TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )""",
+    ],
 }
 
 
+# ``ALTER TABLE <t> ADD COLUMN <c> ...`` — the one DDL form SQLite cannot make
+# conditional, so we check the live schema before running it. Identifiers come
+# from ``_MIGRATIONS`` (module constants), never from a request.
+_ALTER_ADD_COLUMN = re.compile(
+    r"^\s*ALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+ADD\s+COLUMN\s+([A-Za-z_][A-Za-z0-9_]*)",
+    re.IGNORECASE,
+)
+
+
+def _apply(conn: sqlite3.Connection, statement: str) -> None:
+    """Run one migration statement, never failing because it already ran.
+
+    Two situations used to be fatal and both are normal in production:
+
+    * **Two instances booting at once** (Render scales out, or ``--workers 2``
+      starts both at the same time). Without an up-front write lock both read
+      ``user_version`` and race through the same ``ALTER TABLE`` — the loser
+      died with *duplicate column name* and the deploy crash-looped.
+    * **A half-applied migration** from an earlier crash. SQLite's legacy
+      autocommit applied DDL statement-by-statement, so a DB could end up with
+      the column added but ``user_version`` not bumped, poisoning every later
+      boot. Checking the live schema heals that database instead of bricking it.
+    """
+    match = _ALTER_ADD_COLUMN.match(statement)
+    if match:
+        table, column = match.group(1), match.group(2)
+        # `table` is a validated identifier from our own migration table.
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column in existing:
+            return
+    conn.execute(statement)
+
+
 def migrate(conn: sqlite3.Connection | None = None) -> None:
+    """Apply pending migrations atomically and safely under concurrency."""
     conn = conn or get_connection()
     with _lock:
-        current = conn.execute("PRAGMA user_version").fetchone()[0]
-        for version in range(current + 1, SCHEMA_VERSION + 1):
-            for statement in _MIGRATIONS[version]:
-                conn.execute(statement)
-            # `version` is a loop-controlled int; PRAGMA takes no bind param, so
-            # coerce it defensively. This is a schema version, never user data.
-            conn.execute("PRAGMA user_version=" + str(int(version)))
-        conn.commit()
+        # BEGIN IMMEDIATE takes the write lock *before* reading user_version, so
+        # a second process waits here instead of running the same DDL behind us.
+        # SQLite has no advisory locks; this is the equivalent for boot-time DDL.
+        if conn.in_transaction:  # pragma: no cover - defensive
+            conn.commit()
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            current = conn.execute("PRAGMA user_version").fetchone()[0]
+            for version in range(current + 1, SCHEMA_VERSION + 1):
+                for statement in _MIGRATIONS[version]:
+                    _apply(conn, statement)
+                # `version` is a loop-controlled int; PRAGMA takes no bind param,
+                # so coerce it defensively. A schema version, never user data.
+                conn.execute("PRAGMA user_version=" + str(int(version)))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
 
 def audit(actor: str | None, action: str, detail: str | None = None) -> None:

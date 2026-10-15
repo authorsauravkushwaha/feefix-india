@@ -1,37 +1,87 @@
 """FeeFix authentication — accounts, password hashing, revocable sessions.
 
-Design choices (free, zero-dependency, and deliberately boring-because-boring-is-secure):
+Design choices (deliberately boring, because boring is secure):
 
-* **Passwords** — PBKDF2-HMAC-SHA256, 600,000 iterations, 16-byte per-user salt
-  (OWASP-recommended parameters; stdlib `hashlib`, no external deps).
-  Stored format: ``pbkdf2$<iterations>$<salt_hex>$<hex_digest>``.
+* **Passwords** — Argon2id (memory-hard, parameters in
+  ``services/passwords.py``) with transparent upgrade of legacy PBKDF2 rows on
+  the next successful sign-in. A production deployment configured for Argon2id
+  refuses to start without ``argon2-cffi`` rather than silently downgrading.
 * **Sessions** — opaque 256-bit random bearer tokens (``secrets`` module).
   Only the **SHA-256 hash** of a token is stored, so a database leak yields
   nothing usable. 30-day rolling expiry; logout and account deletion revoke.
-* **Timing safety** — verification always hashes, and digests are compared
-  with ``hmac.compare_digest``; unknown-email errors are identical to
+* **Timing safety** — verification always runs the KDF, and unknown-account
+  logins burn an equivalent dummy verification; digests are compared with
+  ``hmac.compare_digest``; unknown-email errors are identical to
   wrong-password errors (no user-enumeration).
+
+Token rotation & replay detection (availability ≠ collateral damage)
+--------------------------------------------------------------------
+Tokens are silently rotated after ``FEEFIX_ROTATE_AFTER_S`` (24 h) and the fresh
+token is returned in ``X-Session-Token``. A *superseded* token presented later is
+a replay signal — but "replayed token" and "stale device/tab that has not caught
+up" look identical from the server, and revoking the whole session family for a
+benign race logs the user out everywhere. So:
+
+* within ``FEEFIX_TOKEN_OVERLAP_S`` (15 min) a superseded token still
+  authenticates, and if it comes from the **same client fingerprint** the server
+  mints a fresh sibling token for that device — the stale client *self-heals*
+  instead of hard-failing;
+* beyond the overlap the stale token is refused (never the live one);
+* the family is revoked **only** when the replay pattern actually looks like
+  theft: ``FEEFIX_REPLAY_STRIKES`` (5) replayed tokens from a *different* client
+  fingerprint, under the ``balanced`` policy. ``strict`` restores the old
+  revoke-the-family behaviour for deployments that prefer it; ``lenient`` only
+  ever logs.
+
+The trade-off is explicit and configurable rather than accidental — see
+``docs/security/SECURITY.md``.
 """
 
 from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
+import os
 import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from backend.services import db
+from backend.services import db, passwords
 from backend.services.limits import MAX_EMAIL_LEN, MAX_PASSWORD_LEN, MIN_PASSWORD_LEN
 
-PBKDF2_ITERATIONS = 600_000
-SESSION_DAYS = 30
-# Anti-replay: an opaque bearer token is silently rotated once it has been in
-# use longer than this, and the previous token is remembered so that its later
-# re-use (a stolen token being replayed) revokes the whole session family.
-ROTATE_AFTER_S = 24 * 3600          # rotate a token that has lived a full day
-REUSE_GRACE_S = 60                  # in-flight tolerance before "reuse" = theft
+log = logging.getLogger("feefix.auth")
+
+
+def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
+    raw = os.environ.get(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+    return value if value >= minimum else default
+
+
+PBKDF2_ITERATIONS = passwords.PBKDF2_ITERATIONS  # kept for backwards compatibility
+SESSION_DAYS = _env_int("FEEFIX_SESSION_DAYS", 30)
+# A token in continuous use longer than this is silently rotated.
+ROTATE_AFTER_S = _env_int("FEEFIX_ROTATE_AFTER_S", 24 * 3600)
+# How long a superseded token keeps working while clients catch up (in-flight
+# tolerance + slow/background tabs). This is the knob that trades replay
+# strictness for availability.
+OVERLAP_S = _env_int("FEEFIX_TOKEN_OVERLAP_S", 15 * 60)
+# Legacy name for the short in-flight window used by the ``strict`` policy.
+REUSE_GRACE_S = _env_int("FEEFIX_REUSE_GRACE_S", 60)
+# balanced (default) | strict | lenient
+REPLAY_POLICY = (os.environ.get("FEEFIX_REPLAY_POLICY") or "balanced").strip().lower()
+REPLAY_STRIKES = _env_int("FEEFIX_REPLAY_STRIKES", 5)
+if REPLAY_POLICY not in ("balanced", "strict", "lenient"):  # pragma: no cover - config typo
+    log.warning("[auth] unknown FEEFIX_REPLAY_POLICY=%r — using 'balanced'", REPLAY_POLICY)
+    REPLAY_POLICY = "balanced"
+
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_\-]{32,128}$")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -48,43 +98,25 @@ def _iso(dt: datetime) -> str:
     return dt.isoformat(timespec="seconds")
 
 
-# -- passwords ----------------------------------------------------------------
-def _prehash(password: str) -> bytes:
-    """Fixed-size pre-image so PBKDF2 cost is independent of password length.
+# -- passwords ------------------------------------------------------------------ #
+def hash_password(password: str, *, iterations: int | None = None) -> str:
+    """Hash a password with the active algorithm (Argon2id where available).
 
-    A 100 MB "password" would otherwise force the KDF to HMAC megabytes on
-    every one of the 600k iterations — a trivial CPU-exhaustion DoS. Hashing to
-    32 bytes first makes the work constant regardless of input size (the
-    *long-password DoS* defence); ``MAX_PASSWORD_LEN`` is a second, earlier cap.
+    ``iterations`` is accepted for backwards compatibility with older callers
+    that pinned PBKDF2 rounds; new code should not pass it.
     """
-    return hashlib.sha256(password.encode("utf-8")).digest()
-
-
-def hash_password(password: str, *, iterations: int = PBKDF2_ITERATIONS) -> str:
-    salt = secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac("sha256", _prehash(password), salt, iterations)
-    return f"pbkdf2${iterations}${salt.hex()}${digest.hex()}"
-
-
-def _pbkdf2_digest(preimage: bytes, salt: bytes, iterations: int) -> bytes:
-    return hashlib.pbkdf2_hmac("sha256", preimage, salt, iterations)
+    if iterations and iterations != passwords.PBKDF2_ITERATIONS:
+        # Explicit legacy request (importers/tests) — honour the PBKDF2 path.
+        preimage = hashlib.sha256(password.encode("utf-8")).digest()
+        salt = secrets.token_bytes(16)
+        digest = hashlib.pbkdf2_hmac("sha256", preimage, salt, iterations)
+        return f"pbkdf2${iterations}${salt.hex()}${digest.hex()}"
+    return passwords.hash_password(password)
 
 
 def verify_password(password: str, stored: str) -> bool:
-    try:
-        scheme, iterations, salt_hex, digest_hex = stored.split("$")
-        if scheme != "pbkdf2":
-            return False
-        salt = bytes.fromhex(salt_hex)
-        expected = bytes.fromhex(digest_hex)
-        iters = int(iterations)
-        # Current scheme (pre-hashed) …
-        actual = _pbkdf2_digest(_prehash(password), salt, iters)
-        # … and the legacy direct-hash scheme, so old rows keep verifying.
-        legacy = _pbkdf2_digest(password.encode("utf-8"), salt, iters)
-        return hmac.compare_digest(actual, expected) or hmac.compare_digest(legacy, expected)
-    except Exception:
-        return False
+    """Boolean compatibility wrapper around :func:`passwords.verify`."""
+    return passwords.verify(password, stored)[0]
 
 
 def validate_credentials(email: str, password: str) -> None:
@@ -124,10 +156,27 @@ def login(email: str, password: str) -> dict:
     row = conn.execute(
         "SELECT id, email, name, password_hash FROM users WHERE email=?", (email,)
     ).fetchone()
-    # Always run the KDF so unknown-email and wrong-password take similar time.
-    stored = row["password_hash"] if row else hash_password("dummy")
-    if not row or not verify_password(password, stored):
+    if not row:
+        # Unknown account: burn an equivalent verification so response timing
+        # cannot be used to enumerate registered emails.
+        passwords.dummy_verify(password)
         raise AuthError("Invalid email or password.")
+    ok, needs_rehash = passwords.verify(password, row["password_hash"])
+    if not ok:
+        raise AuthError("Invalid email or password.")
+    if needs_rehash:
+        # Transparent upgrade: a legacy PBKDF2 row (or outdated Argon2id
+        # parameters) becomes a current-scheme hash the moment it is proven.
+        try:
+            with db._lock:
+                conn.execute(
+                    "UPDATE users SET password_hash=?, updated_at=? WHERE id=?",
+                    (hash_password(password), _iso(_utcnow()), row["id"]),
+                )
+                conn.commit()
+            db.audit(row["id"], "auth.password_rehashed", passwords.active_algorithm())
+        except Exception as exc:  # noqa: BLE001 - never block a valid sign-in
+            log.warning("[auth] password rehash skipped: %s", exc)
     db.audit(row["id"], "auth.login", None)
     return {"id": row["id"], "email": row["email"], "name": row["name"]}
 
@@ -137,7 +186,29 @@ def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def create_session(user_id: str, client: str | None = None) -> tuple[str, datetime]:
+def client_fingerprint(request) -> str | None:
+    """Stable-ish client identity: hash of User-Agent (+ language/proto hints).
+
+    Not a security boundary on its own (a thief controls the header) — it is a
+    *corroborating* signal used to distinguish "same device catching up" from
+    "somebody replaying a stolen token", and it is never stored in the clear.
+    """
+    if request is None:
+        return None
+    parts = [
+        request.headers.get("user-agent", ""),
+        request.headers.get("accept-language", ""),
+        request.headers.get("sec-ch-ua-platform", ""),
+    ]
+    material = "|".join(parts).strip()
+    if not material or material == "||":
+        return None
+    return hashlib.sha256(material.encode("utf-8", "ignore")).hexdigest()[:16]
+
+
+def create_session(
+    user_id: str, client: str | None = None, *, session_key: str | None = None
+) -> tuple[str, datetime]:
     token = secrets.token_urlsafe(32)
     now = _utcnow()
     expires = now + timedelta(days=SESSION_DAYS)
@@ -146,51 +217,199 @@ def create_session(user_id: str, client: str | None = None) -> tuple[str, dateti
         conn.execute(
             "INSERT INTO auth_sessions"
             " (token_hash, user_id, created_at, expires_at, last_seen, client,"
-            "  session_key, replaced_by, replaced_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?)",
+            "  session_key, replaced_by, replaced_at, replay_strikes, fingerprint)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (
                 _token_hash(token), user_id, _iso(now), _iso(expires), _iso(now), client,
-                uuid.uuid4().hex, None, None,
+                session_key or uuid.uuid4().hex, None, None, 0, client,
             ),
         )
         conn.commit()
     return token, expires
 
 
-def _lookup(token: str):
-    """Return (user_dict, row) for a live token, or (None, None).
-
-    Enforces the anti-replay invariant: a token that was already rotated
-    (``replaced_by`` set) is a *replayed* token once its grace window has
-    passed, and re-using it revokes the entire session family so a thief who
-    captured it is locked out the moment the real user rotates.
-    """
+def _fetch_row(token: str):
     if not token or not _TOKEN_RE.match(token):
-        return None, None
+        return None
     conn = db.get_connection()
-    row = conn.execute(
+    return conn.execute(
         "SELECT s.token_hash, s.expires_at, s.session_key, s.replaced_by, s.replaced_at,"
+        " s.replay_strikes, s.fingerprint, s.user_id,"
         " u.id AS uid, u.email, u.name"
         " FROM auth_sessions s JOIN users u ON u.id = s.user_id"
         " WHERE s.token_hash=?",
         (_token_hash(token),),
     ).fetchone()
+
+
+def _delete_row(token_hash: str) -> None:
+    """Drop exactly one session row — never a family (see availability notes)."""
+    conn = db.get_connection()
+    with db._lock:
+        conn.execute("DELETE FROM auth_sessions WHERE token_hash=?", (token_hash,))
+        conn.commit()
+
+
+def _strike_family(session_key: str, token_hash: str) -> int:
+    """Count *one* replay observation against a session family; return the total.
+
+    The strike lands on the replayed row and the total is the family maximum, so
+    repeating a replay of the same stale token advances the counter by exactly
+    one observation (incrementing every row would inflate the count by the
+    family size and trip the threshold far too early).
+    """
+    conn = db.get_connection()
+    with db._lock:
+        conn.execute(
+            "UPDATE auth_sessions SET replay_strikes = replay_strikes + 1"
+            " WHERE session_key=? AND token_hash=?",
+            (session_key, token_hash),
+        )
+        row = conn.execute(
+            "SELECT COALESCE(MAX(replay_strikes), 0) AS n FROM auth_sessions WHERE session_key=?",
+            (session_key,),
+        ).fetchone()
+        conn.commit()
+    return int(row["n"]) if row else 0
+
+
+def _user_of(row) -> dict:
+    return {"id": row["uid"], "email": row["email"], "name": row["name"]}
+
+
+def _fingerprint_matches(row, client: str | None) -> bool:
+    """Same device? Unknown fingerprints are treated as a match (availability)."""
+    recorded = row["fingerprint"] if "fingerprint" in row.keys() else None
+    if not recorded or not client:
+        return True
+    return hmac.compare_digest(str(recorded), str(client))
+
+
+def _handle_superseded(row, client: str | None) -> tuple[dict | None, str | None]:
+    """Decide what a *superseded* (already rotated) token may do.
+
+    Returns ``(user, new_token)``. ``user`` is ``None`` when the token is
+    refused. The live token of the family is never harmed by this path unless
+    the replay pattern escalates under an explicit policy.
+    """
+    user = _user_of(row)
+    replaced_at = (
+        datetime.fromisoformat(row["replaced_at"]) if row["replaced_at"] else _utcnow()
+    )
+    age_s = max(0.0, (_utcnow() - replaced_at).total_seconds())
+    same_device = _fingerprint_matches(row, client)
+    family = row["session_key"] or row["token_hash"]
+
+    if age_s <= OVERLAP_S:
+        if same_device:
+            # Same device, late request: heal it by minting a fresh sibling
+            # token so it stops using the superseded one on its own.
+            db.audit(user["id"], "auth.token_overlap_healed", f"age={int(age_s)}s")
+            return user, _mint_sibling(row, client)
+        # Different client inside the overlap window: allow (in-flight
+        # tolerance) but do not mint, and note the observation.
+        db.audit(user["id"], "auth.token_overlap_foreign_client", f"age={int(age_s)}s")
+        return user, None
+
+    # Beyond the overlap: genuine stale-token replay territory.
+    if REPLAY_POLICY == "lenient":
+        db.audit(user["id"], "auth.token_replay_observed", f"age={int(age_s)}s policy=lenient")
+        return None, None
+    if REPLAY_POLICY == "strict":
+        _revoke_family(family)
+        db.audit(user["id"], "auth.token_reuse_revoked", f"age={int(age_s)}s policy=strict")
+        return None, None
+
+    # balanced
+    strikes = _strike_family(family, row["token_hash"])
+    if not same_device and strikes >= REPLAY_STRIKES:
+        _revoke_family(family)
+        db.audit(
+            user["id"],
+            "auth.token_reuse_revoked",
+            f"strikes={strikes} age={int(age_s)}s foreign_client=true",
+        )
+        return None, None
+    db.audit(
+        user["id"],
+        "auth.token_replay_rejected",
+        f"strikes={strikes} age={int(age_s)}s live_session_kept=true",
+    )
+    return None, None
+
+
+def _mint_sibling(row, client: str | None) -> str:
+    """Mint a fresh token in the same family (client self-heal path).
+
+    The fingerprint is inherited when the caller does not know it, so a rotation
+    never *loses* the device identity that replay detection relies on.
+    """
+    if not client:
+        try:
+            client = row["fingerprint"]
+        except (KeyError, IndexError):  # pragma: no cover - row shim
+            client = None
+    new_token = secrets.token_urlsafe(32)
+    now = _utcnow()
+    new_hash = _token_hash(new_token)
+    conn = db.get_connection()
+    with db._lock:
+        conn.execute(
+            "INSERT INTO auth_sessions"
+            " (token_hash, user_id, created_at, expires_at, last_seen, client,"
+            "  session_key, replaced_by, replaced_at, replay_strikes, fingerprint)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                new_hash, row["user_id"], _iso(now), _iso(now + timedelta(days=SESSION_DAYS)),
+                _iso(now), client, row["session_key"], None, None, 0, client,
+            ),
+        )
+        conn.execute(
+            "UPDATE auth_sessions SET replaced_by=?, replaced_at=? WHERE token_hash=?",
+            (new_hash, _iso(now), row["token_hash"]),
+        )
+        conn.commit()
+    return new_token
+
+
+def _lookup(token: str, client: str | None = None) -> tuple[dict | None, object | None]:
+    """Return ``(user, row)`` for a live token, or ``(None, None)``.
+
+    Row is returned only for tokens that are current (not superseded), so callers
+    can safely touch/rotate them.
+    """
+    row = _fetch_row(token)
     if not row:
         return None, None
     if datetime.fromisoformat(row["expires_at"]) < _utcnow():
-        revoke_token(token)
+        # Expiry kills exactly this token — never its family.
+        _delete_row(row["token_hash"])
         return None, None
-    user = {"id": row["uid"], "email": row["email"], "name": row["name"]}
     if row["replaced_by"]:
-        replaced_at = datetime.fromisoformat(row["replaced_at"]) if row["replaced_at"] else _utcnow()
-        if (_utcnow() - replaced_at).total_seconds() > REUSE_GRACE_S:
-            # Replay of an already-rotated token → burn the whole family.
-            _revoke_family(row["session_key"] or row["token_hash"])
-            db.audit(user["id"], "auth.token_reuse_revoked", "rotated token replayed")
+        user, new_token = _handle_superseded(row, client)
+        if user is None:
             return None, None
-        # Within the grace window: a concurrent in-flight request that started
-        # just before rotation — same user, still honoured.
-    return user, row
+        # Surface the healed token to the caller via the row shim.
+        return user, _SupersededRow(row, new_token)
+    return _user_of(row), row
+
+
+class _SupersededRow:
+    """Marks a superseded-but-tolerated token so callers don't rotate it again."""
+
+    __slots__ = ("_row", "healed_token")
+
+    def __init__(self, row, healed_token: str | None) -> None:
+        self._row = row
+        self.healed_token = healed_token
+
+    def __getitem__(self, key):  # pragma: no cover - row passthrough
+        return self._row[key]
+
+    def keys(self):  # pragma: no cover
+        return self._row.keys()
+
+    superseded = True
 
 
 def _touch(row) -> None:
@@ -205,56 +424,40 @@ def _touch(row) -> None:
         conn.commit()
 
 
-def resolve_token(token: str | None) -> dict | None:
+def resolve_token(token: str | None, client: str | None = None) -> dict | None:
     """Bearer token → user dict (rolling refresh) or None. No rotation here."""
-    user, row = _lookup(token)
-    if user is None:
+    user, row = _lookup(token, client)
+    if user is None or row is None:
         return None
-    if not row["replaced_by"]:
-        _touch(row)
+    if isinstance(row, _SupersededRow):  # tolerated stale token; already refreshed
+        return user
+    _touch(row)
     return user
 
 
-def resolve_and_rotate(token: str | None) -> tuple[dict | None, str | None]:
+def resolve_and_rotate(
+    token: str | None, client: str | None = None
+) -> tuple[dict | None, str | None]:
     """Resolve a bearer token, rotating it if it has aged past ``ROTATE_AFTER_S``.
 
-    Returns ``(user, new_token)``; ``new_token`` is set only when a rotation
-    happened, so the caller can hand the fresh token back to the client. Rotation
-    is idempotent per family: once rotated, the old token is never rotated again.
+    Returns ``(user, new_token)``; ``new_token`` is set when a rotation (or a
+    self-heal for a late client) handed the caller a fresher token.
     """
-    user, row = _lookup(token)
-    if user is None or row["replaced_by"]:
-        return user, None
+    user, row = _lookup(token, client)
+    if user is None or row is None:
+        return None, None
+    if isinstance(row, _SupersededRow):
+        return user, row.healed_token
     conn = db.get_connection()
-    created = datetime.fromisoformat(
-        conn.execute(
-            "SELECT created_at FROM auth_sessions WHERE token_hash=?", (row["token_hash"],)
-        ).fetchone()["created_at"]
-    )
+    created_row = conn.execute(
+        "SELECT created_at FROM auth_sessions WHERE token_hash=?", (row["token_hash"],)
+    ).fetchone()
+    created = datetime.fromisoformat(created_row["created_at"])
     if (_utcnow() - created).total_seconds() < ROTATE_AFTER_S:
         _touch(row)
         return user, None
     # Rotate: mint a new token in the same family, mark the old one superseded.
-    new_token = secrets.token_urlsafe(32)
-    now = _utcnow()
-    new_hash = _token_hash(new_token)
-    with db._lock:
-        conn.execute(
-            "INSERT INTO auth_sessions"
-            " (token_hash, user_id, created_at, expires_at, last_seen, client,"
-            "  session_key, replaced_by, replaced_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?)",
-            (
-                new_hash, row["uid"], _iso(now),
-                _iso(now + timedelta(days=SESSION_DAYS)), _iso(now), None,
-                row["session_key"], None, None,
-            ),
-        )
-        conn.execute(
-            "UPDATE auth_sessions SET replaced_by=?, replaced_at=? WHERE token_hash=?",
-            (new_hash, _iso(now), row["token_hash"]),
-        )
-        conn.commit()
+    new_token = _mint_sibling(row, client)
     db.audit(user["id"], "auth.token_rotated", None)
     return user, new_token
 
@@ -306,3 +509,15 @@ def delete_account(user_id: str) -> None:
         conn.execute("DELETE FROM users WHERE id=?", (user_id,))
         conn.commit()
     db.audit(user_id, "auth.delete_account", f"owned_sessions={len(owned)}")
+
+
+def policy_summary() -> dict:
+    """Non-secret summary of rotation/replay policy (docs, `/api/meta`)."""
+    return {
+        "rotate_after_s": ROTATE_AFTER_S,
+        "token_overlap_s": OVERLAP_S,
+        "replay_policy": REPLAY_POLICY,
+        "replay_strikes": REPLAY_STRIKES,
+        "reuse_grace_s": REUSE_GRACE_S,
+        "session_days": SESSION_DAYS,
+    }
