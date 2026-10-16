@@ -203,6 +203,29 @@ def test_failing_tests_are_reported_as_annotations(ci):
     assert upload and upload[0].get("if") == "always()"
 
 
+def test_concurrency_and_property_suites_are_run_repeatedly(ci):
+    """Intermittent failures must surface in CI, not as a green/red lottery.
+
+    Two runs of identical test code went red in CI while passing locally, with
+    the cause visible only in a log blob. The suites that can flake — real
+    subprocesses, real ports, real clocks, randomised input — are therefore run
+    more than once per build, and the job blocks.
+    """
+    job = ci["jobs"].get("flake-watch")
+    assert job, "no flake-watch job: intermittent failures would ship"
+    assert not job.get("continue-on-error"), "flake-watch must be able to fail the build"
+    assert job.get("timeout-minutes")
+
+    loops = [
+        s["run"] for s in job["steps"] if "run" in s and "pytest" in str(s["run"])
+    ]
+    assert loops, "flake-watch does not run pytest"
+    script = loops[0]
+    for path in ("tests/test_ratelimit_distributed.py", "tests/test_fuzz_security.py"):
+        assert path in script, f"flake-watch does not cover {path}"
+    assert "for pass in 1 2 3" in script, "flake-watch must repeat, not run once"
+
+
 def test_ci_runs_both_directions_of_the_secret_scan(ci):
     """Scan the tree *and* emit the machine-readable report CI archives."""
     commands = _run_commands(ci)

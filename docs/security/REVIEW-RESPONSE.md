@@ -393,8 +393,37 @@ Two CI lessons, both about gates that report *red* without reporting *why*:
   (it must never become a second, opaque failure of its own).
 
 With those in place the pipeline is green end to end on the current head —
-`test`, `secret-scan-third-party`, `sast-and-dependencies` all pass, and the
-scheduled `dataset-liveness` job stays off the critical path.
+`test`, `flake-watch`, `secret-scan-third-party`, `sast-and-dependencies` all
+pass, and the scheduled `dataset-liveness` job stays off the critical path.
+
+## E. An unexplained intermittent failure, handled honestly
+
+Two consecutive CI runs failed the test job while the identical suite passed
+locally (three hash seeds, then pinned to a single CPU). The failing test's name
+existed only inside a log artifact that is not reachable from this environment,
+so it could not be read back post hoc. Rather than declare it fixed, all three
+available responses were applied:
+
+* **Evidence.** Failed test ids are now check annotations and the junit XML plus
+  captured output are archived, so the next occurrence is diagnosable from the
+  API within seconds. (Removing the guesswork also removed a step that could
+  itself fail opaquely — the annotation step is plain shell that always exits 0.)
+* **Known flake mechanisms removed, not merely observed.** In the distributed
+  suite: port allocation could hand the same ephemeral port to two workers (the
+  second silently failed to bind and "two instances" became one — the probes
+  then measured a single instance); a worker that had already exited was waited
+  on for the full 60-second health timeout instead of failing immediately; and
+  the timeout is now env-tunable for slow runners. Each of those is pinned by a
+  test, including one that drives a deliberately dying worker.
+* **A gate for the class of bug.** `flake-watch` runs the concurrency, property
+  and migration suites three times per build. If the cause was environmental
+  timing, it now reproduces in a pipeline run instead of a coin flip.
+
+The honest status: the specific first failure was never identified, and one
+hypothesis (ephemeral-port reuse) was disproved by measurement — 0/400
+back-to-back allocations returned a duplicate on this machine, so the guard that
+makes it impossible is hardening rather than a demonstrated fix. What is certain
+is that the next incident will name itself.
 
 ## What the second pass says about the first
 

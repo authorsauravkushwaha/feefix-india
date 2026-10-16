@@ -88,6 +88,37 @@ jobs:
       - name: Agent dry-run (reminder scheduler)
         run: python -m agents.reminder_scheduler --dry-run
 
+  # --- intermittent-failure watch ------------------------------------------- #
+  # Two CI runs of the *same* test code went red here while passing locally, and
+  # the only record was a log blob. Intermittent failures in the concurrency
+  # (real subprocesses, real ports, real clocks) and property (randomised)
+  # suites are the ones that erode trust in a green badge, so those files are
+  # run repeatedly rather than once. Costs seconds; blocking, because a flake
+  # that CI tolerates is a flake that ships.
+  flake-watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FEEFIX_AI_BACKEND: ngram
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Repeat the concurrency and property suites
+        run: |
+          for pass in 1 2 3; do
+            echo "=== pass $pass of 3 ==="
+            python -m pytest tests/test_ratelimit_distributed.py tests/test_fuzz_security.py \
+              tests/test_schema_migrations.py -q -p no:cacheprovider
+          done
+
   # --- independent scanners -------------------------------------------------
   # Separate vendors, separate heuristics: the in-house scanner above is good at
   # repo-specific shapes, these catch what a single implementation misses. They

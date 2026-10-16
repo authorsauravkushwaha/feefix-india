@@ -58,10 +58,27 @@ def _redis_backend(url: str) -> ratelimit.RedisBackend:
     return ratelimit.RedisBackend(ratelimit._make_redis_client(url), url)
 
 
+#: Ports handed out in this process. The OS reuses an ephemeral port as soon as
+#: the socket that held it is closed, so two back-to-back calls could return the
+#: *same* number: the second instance then failed to bind, the health probe hit
+#: the first instance and passed, and "two instances" silently became one — the
+#: per-instance assertions in this file would fail intermittently. Distinct
+#: numbers in-process, and the caller retries if an outside process wins the race.
+_used_ports: set[int] = set()
+
+
 def _free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+    for _ in range(64):
+        with socket.socket() as sock:
+            # No SO_REUSEADDR: we want a port the kernel is not handing out
+            # elsewhere, not one it is willing to share.
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+            sock.bind(("127.0.0.1", 0))
+            port = int(sock.getsockname()[1])
+        if port not in _used_ports:
+            _used_ports.add(port)
+            return port
+    raise RuntimeError("could not find a free port")
 
 
 # --------------------------------------------------------------------------- #
@@ -263,12 +280,28 @@ def test_expensive_paths_get_their_own_bucket():
 # --------------------------------------------------------------------------- #
 # 5) end to end: two real worker processes, one shared counter set
 # --------------------------------------------------------------------------- #
-def _wait_for_health(port: int, timeout_s: float = 60.0, log_path: Path | None = None) -> None:
+#: Generous by default: a cold CI runner importing FastAPI while a second
+#: worker does the same can take far longer than a warm laptop. Tunable so a
+#: slow environment can raise it without editing the test.
+HEALTH_TIMEOUT_S = float(os.environ.get("FEEFIX_TEST_HEALTH_TIMEOUT", "120"))
+
+
+def _wait_for_health(
+    port: int,
+    timeout_s: float | None = None,
+    log_path: Path | None = None,
+    proc: "subprocess.Popen | None" = None,
+) -> None:
     import httpx
 
-    deadline = time.time() + timeout_s
+    deadline = time.time() + (timeout_s if timeout_s is not None else HEALTH_TIMEOUT_S)
     last_error: Exception | None = None
     while time.time() < deadline:
+        # A worker that already exited will never serve: fail immediately with
+        # the reason instead of burning the whole timeout on it.
+        if proc is not None and proc.poll() is not None:
+            last_error = RuntimeError(f"worker exited with code {proc.returncode}")
+            break
         try:
             r = httpx.get(f"http://127.0.0.1:{port}/api/health", timeout=3)
             if r.status_code == 200:
@@ -285,16 +318,43 @@ def _wait_for_health(port: int, timeout_s: float = 60.0, log_path: Path | None =
 class _Instance:
     """One deployment instance: its own process, its own port, its own memory."""
 
-    def __init__(self, port: int, env: dict, tmp_path: Path) -> None:
-        self.port = port
-        # A log file (not a pipe) so a crashed worker can be diagnosed instead
-        # of deadlocking on a full pipe buffer.
-        self.log_path = tmp_path / f"instance-{port}.log"
-        self._log = open(self.log_path, "w")  # noqa: SIM115 - closed in stop()
-        self.proc = subprocess.Popen(
-            [sys.executable, "-m", "uvicorn", "backend.main:app",
-             "--host", "127.0.0.1", "--port", str(port)],
-            cwd=REPO, env=env, stdout=self._log, stderr=subprocess.STDOUT, text=True,
+    def __init__(self, env: dict, tmp_path: Path, *, name: str = "instance") -> None:
+        self.env = env
+        self.tmp_path = tmp_path
+        self.name = name
+        self.port = 0
+        self.log_path = tmp_path / f"{name}.log"
+        self.proc: subprocess.Popen | None = None
+        self._log = None
+
+    def start(self, *, attempts: int = 3) -> "_Instance":
+        """Boot the worker, retrying on a *different* port if one is taken.
+
+        Losing the bind race is not a test failure — it is an environment
+        accident — so it is retried (with the child's output kept per attempt)
+        instead of being reported as a broken rate limiter.
+        """
+        problems: list[str] = []
+        for attempt in range(1, attempts + 1):
+            self.port = _free_port()
+            self.log_path = self.tmp_path / f"{self.name}-{self.port}.log"
+            # A log file (not a pipe) so a crashed worker can be diagnosed
+            # instead of deadlocking on a full pipe buffer.
+            self._log = open(self.log_path, "w")  # noqa: SIM115 - closed in stop()
+            self.proc = subprocess.Popen(
+                [sys.executable, "-m", "uvicorn", "backend.main:app",
+                 "--host", "127.0.0.1", "--port", str(self.port)],
+                cwd=REPO, env=self.env, stdout=self._log, stderr=subprocess.STDOUT,
+                text=True,
+            )
+            try:
+                _wait_for_health(self.port, log_path=self.log_path, proc=self.proc)
+                return self
+            except AssertionError as exc:
+                problems.append(f"attempt {attempt} (port {self.port}): {exc}")
+                self.stop()
+        raise AssertionError(
+            f"{self.name} never became healthy:\n" + "\n".join(problems)
         )
 
     def get(self, path: str, timeout: float = 15.0) -> int:
@@ -303,12 +363,15 @@ class _Instance:
         return httpx.get(f"http://127.0.0.1:{self.port}{path}", timeout=timeout).status_code
 
     def stop(self) -> None:
-        self.proc.terminate()
-        try:
-            self.proc.wait(timeout=15)
-        except subprocess.TimeoutExpired:  # pragma: no cover
-            self.proc.kill()
-        self._log.close()
+        if self.proc is not None and self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:  # pragma: no cover
+                self.proc.kill()
+        if self._log is not None:
+            self._log.close()
+            self._log = None
 
 
 def _two_instances(
@@ -326,10 +389,9 @@ def _two_instances(
             **env_overrides,
         }
     )
-    a = _Instance(_free_port(), env, tmp_path)
-    b = _Instance(_free_port(), env, tmp_path)
-    _wait_for_health(a.port, log_path=a.log_path)
-    _wait_for_health(b.port, log_path=b.log_path)
+    a = _Instance(env, tmp_path, name="instance-a").start()
+    b = _Instance(env, tmp_path, name="instance-b").start()
+    assert a.port != b.port, "two instances must not share a port"
     return a, b
 
 
@@ -417,3 +479,69 @@ def test_forwarded_chain_single_hop(monkeypatch):
     monkeypatch.setenv("FEEFIX_TRUST_PROXY", "1")
     assert ratelimit.client_ip(_FakeRequest({"x-forwarded-for": " 1.2.3.4 "})) == "1.2.3.4"
     assert ratelimit.client_ip(_FakeRequest({})) == "203.0.113.9"
+
+
+# --------------------------------------------------------------------------- #
+# 7) the harness itself: flaky infrastructure is a flaky gate
+# --------------------------------------------------------------------------- #
+def test_free_port_never_hands_out_the_same_port_twice():
+    """The OS reuses an ephemeral port the instant its socket closes.
+
+    Two back-to-back allocations could therefore return the same number; the
+    second worker failed to bind, the health probe hit the *first* worker and
+    reported success, and "two instances" silently became one — which makes the
+    per-instance assertions in this file fail intermittently for reasons that
+    have nothing to do with rate limiting.
+    """
+    ports = [_free_port() for _ in range(25)]
+    assert len(set(ports)) == len(ports), f"duplicate port handed out: {ports}"
+
+
+def test_health_probe_fails_fast_when_the_worker_has_already_exited(tmp_path):
+    """A dead child must be reported immediately, not after the whole timeout."""
+    proc = subprocess.Popen([sys.executable, "-c", "raise SystemExit(3)"])
+    proc.wait(timeout=30)
+
+    started = time.time()
+    with pytest.raises(AssertionError) as excinfo:
+        _wait_for_health(_free_port(), timeout_s=60, proc=proc)
+    elapsed = time.time() - started
+
+    assert elapsed < 15, f"waited {elapsed:.1f}s for a process that had already exited"
+    assert "exited with code 3" in str(excinfo.value)
+
+
+def test_instance_start_retries_on_a_fresh_port_and_reports_every_attempt(
+    monkeypatch, tmp_path
+):
+    """Losing the bind race is an environment accident, not a broken limiter."""
+
+    class _DeadProc:
+        returncode = 1
+
+        def poll(self) -> int:
+            return 1
+
+        def terminate(self) -> None:  # pragma: no cover - nothing to stop
+            pass
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 1
+
+    attempts: list[int] = []
+
+    def fake_popen(cmd, **kwargs):  # noqa: ANN001, ANN003 - mirrors Popen's shape
+        attempts.append(int(cmd[cmd.index("--port") + 1]))
+        return _DeadProc()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    with pytest.raises(AssertionError) as excinfo:
+        _Instance({"PATH": os.environ.get("PATH", "")}, tmp_path, name="dead").start(
+            attempts=2
+        )
+
+    message = str(excinfo.value)
+    assert "attempt 1" in message and "attempt 2" in message, message
+    assert "exited with code 1" in message
+    assert len(set(attempts)) == len(attempts), f"retried on the same port: {attempts}"
