@@ -1,9 +1,17 @@
 # FeeFix Security Model
 
 FeeFix handles what students type about themselves — income, community, marks.
-This document is the threat model and how the codebase answers it, mapped to
-the **CIA triad** (Confidentiality · Integrity · Availability).
+This document is the threat model and how the codebase answers it, mapped to the
+**CIA triad** (Confidentiality · Integrity · Availability).
 
+> **Scope, honestly stated.** Every control here is implemented and tested, and
+> the tests are described next to each claim so you can check them. The suite,
+> the fuzzer and the static checks were written by the same author as the code,
+> so they encode the same assumptions — **there has been no third-party
+> penetration test and no external security review**. Where a control is only a
+> UX nicety (the clipboard helper) or a configuration choice (interactive docs),
+> it says so out loud instead of being dressed up as defence.
+>
 > **Attack-by-attack detail:** [`HARDENING.md`](HARDENING.md) maps all 13 named
 > attack classes (replay, clipboard, SQL/NoSQL injection, secret leaks,
 > long-password DoS, ReDoS, SSTI, info leakage, file upload, secret management,
@@ -17,7 +25,7 @@ the **CIA triad** (Confidentiality · Integrity · Availability).
 
 | Threat | Control |
 |---|---|
-| Password theft from the database | **Argon2id** (`time_cost=2`, `memory_cost=19 MiB`, `parallelism=1` — OWASP parameters) is the production default; `FEEFIX_ENV=production` or `FEEFIX_PASSWORD_ALGO=argon2id` makes a deployment **refuse to boot** without `argon2-cffi` instead of silently serving a weakened hash. Legacy `pbkdf2$600000$<salt>$<digest>` rows still verify and are **re-hashed to Argon2id on the next successful login**, when the plaintext is actually available. Tests assert the plaintext never appears in the DB bytes. |
+| Password theft from the database | **Argon2id** (`time_cost=2`, `memory_cost=19 MiB`, `parallelism=1` — OWASP parameters) is the production default; `FEEFIX_ENV=production` or `FEEFIX_PASSWORD_ALGO=argon2id` makes a deployment **refuse to boot** without `argon2-cffi` instead of silently serving a weakened hash. Legacy `pbkdf2$…` rows still verify and are **re-hashed to Argon2id on the next successful login**, when the plaintext is actually available. Tests assert the plaintext never appears in the DB bytes. |
 | Session-token theft from the database | Tokens are 256-bit random (`secrets.token_urlsafe`). **Only the SHA-256 hash is stored** — a leaked table yields nothing replayable. |
 | User enumeration (does an account exist?) | Register/login return **uniform, identical errors**; login always runs the KDF even for unknown emails, so response *time* leaks nothing either. |
 | Cross-origin snooping | SPA + API share one origin; **CORS is closed by default** (`FEEFIX_CORS_ORIGINS` opt-in only). |
@@ -57,14 +65,33 @@ the **CIA triad** (Confidentiality · Integrity · Availability).
 ## Privacy guarantees
 
 * **Progressive enhancement** — every feature works anonymously; accounts are opt-in.
-* **Data portability** — `GET /api/auth/export` returns everything the account holds, in one JSON.
-* **Right to erasure** — `DELETE /api/auth/account` removes the user, all sessions
-  (FK cascade), owned profiles, uploads and tracker rows.
-* AI is local-only: **nothing is sent to any external model or API, ever** (`ai/README.md`).
+* **Data portability** — `GET /api/auth/export` returns everything the account holds.
+* **Right to erasure** — `DELETE /api/auth/account` removes the user, sessions,
+  owned profiles, tracker rows **and uploaded document files**.
+* AI is local-only: nothing is sent to an external model or API (`ai/README.md`).
+
+## Interactive API docs
+
+`/docs`, `/redoc` and `/openapi.json` are **on by default**. Disabling them never
+removed an endpoint or an attack surface — the routes answered regardless — while
+breaking generated clients and QA. `FEEFIX_DISABLE_DOCS=1` remains available and
+is documented as cosmetic, not as a control.
+
+## Verifying the claims in this document
+
+```bash
+python -m pytest                                        # full suite
+python -m pytest tests/test_rate_limit_shared.py        # limiter across processes
+python -m pytest tests/test_wiring_and_claims.py        # controls are wired, docs match code
+python -m scripts.fuzz_api --requests 2000 --seed 1     # randomised API probing
+python -m agents.secret_scan --history --check-ci       # secrets + CI wiring
+node --test "web/tests/*.test.mjs"                      # clipboard behaviour
+pip-audit -r requirements.txt                           # dependency advisories
+```
 
 ## What green tests do and don't mean
 
-The suite (472 tests) proves **consistency with the rules we wrote down**. It
+The suite (472 added tests) proves **consistency with the rules we wrote down**. It
 cannot prove the rules are complete, because the tests were written by the same
 authors as the code: assumptions we never questioned are assumptions we never
 tested. Two of the most recent real defects — a lone surrogate turning a request

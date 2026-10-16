@@ -8,6 +8,23 @@ Serves the REST API under ``/api`` and the web experience (static SPA) at
 One origin, one port — the web app only ever makes relative API calls, so the
 deployment is immune to host/origin mismatches behind any proxy.
 
+Boot policy (all of it fail-fast, none of it cosmetic):
+
+* **Interactive docs are ON by default** (``/docs``, ``/redoc``,
+  ``/openapi.json``). Skipping them was never a security control: every route
+  still answered, so turning the docs off only broke generated clients, QA and
+  tooling while looking like hardening. The API surface is protected by auth,
+  ownership checks, validation and rate limits — not by hiding it. A deployment
+  that genuinely wants them off sets ``FEEFIX_ENABLE_DOCS=0`` (documented as a
+  cosmetic switch, not a defence).
+* **Secrets are enforced, not just logged** — see ``services/secrets.py``; in
+  strict/production mode a placeholder credential aborts startup.
+* **Rate-limiter topology is checked** — if the process-local limiter would be
+  used with multiple workers/instances, that is reported (and fatal in strict
+  mode) instead of silently multiplying every limit.
+* **Every request body is capped per endpoint while it streams** — see
+  ``services/body_limit.py``.
+
 Boot sequence (fail *loudly* before serving, never halfway):
 
 1. password-hashing policy is resolved (Argon2id; a production deployment that
@@ -37,6 +54,8 @@ from backend.notifications import (
     WhatsAppOutboxNotifier,
 )
 from backend.services import ratelimit
+from backend.services.auth import AuthBusy as _AuthBusy
+from backend.services.body_limit import BodyLimitMiddleware
 from backend.services.dataset import DatasetService
 from backend.services.middleware import RateLimitMiddleware, SessionMiddleware
 from backend.services.request_limits import (
@@ -47,10 +66,16 @@ from backend.services.request_limits import (
 from backend.services.secure_headers import SecurityHeadersMiddleware
 from backend.services.sqlite_store import SQLiteStore
 from backend.services.tracker import TrackerStore
+from backend.services.secrets import enforce_secret_policy, strict_mode, secret_status
 
 log = logging.getLogger("feefix")
 
 WEB_DIR = __import__("pathlib").Path(__file__).resolve().parents[1] / "web" / "frontend"
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
 
 # CORS: the SPA is served same-origin, so cross-origin browser access stays
 # CLOSED by default. Deployments that genuinely need it opt in via env var.
@@ -119,10 +144,31 @@ def _boot_guards() -> dict:
     for finding in findings:
         log.warning("[secrets] %s", finding)
 
+    # Branch's policy layer on top: companion half-configs and the operator's
+    # explicit FEEFIX_REQUIRED_SECRETS list get the same strictness teeth.
+    enforce_secret_policy()
+
     # (3) Rate limiting: pick the store from the environment (not a stale
     #     earlier choice) and refuse a topology the store cannot actually limit.
     store = ratelimit.configure(force=True)
     warning = ratelimit.warn_if_not_distributed()
+    for topo in ratelimit.topology_warnings():
+        log.error("[ratelimit] topology: %s", topo)
+    if ratelimit.topology_warnings() and strict_mode():
+        raise RuntimeError(
+            "Refusing to start: rate-limiter topology is unsafe ("
+            + "; ".join(ratelimit.topology_warnings())
+            + "). Set FEEFIX_REDIS_URL, or FEEFIX_STRICT_SECRETS=0 to run without enforcement."
+        )
+    from backend.services import auth as _auth
+
+    log.info(
+        "[feefix] boot: hashing=%s, rate-limit store=%s (shared=%s), secrets=%s",
+        _auth.hash_backend_note(),
+        ratelimit.describe()["backend"],
+        ratelimit.describe()["shared_across_processes"],
+        "strict" if strict_mode() else "advisory",
+    )
 
     # (4) OTP delivery: say out loud which gateway carries sign-in codes, and
     #     whether this deployment is handing them out as a labelled demo. The
@@ -151,12 +197,25 @@ def create_app() -> FastAPI:
         default_response_class=SafeJSONResponse,
         description=(
             "Personalized scholarship & fee-waiver matching platform for "
-            "Indian students — discover, understand, apply, track."
+            "Indian students — discover, understand, apply, track.\n\n"
+            "Interactive docs are enabled by default: they are a client/QA "
+            "contract, not an attack surface (set `FEEFIX_ENABLE_DOCS=0` to "
+            "hide them). Every response is JSON; every request body is capped "
+            "per endpoint (`GET /api/health` reports the effective limits)."
         ),
         docs_url="/docs" if enable_docs else None,
         redoc_url="/redoc" if enable_docs else None,
         # Always. Hiding this does not remove an endpoint.
         openapi_url="/openapi.json",
+        openapi_tags=[
+            {"name": "meta", "description": "Health, capabilities and limits"},
+            {"name": "auth", "description": "Accounts, sessions, OTP, OAuth"},
+            {"name": "schemes", "description": "Scholarship catalogue"},
+            {"name": "matching", "description": "Eligibility matching"},
+            {"name": "students", "description": "Profiles and documents"},
+            {"name": "tracker", "description": "Application tracking"},
+            {"name": "ai", "description": "Semantic search, Q&A, chat"},
+        ],
     )
     app.state.boot = boot
     app.state.docs_enabled = enable_docs
@@ -176,6 +235,11 @@ def create_app() -> FastAPI:
     app.add_middleware(BodyLimitMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(SessionMiddleware)
+    # SessionMiddleware resolves the bearer once per request and hands
+    # back `X-Session-Token` (rotation/heal) and `X-Session-Warning`
+    # (detected replay) so the UI can prompt a re-login instead of being
+    # mysteriously logged out. See services/middleware.py.
+
     app.add_middleware(SecurityHeadersMiddleware)
 
     # A body that overruns its endpoint policy mid-stream → 413 (not 500).
@@ -205,11 +269,21 @@ def create_app() -> FastAPI:
     app.state.notifier = NotificationRouter(
         [ConsoleNotifier(), WhatsAppOutboxNotifier()]
     )
+    app.state.docs_enabled = enable_docs
 
     # AI layer — free, local embeddings + grounded Q&A (never a paid API).
     from ai.qa import QaEngine
 
     app.state.qa = QaEngine(dataset)
+
+    @app.exception_handler(_AuthBusy)
+    async def _busy_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Back-pressure from the bounded KDF pool → retryable 503 (never a 500)."""
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Service is busy — please retry shortly."},
+            headers={"Retry-After": "2"},
+        )
 
     @app.exception_handler(Exception)
     async def unhandled(request: Request, exc: Exception):  # pragma: no cover - safety net

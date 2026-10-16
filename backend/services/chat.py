@@ -31,8 +31,8 @@ from backend.models.student import (
     INDIAN_STATES,
     StudentProfile,
 )
-from backend.services import numerals
-from backend.services.chat_i18n import detect_lang, normalize_digits, tr
+from backend.services.chat_i18n import detect_lang, tr
+from backend.services.numerals import parse_income as _parse_income
 from backend.services.dataset import DatasetService
 from backend.services.matching import match_profile, strip_internal
 
@@ -93,15 +93,19 @@ _STATE_LOOKUP.update({
 
 
 def parse_income(text: str) -> int | None:
-    """Parse 'Rs2,00,000', '2 lakh', '६५ हजार', '২ লাখ', '2 லட்சம்', '60k'.
+    """Parse an income figure → int (INR), or ``None``.
 
-    All vocabulary (digit sets for 14 scripts, crore/lakh/thousand words in
-    every supported language, currency tokens) lives in
-    ``language/regional_support/numerals.json`` and the matcher is built from
-    that table — no hand-written ``\\uXXXX`` escapes in this file. Amounts are
-    bounds-checked (see ``services/numerals.py``) instead of overflowing.
+    The parser itself lives in :mod:`backend.services.numerals`: the scale words
+    for every supported language come from
+    ``language/regional_support/numerals.json`` (real Unicode, script-validated)
+    instead of hand-written ``\\uXXXX`` escapes in regex alternations. Bengali /
+    Hindi / Tamil / Marathi / Kannada / Telugu crore, lakh and thousand are all
+    covered, as are the locale digit sets and Indian digit grouping.
+
+    Kept as a thin wrapper here because the reach layer is the only caller and
+    the name is part of the module's public surface.
     """
-    return numerals.parse_amount(text)
+    return _parse_income(text)
 
 
 def parse_state(text: str) -> str | None:

@@ -17,6 +17,10 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
+    disk:
+      name: feefix-runtime
+      mountPath: /opt/render/project/src/runtime
+      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
@@ -55,15 +59,17 @@ services:
       # Render saw), so a client-supplied value cannot forge its own identity.
       - key: FEEFIX_TRUST_PROXY
         value: "1"
+      # Same meaning under the dual-name compatibility layer (services/ratelimit.py).
+      - key: FEEFIX_TRUSTED_PROXY_COUNT
+        value: "1"
 
       # -- persistent state --------------------------------------------------- #
-      # Uploads and the SQLite database must live on a disk, or every deploy
-      # (and every instance) starts empty and files vanish. Attach a Render
-      # disk at /var/data and the paths below follow automatically.
+      # Uploads and the SQLite database live on the Render disk mounted above, so
+      # every deploy and instance starts from persisted state.
       - key: FEEFIX_DB
-        value: /var/data/feefix.db
+        value: /opt/render/project/src/runtime/feefix.db
       - key: FEEFIX_UPLOAD_DIR
-        value: /var/data/uploads
+        value: /opt/render/project/src/runtime/uploads
 
       # -- OTP delivery: codes must reach a real inbox / phone ---------------- #
       # FEEFIX_ENV=production above already means: with no gateway configured,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from backend.api.schemas import (
@@ -57,10 +57,11 @@ def _bearer_token(request: Request) -> str | None:
 
 def _current_user(request: Request) -> dict | None:
     # Populated by the session middleware (one resolve + one rotation per
-    # request). Fall back to a direct resolve for call sites outside it.
-    cached = getattr(request.state, "user", None)
-    if cached is not None:
-        return cached
+    # request). The flag matters: when the middleware legitimately resolved
+    # *nothing* (anonymous caller), re-resolving here would run the replay
+    # detection a second time and log duplicate security events.
+    if getattr(request.state, "session_resolved", False):
+        return getattr(request.state, "user", None)
     from backend.services import auth as auth_svc
 
     return auth_svc.resolve_token(_bearer_token(request))
@@ -85,6 +86,29 @@ def _authorize_session(request: Request, session_id: str) -> None:
 
 
 # -- authentication -------------------------------------------------------------
+def _auth_error(exc: Exception) -> HTTPException:
+    """Map a service-layer auth failure to the right HTTP semantics.
+
+    ``AuthBusy`` means the password-hashing slots are saturated (a bounded,
+    deliberate back-pressure control). Reporting that as 401/422 would tell a
+    user with the *correct* password that their credentials are wrong — and would
+    have clients treat a load spike as an account problem. It is a retryable
+    503 with a Retry-After instead, and it never carries internal detail.
+    """
+    from backend.services import auth as auth_svc
+
+    if isinstance(exc, auth_svc.AuthBusy):
+        return HTTPException(
+            status_code=503,
+            detail="Sign-in is temporarily busy — please retry shortly.",
+            headers={"Retry-After": "2"},
+        )
+    # A registration conflict is a 409; anything else is a validation failure.
+    if isinstance(exc, auth_svc.AuthError):
+        return HTTPException(422, detail=str(exc))
+    return HTTPException(400, detail="Request could not be processed.")
+
+
 def _enforce_auth_limit(request: Request, identifier: str) -> None:
     """Auth rate limit with a Retry-After hint (blunts credential brute-force)."""
     from backend.services import ratelimit
@@ -94,18 +118,25 @@ def _enforce_auth_limit(request: Request, identifier: str) -> None:
         raise HTTPException(
             status_code=429,
             detail="Too many attempts — try again later.",
-            headers={"Retry-After": str(ratelimit.retry_after(client, f"auth:{identifier}"))},
+            headers={
+                "Retry-After": str(ratelimit.retry_after(client, f"auth:{identifier}")),
+                # Which limit was hit, so a client (and an operator reading access
+                # logs) can tell an auth throttle from the global or expensive one.
+                # The identifier itself is deliberately not echoed into a header.
+                "X-RateLimit-Scope": "auth",
+            },
         )
 
 
 @router.post("/auth/register")
 def register(body: RegisterRequest, request: Request) -> dict:
     from backend.services import auth as auth_svc
-    from backend.services import ratelimit
 
     _enforce_auth_limit(request, body.email.strip().lower())
     try:
         user = auth_svc.register(body.email, body.password, body.name)
+    except auth_svc.AuthBusy as exc:
+        raise _auth_error(exc) from exc
     except auth_svc.AuthError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     token, expires = auth_svc.create_session(
@@ -118,11 +149,12 @@ def register(body: RegisterRequest, request: Request) -> dict:
 @router.post("/auth/login")
 def login(body: LoginRequest, request: Request) -> dict:
     from backend.services import auth as auth_svc
-    from backend.services import ratelimit
 
     _enforce_auth_limit(request, body.email.strip().lower())
     try:
         user = auth_svc.login(body.email, body.password)
+    except auth_svc.AuthBusy as exc:
+        raise _auth_error(exc) from exc
     except auth_svc.AuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     token, expires = auth_svc.create_session(
@@ -172,14 +204,55 @@ def export_data(request: Request) -> dict:
     return {"user": user, **exporter(user["id"])}
 
 
-@router.delete("/auth/account")
+@router.delete("/auth/account", tags=["auth"])
 def delete_account(request: Request) -> dict:
-    """Right to erasure: account, tokens and all owned data — gone."""
+    """Right to erasure: account, tokens, owned data and uploaded files — gone."""
     from backend.services import auth as auth_svc
 
     user = _require_user(request)
     auth_svc.delete_account(user["id"])
     return {"deleted": True}
+
+
+@router.get("/auth/security-events", tags=["auth"])
+def auth_security_events(request: Request, limit: int = 50) -> dict:
+    """Session-security signals for *this* account (replays, quarantines).
+
+    This is the user-facing half of replay detection: an aggressive "log out
+    everywhere" on the first stale token is a self-inflicted outage, so the
+    service quarantines instead — and shows the user what it saw, so they can
+    make the call themselves.
+    """
+    from backend.services import auth as auth_svc
+
+    user = _require_user(request)
+    events = auth_svc.security_events(user["id"], limit=limit)
+    return {
+        "count": len(events),
+        "events": events,
+        "interpretation": (
+            "A single 'token_replay' is usually a stale tab or an app holding a "
+            "rotated token; the stale token is revoked and the session survives. "
+            "Repeated replays escalate to revoking every token for that sign-in."
+        ),
+    }
+
+
+@router.post("/auth/logout-all", tags=["auth"])
+def logout_all(request: Request) -> dict:
+    """Deliberate 'sign out everywhere' — the availability-safe counterpart to
+    automatic family revocation."""
+    from backend.services import auth as auth_svc
+
+    from backend.services import ratelimit
+
+    user = _require_user(request)
+    auth_svc.revoke_all_user_tokens(user["id"])
+    auth_svc.record_security_event(
+        user["id"], None, "user_revoked_all_sessions", "user-requested sign out everywhere",
+        ratelimit.client_ip(request),
+    )
+    return {"revoked": True, "scope": "all-sessions"}
 
 
 # -- OTP sign-in (email & international phone) ---------------------------------
@@ -212,6 +285,7 @@ def otp_request(body: OtpRequestBody, request: Request) -> dict:
     from backend.services import otp as otp_svc
     from backend.services import ratelimit
 
+    client = ratelimit.client_ip(request)   # stamped on the OTP row for auditing
     _enforce_auth_limit(request, "otp-req")
     try:
         return otp_svc.request_code(body.channel, body.address,
@@ -290,6 +364,10 @@ def github_callback(request: Request, code: str | None = None, state: str | None
         return RedirectResponse("/#auth=failed", status_code=302)
     try:
         user = otp_svc.github_finish(code, state)
+    except otp_svc.auth_svc.AuthBusy:
+        # Signed in correctly, but the KDF is saturated: say so instead of
+        # bouncing the user back to a generic failure page.
+        return RedirectResponse("/#auth=busy", status_code=302)
     except otp_svc.auth_svc.AuthError:
         return RedirectResponse("/#auth=failed", status_code=302)
     from backend.services import auth as auth_svc
@@ -342,17 +420,22 @@ _HANDOFF_HTML = """<!DOCTYPE html><html><head><meta charset="utf-8" />
 
 
 # -- meta -----------------------------------------------------------------------
-@router.get("/health")
+@router.get("/health", tags=["meta"])
 def health(request: Request) -> dict:
-    """Liveness plus the operational facts an operator actually needs to see.
+    """Liveness plus the *effective* security configuration.
 
-    Notably: whether rate-limit counters are shared (``distributed``) or
-    per-process — the failure mode that used to be invisible until an attacker
-    exploited it.
+    Reported here instead of being guessed at: which password scheme is live,
+    which rate-limit store is counting (and whether it is shared), how the
+    secret policy is set, the per-endpoint body caps and how many documents are
+    stored. No secrets, hashes or filenames ever appear.
     """
+    from backend.services import auth as auth_svc
+    from backend.services import documents as documents_svc
     from backend.services import ratelimit
-
     from backend.services import otp as otp_svc
+    from backend.services.limits import limit_report
+    from backend.services.secrets import secret_status
+
 
     qa = getattr(request.app.state, "qa", None)
     boot = getattr(request.app.state, "boot", {}) or {}
@@ -361,13 +444,27 @@ def health(request: Request) -> dict:
         "service": "feefix-india",
         "schemes_loaded": len(_dataset(request).schemes),
         "ai_backend": qa.backend if qa else "offline",
-        "password_hashing": boot.get("password_hashing", {}).get("algorithm", "unknown"),
-        "rate_limit": ratelimit.status(),
-        "rate_limit_warning": boot.get("rate_limit_warning"),
+        "password_hashing": {
+            "scheme": auth_svc.hash_backend(),
+            "algorithm": auth_svc.hash_backend(),
+            "parameters": auth_svc.hash_backend_note(),
+            "kdf_concurrency": auth_svc.KDF_CONCURRENCY,
+            "legacy_pbkdf2_rows": "verified and upgraded to the current scheme on next sign-in",
+        },
+        "rate_limit": {**ratelimit.describe(), **ratelimit.status()},
+        "rate_limit_warning": (request.app.state.boot or {}).get("rate_limit_warning") if hasattr(request.app.state, "boot") else None,
+        "secrets": secret_status(),
+        "limits": limit_report(),
+        "documents": documents_svc.storage_stats(),
+        "interactive_docs": {
+            "enabled": getattr(request.app.state, "docs_enabled", True),
+            "note": "hiding docs removes no endpoint and no attack surface — it is a cosmetic switch",
+        },
         "docs_enabled": getattr(request.app.state, "docs_enabled", True),
         # Which sign-in doors can actually deliver a code — the single question
         # an operator asks when a student says "I never got the SMS".
         "otp_delivery": otp_svc.delivery_report(),
+
     }
 
 
@@ -470,6 +567,122 @@ def get_profile(session_id: str, request: Request) -> dict:
     _authorize_session(request, session_id)
     profile = _tracker(request).load_profile(session_id)
     return {"session_id": session_id, "profile": profile}
+
+
+# -- documents (uploads) ---------------------------------------------------------------
+# The hardened gate in ``services/upload.py`` is only a real control because
+# *these* routes call it: every byte a student attaches goes through the
+# extension allowlist, magic-byte sniffing and the size cap, then to disk
+# outside the web root under a random name. Nothing else in the app writes a
+# file from user input.
+def _document_public(row: dict) -> dict:
+    """Metadata only (never the stored name / filesystem layout)."""
+    return {
+        "id": row["id"],
+        "session_id": row["session_id"],
+        "doc_type": row.get("doc_type"),
+        "filename": row["filename"],
+        "media_type": row["media_type"],
+        "size_bytes": row["size_bytes"],
+        "sha256": row["sha256"],
+        "created_at": row["created_at"],
+        "download_url": f"/api/students/{row['session_id']}/documents/{row['id']}",
+    }
+
+
+def _enforce_upload_limit(request: Request) -> None:
+    """Uploads get the tight 'expensive' bucket too — they cost disk, not CPU."""
+    from backend.services import ratelimit
+
+    client = ratelimit.client_ip(request)
+    if not ratelimit.check_expensive(client, "upload"):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many uploads — try again shortly.",
+            headers={"Retry-After": str(ratelimit.retry_after(client, "exp:upload"))},
+        )
+
+
+@router.post("/students/{session_id}/documents", status_code=201, tags=["students"])
+async def upload_document(
+    session_id: str,
+    request: Request,
+    file: UploadFile = File(..., description="PDF/PNG/JPEG document"),
+    doc_type: str = Form(default=""),
+) -> dict:
+    """Upload one document (income certificate, marksheet, …).
+
+    Rejections are explicit: dangerous extensions, a content type that does not
+    match the bytes, empty files and oversized files all answer 422 with the
+    reason — the client is told what to fix instead of being silently dropped.
+    """
+    from backend.services import documents as documents_svc
+    from backend.services.limits import MAX_DOC_TYPE_LEN, MAX_UPLOAD_BYTES
+    from backend.services.upload import UploadError
+
+    _authorize_session(request, session_id)
+    _enforce_upload_limit(request)
+    # Read at most one byte past the cap: a lying client cannot make us buffer
+    # an unbounded body even if the framing layer let it through.
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    user = _current_user(request)
+    try:
+        row = documents_svc.store_document(
+            session_id=session_id,
+            user_id=user["id"] if user else None,
+            filename=file.filename or "",
+            content=content,
+            doc_type=(doc_type or "")[:MAX_DOC_TYPE_LEN],
+        )
+    except UploadError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"uploaded": True, "document": _document_public(row)}
+
+
+@router.get("/students/{session_id}/documents", tags=["students"])
+def list_documents(session_id: str, request: Request) -> dict:
+    from backend.services import documents as documents_svc
+
+    _authorize_session(request, session_id)
+    rows = documents_svc.list_documents(session_id)
+    return {"session_id": session_id, "count": len(rows),
+            "documents": [_document_public(r) for r in rows]}
+
+
+@router.get("/students/{session_id}/documents/{doc_id}", tags=["students"])
+def download_document(session_id: str, doc_id: str, request: Request) -> FileResponse:
+    """Serve a document to its owner — always as an attachment, never inline.
+
+    ``Content-Disposition: attachment`` + ``nosniff`` means a stored file can
+    never be interpreted as HTML/JS in the app's origin even if a polyglot ever
+    slipped past validation.
+    """
+    from backend.services import documents as documents_svc
+
+    _authorize_session(request, session_id)
+    row = documents_svc.get_document(session_id, doc_id)
+    path = documents_svc.resolve_path(row["stored_name"]) if row else None
+    if row is None or path is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return FileResponse(
+        path,
+        media_type=row["media_type"],
+        headers={
+            "Content-Disposition": f'attachment; filename="{row["filename"]}"',
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.delete("/students/{session_id}/documents/{doc_id}", tags=["students"])
+def delete_document(session_id: str, doc_id: str, request: Request) -> dict:
+    from backend.services import documents as documents_svc
+
+    _authorize_session(request, session_id)
+    if not documents_svc.delete_document(session_id, doc_id):
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"deleted": True, "id": doc_id}
 
 
 # -- tracker --------------------------------------------------------------------------

@@ -51,7 +51,7 @@ directions, including that the OpenAPI schema lists the upload routes).
 
 ## 2. PBKDF2 600k instead of Argon2id
 
-**Was:** 600k PBKDF2 rounds because the project had a self-imposed stdlib-only
+**Was:** 600k PBKDF2 rounds because the project had a self-imposed standard-library-only
 rule — a hard ceiling on crack resistance for a memory-hard-vs-CPU-bound
 tradeoff nobody had actually chosen.
 
@@ -59,7 +59,7 @@ tradeoff nobody had actually chosen.
 `memory_cost=19 MiB`, `parallelism=1`; OWASP parameters) via `argon2-cffi`.
 `FEEFIX_ENV=production` or `FEEFIX_PASSWORD_ALGO=argon2id` makes a deployment
 **refuse to start** without the backend rather than silently downgrading.
-PBKDF2 remains for legacy rows and stdlib-only development, and those hashes are
+PBKDF2 remains for legacy rows and standard-library-only development, and those hashes are
 **re-hashed to Argon2id on the next successful login** — the only moment the
 plaintext exists.
 
@@ -112,13 +112,13 @@ logged the user out of every device.
 
 `strict` (old behaviour) and `lenient` remain explicit opt-ins.
 
-**Verified:** `test_session_replay_policy.py` (11 tests) plus the migrated
+**Verified:** `test_session_replay_policy.py` (11 added tests) plus the migrated
 `test_aged_token_rotates_and_a_stale_replay_does_not_kill_the_live_session` in
 the original hardening suite.
 
 ## 5. `secure-clipboard.js` gave false confidence
 
-**Was:** presented as "clipboard-attack hardening". Malware reads the clipboard
+**Was:** presented as "clipboard-attack hardening" — and it is not a security control here. Malware reads the clipboard
 the instant it is set; a ~20 s TTL is a browser-dependent timer that fails
 silently when the tab closes.
 
@@ -165,7 +165,7 @@ secrets; nothing enforced anything.
 Honest limits, now written down: pattern + entropy detection is not proof of
 absence, and no scanner replaces rotation policy.
 
-**Verified:** `test_secret_hygiene.py` (33 tests), `python -m agents.secret_scan`
+**Verified:** `test_secret_hygiene.py` (33 added tests), `python -m agents.secret_scan`
 → 0 findings on this repository.
 
 ## 7. `upload.py` was dead code
@@ -181,7 +181,7 @@ enforced on every read and delete.
 
 **Verified:** `test_upload_gate_is_wired_into_a_route` (asserts the routes exist
 in the OpenAPI schema, so deleting them breaks the build) and
-`tests/test_uploads.py` (24 tests: magic bytes, quotas, traversal, ownership).
+`tests/test_uploads.py` (24 added tests: magic bytes, quotas, traversal, ownership).
 
 ## 8. i18n income parsing was brittle
 
@@ -193,7 +193,7 @@ digit-translation maps per script plus script-aware unit words (লাখ / ल�
 / thousand / crore …), building on the i18n rules module instead of duplicating
 escapes. Numerals are NFD/NFC-normalised once, and the parser is total.
 
-**Verified:** `tests/test_numerals.py` (46 tests) across English, Bengali, Hindi
+**Verified:** `tests/test_numerals.py` (46 added tests) across English, Bengali, Hindi
 and Tamil, plus fuzz invariants in `test_fuzz_security.py`: `parse_amount` never
 raises, always returns `0 ≤ n ≤ MAX_AMOUNT`, normalisation is idempotent, and
 ASCII thousands/lakh/crore round-trip.
@@ -224,7 +224,7 @@ bound. An overrun is aborted mid-stream and answered `413` with the policy name
 and the limit — the client learns which limit it hit instead of a generic
 refusal. Field length caps are env-tunable with the same clamp logic.
 
-**Verified:** `test_body_limits.py` (19 tests) + live check: a 100 KB chat body
+**Verified:** `test_body_limits.py` (19 added tests) + live check: a 100 KB chat body
 → `413 {"policy": "conversation", "limit_bytes": 64000}`, while a notes body up
 to its own policy is accepted.
 
@@ -256,7 +256,7 @@ tests, not by review of the passing ones:
 | distributed | two instances migrating one SQLite DB → **crash loop** (`duplicate column name`); a crashed migration poisoned every later boot | `BEGIN IMMEDIATE` + guarded `ALTER TABLE` + transactional DDL; a half-applied DB self-heals |
 | secret hygiene | the scanner flagged its own documentation placeholders (`.env.example` DSNs), which is how scanners get waived into uselessness | placeholder-aware DSN detection, with tests that a *real* password is still caught |
 
-**Verified:** 435 tests, `bandit` exit 0, `pip-audit` clean, repo scan 0
+**Verified:** 435 added tests, `bandit` exit 0, `pip-audit` clean, repo scan 0
 findings, and a live server smoke test (`/api/health`, `/openapi.json`, `/docs`,
 413/422 paths, security headers).
 
@@ -312,7 +312,7 @@ for real:
 | The hook actually **fails** on a staged leak | planted a Stripe-shaped key → hook exit 1, finding named with file:line |
 | Every command in `ci.yml` run locally | `secret_scan --json` (clean + report written), `verify_dataset` (71 schemes, 0 findings), `ml.experiments.simulate_outcomes`, `agents.reminder_scheduler --dry-run` — all exit 0 |
 
-New: **`tests/test_ci_config.py` (14 tests)** parses both files as data and
+New: **`tests/test_ci_config.py` (14 added tests)** parses both files as data and
 asserts that the gates exist, cover the branch this work happens on, run with
 least privilege, are *blocking* (not `continue-on-error`), have timeouts, pin a
 third-party scanner that is not ours, scan full history, and that every module

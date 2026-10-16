@@ -56,23 +56,31 @@ class SessionMiddleware:
         token = _bearer(scope)
         request = Request(scope, receive)
         fingerprint = auth_svc.client_fingerprint(request)
-        user, new_token = await run_in_threadpool(
-            auth_svc.resolve_and_rotate, token, fingerprint
+        client_ip = ratelimit.client_ip(request)
+        user, new_token, warning = await run_in_threadpool(
+            auth_svc.resolve_and_rotate, token, client_ip, fingerprint
         )
-        scope.setdefault("state", {})["user"] = user
+        state = scope.setdefault("state", {})
+        state["user"] = user
+        # One resolution per request: without this flag a handler that needs the
+        # user would resolve the token again and double-count replay events.
+        state["session_resolved"] = True
 
-        if not new_token:
+        if not new_token and not warning:
             await self.app(scope, receive, send)
             return
 
-        async def send_with_token(message: Message) -> None:
+        async def send_with_session_headers(message: Message) -> None:
             if message.get("type") == "http.response.start":
                 headers = list(message.get("headers", []))
-                headers.append((b"x-session-token", new_token.encode("latin-1")))
+                if new_token:
+                    headers.append((b"x-session-token", new_token.encode("latin-1")))
+                if warning:
+                    headers.append((b"x-session-warning", warning.encode("latin-1")))
                 message = {**message, "headers": headers}
             await send(message)
 
-        await self.app(scope, receive, send_with_token)
+        await self.app(scope, receive, send_with_session_headers)
 
 
 class RateLimitMiddleware:

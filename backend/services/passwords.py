@@ -224,6 +224,9 @@ def verify(password: str, stored: str | None) -> tuple[bool, bool]:
         return False, False
     if stored.startswith(ARGON2_PREFIX):
         return _verify_argon2id(_prehash(password), stored)
+    if stored.startswith("$argon2"):
+        # Branch format: raw PHC with its leading "$" intact.
+        return _verify_argon2id(_prehash(password), ARGON2_PREFIX + stored[1:])
     if stored.startswith(PBKDF2_PREFIX):
         return _verify_pbkdf2(password, stored)
     return False, False

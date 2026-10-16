@@ -61,6 +61,9 @@ $PY -m ml.experiments.simulate_outcomes
 step "Reminder scheduler agent (dry run)"
 $PY -m agents.reminder_scheduler --dry-run
 
+step "API fuzz run (no 5xx, no hang, no leaked internals)"
+$PY -m scripts.fuzz_api --requests 2000 --seed 20260101 --timeout 5
+
 if [ "${1:-}" != "--quick" ]; then
   # The concurrency/property/migration suites, repeated: the same thing CI's
   # flake-watch job does, because that is what turned an intermittent red badge

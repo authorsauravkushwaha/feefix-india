@@ -1,28 +1,33 @@
-"""Secret access & hygiene — secrets come from the environment, never the repo.
+"""Secret access, hygiene and *enforcement*.
 
-Design rules this module enforces:
+Secrets (SMTP password, Twilio token, GitHub client secret, the OTP pepper) are
+read **only from environment variables** at call time. No secret is ever
+hard-coded, defaulted to a real value, or written into the source tree.
 
-* Secrets (SMTP password, Twilio token, GitHub client secret, the OTP pepper)
-  are read **only** from environment variables at call time. No secret is ever
-  hard-coded, defaulted to a real value, or written into the source tree.
-* :func:`weak_secret_findings` is called at startup to report secrets that are
-  missing where one is expected or set to a placeholder — catching the most
-  common cause of a *secret leak*: a default that ships.
+Two layers of reporting, one policy:
+
+* :func:`weak_secret_findings` / :func:`enforce_secret_policy` — human-readable
+  strings for operators (companion half-configurations, ``FEEFIX_REQUIRED_SECRETS``
+  opt-ins), raising :class:`RuntimeError` in strict mode.
+* :func:`assess_secrets` / :func:`enforce_secret_hygiene` — structured
+  ``{level, name, message}`` findings (including OTP delivery honesty), raising
+  :class:`SecretHygieneError` in strict mode.
 
 Warn → block
 ------------
 A boot-time ``log.warning`` for ``CHANGE_ME`` was advisory: the service happily
-served production traffic with a placeholder credential. :func:`enforce_secret_hygiene`
-now **refuses to start** when the deployment says it is production
-(``FEEFIX_ENV=production``) or opts in explicitly (``FEEFIX_SECRETS_STRICT=1``),
-listing every blocking finding. ``FEEFIX_SECRETS_STRICT=0`` does not override
-production — that hatch used to let a deploy on ``CHANGE_ME`` keep serving.
-Non-production environments still warn, so local development and CI are not
-obstructed.
+served production traffic with a placeholder credential. Both enforce functions
+now **refuse to start** when the deployment says it is production
+(``FEEFIX_ENV=production`` or a platform marker like ``RENDER``) or opts in
+explicitly (``FEEFIX_SECRETS_STRICT=1`` / ``FEEFIX_STRICT_SECRETS=1``).
+``FEEFIX_SECRETS_STRICT=0`` does not override production — that hatch used to
+let a deploy on ``CHANGE_ME`` keep serving. Non-production environments still
+warn, so local development and CI are not obstructed.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import os
@@ -45,11 +50,14 @@ _EXPECTED_SECRETS = {
 }
 
 _PLACEHOLDERS = {
-    "", "changeme", "change-me", "change_me", "secret", "password", "test",
-    "todo", "xxx", "xxxx", "your-secret-here", "none", "null", "example",
+    "", "changeme", "change-me", "change_me", "changeit", "secret", "password",
+    "test", "todo", "xxx", "xxxx", "your-secret-here", "none", "null", "example",
     "your_client_secret", "client_secret", "abcdef", "123456", "placeholder",
-    "your_password", "passw0rd", "letmein", "admin", "root", "dummy", "sample",
+    "your_api_key", "apikey", "sample", "dummy", "insecure", "default",
+    "your_password", "passw0rd", "letmein", "admin", "root",
 }
+_PLACEHOLDER_HINTS = ("changeme", "change-me", "placeholder", "your-", "your_", "example", "todo", "xxxx")
+_PROD_MARKERS = ("FEEFIX_ENV", "RENDER", "FLY_APP_NAME", "K_SERVICE", "HEROKU_APP_NAME")
 
 #: Secret → the environment variable that proves the integration is half-configured.
 _COMPANIONS = {
@@ -106,33 +114,54 @@ class SecretHygieneError(RuntimeError):
 
 
 def is_production() -> bool:
-    """Whether this process is serving production traffic.
+    """Whether ``FEEFIX_ENV`` declares production traffic.
 
-    The single source of truth for every "never do this in production" branch
-    (OTP demo echo, boot guards, password policy), so a deployment cannot end up
-    with two different opinions about what "production" means.
+    The narrow, value-only check used by OTP honesty (a demo echo must never be
+    gated on a platform marker that means something else). :func:`_is_production`
+    below is the broad boot-policy version.
     """
     return (os.environ.get("FEEFIX_ENV") or "").strip().lower() in ("prod", "production")
 
 
-#: Back-compat alias: this module's own call sites used the private spelling.
-_is_production = is_production
+def _is_production() -> bool:
+    """Production by config *or* by platform marker (``RENDER``, ``K_SERVICE``…).
+
+    The single source of truth for every "never do this in production" branch
+    (boot guards, password policy, secret strictness), so a deployment cannot
+    end up with two different opinions about what "production" means.
+    """
+    env = os.environ.get("FEEFIX_ENV", "").strip().lower()
+    if env in ("production", "prod"):
+        return True
+    for marker in _PROD_MARKERS[1:]:  # platform-provided vars
+        value = os.environ.get(marker, "").strip().lower()
+        if value and value not in ("false", "0", "none", ""):
+            return True
+    return False
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in _TRUTHY
 
 
 def strict_mode() -> bool:
     """Whether secret findings block startup.
 
-    Production is always strict. ``FEEFIX_SECRETS_STRICT=0`` used to be an
-    escape hatch that let a deploy still on ``CHANGE_ME`` keep serving — the
-    advisory check the review called out. That hatch does not apply when
-    ``FEEFIX_ENV=production``. Outside production, ``FEEFIX_SECRETS_STRICT=1``
-    opts in and the default is warn-only so local development is not blocked.
+    Production (by config or platform marker) is *always* strict:
+    ``FEEFIX_SECRETS_STRICT=0`` used to be an escape hatch that let a deploy
+    still on ``CHANGE_ME`` keep serving — the advisory check the review called
+    out. That hatch does not apply when the deployment looks like production.
+
+    Outside production, an explicit opt-in flag (either historical spelling:
+    ``FEEFIX_SECRETS_STRICT`` or ``FEEFIX_STRICT_SECRETS``) turns findings into
+    errors; the default is warn-only so local development and CI are not blocked.
     """
     if _is_production():
         return True
-    raw = os.environ.get("FEEFIX_SECRETS_STRICT")
-    if raw is not None and raw.strip():
-        return raw.strip().lower() in ("1", "true", "yes", "on")
+    for name in ("FEEFIX_SECRETS_STRICT", "FEEFIX_STRICT_SECRETS"):
+        raw = os.environ.get(name)
+        if raw is not None and raw.strip():
+            return _env_flag(name)
     return False
 
 
@@ -146,6 +175,9 @@ def get_secret(name: str, *, required: bool = False, default: str | None = None)
     return default
 
 
+# --------------------------------------------------------------------------- #
+# weakness detection — one engine, both report shapes
+# --------------------------------------------------------------------------- #
 def _entropy_bits_per_char(value: str) -> float:
     if not value:
         return 0.0
@@ -157,9 +189,16 @@ def _entropy_bits_per_char(value: str) -> float:
 
 
 def _weak_reasons(value: str, min_len: int) -> list[str]:
-    """Why a value looks wrong — empty list means "plausible secret"."""
+    """Why a value looks wrong — empty list means "plausible secret".
+
+    Checks unioned from both hardening passes: explicit placeholders, length,
+    low per-character entropy (a real random string has plenty), recognizable
+    hints (``your-…``, ``…example…``), trivial variety (few distinct
+    characters), and known sequences (``1234567890``, ``qwertyuiop``).
+    """
     v = (value or "").strip()
-    if v.lower() in _PLACEHOLDERS:
+    low = v.lower()
+    if low in _PLACEHOLDERS:
         return ["placeholder value"]
     reasons: list[str] = []
     if len(v) < min_len:
@@ -167,6 +206,13 @@ def _weak_reasons(value: str, min_len: int) -> list[str]:
     entropy = _entropy_bits_per_char(v)
     if entropy < _LOW_ENTROPY_BITS_PER_CHAR:
         reasons.append(f"low entropy ({entropy:.2f} bits/char)")
+    if any(hint in low for hint in _PLACEHOLDER_HINTS):
+        reasons.append("contains a placeholder hint (changeme/your-…/example/…)")
+    # A secret made of one repeated character or a trivial sequence is not one.
+    if len(set(v)) < 6:
+        reasons.append("too few distinct characters")
+    if low in {"1234567890", "0123456789", "qwertyuiop", "abcdefghij"}:
+        reasons.append("a well-known key sequence")
     return reasons
 
 
@@ -188,7 +234,7 @@ def _otp_findings() -> list[dict]:
     for flag in _DEV_ECHO_FLAGS:
         if not _truthy(os.environ.get(flag)):
             continue
-        if is_production():
+        if _is_production():
             findings.append({
                 "level": "blocking",
                 "name": flag,
@@ -209,7 +255,7 @@ def _otp_findings() -> list[dict]:
                     " production."
                 ),
             })
-    if is_production() and not _otp_delivery_configured():
+    if _is_production() and not _otp_delivery_configured():
         findings.append({
             "level": "warning",
             "name": "OTP delivery",
@@ -234,38 +280,32 @@ def assess_secrets() -> list[dict]:
             # config implies it should be present (its companion id is set).
             companion = _COMPANIONS.get(name)
             if companion and os.environ.get(companion):
-                findings.append(
-                    {
-                        "level": "blocking",
-                        "name": name,
-                        "message": f"{name} is unset but {companion} is configured.",
-                    }
-                )
+                findings.append({
+                    "level": "blocking",
+                    "name": name,
+                    "message": f"{name} is unset but {companion} is configured.",
+                })
             elif name == "FEEFIX_OTP_PEPPER" and _otp_delivery_configured():
-                findings.append(
-                    {
-                        "level": "blocking",
-                        "name": name,
-                        "message": (
-                            "FEEFIX_OTP_PEPPER is unset while an OTP delivery channel is"
-                            " configured — a per-process pepper generated on disk breaks"
-                            " code verification across instances/restarts."
-                        ),
-                    }
-                )
-            continue
-        reasons = _weak_reasons(value, min_len)
-        if reasons:
-            findings.append(
-                {
+                findings.append({
                     "level": "blocking",
                     "name": name,
                     "message": (
-                        f"{name} looks like a placeholder/weak value ({'; '.join(reasons)})"
-                        " — rotate it."
+                        "FEEFIX_OTP_PEPPER is unset while an OTP delivery channel is"
+                        " configured — a per-process pepper generated on disk breaks"
+                        " code verification across instances/restarts."
                     ),
-                }
-            )
+                })
+            continue
+        reasons = _weak_reasons(value, min_len)
+        if reasons:
+            findings.append({
+                "level": "blocking",
+                "name": name,
+                "message": (
+                    f"{name} looks like a placeholder/weak value ({'; '.join(reasons)})"
+                    " — rotate it."
+                ),
+            })
     if not findings:
         return findings
     # Any finding is a warning in non-strict environments; the same finding is
@@ -276,9 +316,92 @@ def assess_secrets() -> list[dict]:
     return findings
 
 
+# --------------------------------------------------------------------------- #
+# string-shaped findings (operator logs, /api/health, required-secrets opt-in)
+# --------------------------------------------------------------------------- #
+def _companion(name: str) -> str:
+    return name.replace("_SECRET", "_CLIENT_ID").replace("_TOKEN", "_SID")
+
+
+def _explicitly_required() -> set[str]:
+    raw = os.environ.get("FEEFIX_REQUIRED_SECRETS", "")
+    return {part.strip() for part in raw.split(",") if part.strip()}
+
+
 def weak_secret_findings() -> list[str]:
-    """Human-readable warnings about missing/placeholder secrets (log at boot)."""
-    return [f["message"] for f in assess_secrets()]
+    """Human-readable problems with the configured secrets (never the values)."""
+    findings: list[str] = []
+    required_extra = _explicitly_required()
+    for name, min_len in _EXPECTED_SECRETS.items():
+        value = os.environ.get(name)
+        if value is None:
+            companion = _COMPANIONS.get(name) or _companion(name)
+            if name in required_extra:
+                findings.append(f"{name} is required (FEEFIX_REQUIRED_SECRETS) but unset.")
+            elif companion and companion != name and os.environ.get(companion):
+                findings.append(f"{name} is unset but {companion} is configured.")
+            continue
+        if _looks_weak(value, min_len):
+            findings.append(f"{name} looks like a placeholder/weak value — rotate it.")
+    for name in sorted(required_extra - set(_EXPECTED_SECRETS)):
+        if not os.environ.get(name):
+            findings.append(f"{name} is required (FEEFIX_REQUIRED_SECRETS) but unset.")
+    return findings
+
+
+def enforce_secret_policy() -> list[str]:
+    """Apply the secret policy at boot: raise in strict mode, warn otherwise.
+
+    Called from ``create_app``. In strict mode a finding is fatal *by design*: a
+    deployment that would serve traffic with a placeholder credential should not
+    come up at all.
+    """
+    findings = weak_secret_findings()
+    if not findings:
+        return findings
+    if strict_mode():
+        raise RuntimeError(
+            "Refusing to start: secret policy violations in strict mode "
+            f"({'; '.join(findings)}). Fix the environment or set "
+            "FEEFIX_STRICT_SECRETS=0 for a non-production run."
+        )
+    for finding in findings:
+        log.warning("[secrets] %s", finding)
+    return findings
+
+
+def secret_status() -> dict:
+    """Presence/quality per secret — names and states only, never values."""
+    status: dict[str, str] = {}
+    required_extra = _explicitly_required()
+    for name, min_len in _EXPECTED_SECRETS.items():
+        value = os.environ.get(name)
+        if value is None:
+            status[name] = "required-missing" if name in required_extra else "unset"
+        elif _looks_weak(value, min_len):
+            status[name] = "weak"
+        else:
+            status[name] = "set"
+    return {
+        "strict": strict_mode(),
+        "production_like": _is_production(),
+        "secrets": status,
+        "findings": len(weak_secret_findings()),
+    }
+
+
+def rotation_id(name: str) -> str | None:
+    """Short fingerprint of the loaded value, so key rotation is observable.
+
+    Not a secret: a truncated SHA-256 of the value cannot be used to recover it,
+    but it changes the moment the credential is rotated — which is exactly the
+    signal an incident response needs ("did the running process pick up the new
+    token?").
+    """
+    value = os.environ.get(name)
+    if not value:
+        return None
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
 
 
 def enforce_secret_hygiene() -> list[str]:

@@ -1,0 +1,184 @@
+"""Document storage — the *wired-in* side of the upload gate.
+
+``services/upload.py`` was hardened and tested but nothing called it, so it
+protected the running app from exactly nothing. This module is the other half:
+it takes the validated bytes, stores them safely and records the metadata that
+makes them retrievable — and the API routes call it, so the control is live.
+
+Rules enforced here (all testable, all in one place):
+
+* **Validation first** — every byte goes through
+  :func:`backend.services.upload.assert_safe_upload` (extension allowlist,
+  magic-byte sniffing, size cap). No route may write a file any other way.
+* **Outside the web root** — files live under ``FEEFIX_UPLOAD_DIR``
+  (``runtime/uploads``), which is not mounted by StaticFiles, so nothing is ever
+  served by the static handler and nothing is executable.
+* **Random names, no user control** — the stored name is
+  ``<32 hex>.{pdf,png,jpg}``; the user's original filename is kept only as
+  metadata (and sanitised before it is echoed back in a header).
+* **Content-addressed integrity** — the SHA-256 of the bytes is recorded, so a
+  later read can prove the file was not swapped.
+* **Ownership** — every row carries ``session_id``/``user_id``; the API layer
+  refuses access to non-owners (same rule as profiles and tracker rows).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+import os
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+from backend.services import db, upload
+from backend.services.limits import UPLOAD_DIR
+
+log = logging.getLogger("feefix.documents")
+
+#: media type is derived from the *validated* extension — never from the client.
+MEDIA_TYPES = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+}
+
+
+def upload_root() -> Path:
+    root = Path(os.environ.get("FEEFIX_UPLOAD_DIR", "") or UPLOAD_DIR)
+    if not root.is_absolute():
+        root = Path(__file__).resolve().parents[2] / root
+    return root
+
+
+def _utcnow() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def store_document(
+    *,
+    session_id: str,
+    user_id: str | None,
+    filename: str,
+    content: bytes,
+    doc_type: str | None = None,
+) -> dict:
+    """Validate → write outside the web root → record metadata. Returns the row.
+
+    Raises :class:`backend.services.upload.UploadError` when validation fails;
+    the route maps that to a 422 with the reason.
+    """
+    stored_name = upload.assert_safe_upload(filename, content)  # raises on any doubt
+    root = upload_root()
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / stored_name
+    # O_EXCL + a 128-bit random name: no clobbering, no symlink following.
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(content)
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+
+    ext = os.path.splitext(stored_name)[1].lower()
+    media_type = MEDIA_TYPES.get(ext, "application/octet-stream")
+    doc_id = uuid.uuid4().hex
+    row = {
+        "id": doc_id,
+        "session_id": session_id,
+        "user_id": user_id,
+        "doc_type": (doc_type or "").strip()[:64] or None,
+        "filename": upload.sanitize_filename(filename),
+        "stored_name": stored_name,
+        "media_type": media_type,
+        "size_bytes": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+        "created_at": _utcnow(),
+    }
+    conn = db.get_connection()
+    with db._lock:
+        conn.execute(
+            "INSERT INTO documents"
+            " (id, session_id, user_id, doc_type, filename, stored_name, media_type,"
+            "  size_bytes, sha256, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                row["id"], row["session_id"], row["user_id"], row["doc_type"],
+                row["filename"], row["stored_name"], row["media_type"],
+                row["size_bytes"], row["sha256"], row["created_at"],
+            ),
+        )
+        conn.commit()
+    db.audit(user_id, "documents.store", f"id={doc_id} sha256={row['sha256'][:12]}")
+    return row
+
+
+def list_documents(session_id: str) -> list[dict]:
+    conn = db.get_connection()
+    rows = conn.execute(
+        "SELECT id, session_id, doc_type, filename, media_type, size_bytes, sha256, created_at"
+        " FROM documents WHERE session_id=? ORDER BY created_at DESC",
+        (session_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_document(session_id: str, doc_id: str) -> dict | None:
+    conn = db.get_connection()
+    row = conn.execute(
+        "SELECT * FROM documents WHERE id=? AND session_id=?",
+        (doc_id, session_id),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def resolve_path(stored_name: str) -> Path | None:
+    """Absolute path for a stored name, refusing anything outside the root.
+
+    Stored names were generated by us, but this re-check means a corrupted or
+    hand-edited row still cannot make the app read ``/etc/passwd``.
+    """
+    root = upload_root().resolve()
+    candidate = (root / Path(stored_name).name).resolve()
+    if candidate.parent != root or not candidate.is_file():
+        return None
+    return candidate
+
+
+def delete_document(session_id: str, doc_id: str) -> bool:
+    row = get_document(session_id, doc_id)
+    if not row:
+        return False
+    conn = db.get_connection()
+    with db._lock:
+        conn.execute("DELETE FROM documents WHERE id=? AND session_id=?", (doc_id, session_id))
+        conn.commit()
+    remove_stored_files([row["stored_name"]])
+    db.audit(row["user_id"], "documents.delete", f"id={doc_id}")
+    return True
+
+
+def remove_stored_files(stored_names: list[str]) -> int:
+    """Best-effort unlink of stored files (used by delete + account erasure)."""
+    removed = 0
+    for name in stored_names:
+        path = resolve_path(name)
+        if path is None:
+            continue
+        try:
+            path.unlink()
+            removed += 1
+        except OSError as exc:  # pragma: no cover - disk-level failure
+            log.warning("[documents] could not remove %s: %s", name, exc)
+    return removed
+
+
+def storage_stats() -> dict:
+    """Counts for /api/health — metadata only, never filenames or hashes."""
+    conn = db.get_connection()
+    row = conn.execute(
+        "SELECT COUNT(*) AS documents, COALESCE(SUM(size_bytes),0) AS bytes FROM documents"
+    ).fetchone()
+    return {"documents": int(row["documents"]), "bytes": int(row["bytes"])}

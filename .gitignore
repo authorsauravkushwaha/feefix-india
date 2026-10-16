@@ -4,14 +4,24 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+# Coverage artifacts (the suite's coverage run is a local tool, not a deliverable)
+.coverage
+.coverage.*
+htmlcov/
 
 # Runtime stores (local tracker + notification outbox)
+# `runtime/` holds a live database, uploaded student documents, one-time-code
+# peppers and local outboxes. Nothing in it belongs in git — including the
+# document upload directory and the fuzzer's scratch databases, which live in
+# subdirectories and were previously missed by these patterns.
 runtime/*.json
 runtime/*.jsonl
 runtime/*.tmp
 runtime/*.db
 runtime/*.db-wal
 runtime/*.db-shm
+runtime/*
+!runtime/.gitkeep
 
 # Secrets — the OTP server-side pepper and any local env files must NEVER be
 # committed (see docs/security/SECURITY.md). Keep secrets in the environment.
@@ -22,6 +32,14 @@ runtime/.*
 !.env.example
 *.pem
 *.key
+
+# Working artifacts — a full-repo diff (0.6 MB) was once committed to this
+# repository's history and later deleted; removal does not un-leak the blob, so
+# the class is ignored at the source.
+*.patch
+*.diff
+*.orig
+*.rej
 
 # OS / editor
 .DS_Store

@@ -25,7 +25,7 @@ from pathlib import Path
 RUNTIME_DIR = Path(__file__).resolve().parents[2] / "runtime"
 DEFAULT_DB = RUNTIME_DIR / "feefix.db"
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
@@ -107,9 +107,41 @@ def reset_for_tests(path: Path) -> None:
 
 
 # -- migrations --------------------------------------------------------------
-# Additive only. Bump SCHEMA_VERSION and append a migration.
+def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """Column names of ``table``.
 
-_MIGRATIONS = {
+    The table name is a module constant, never user input — no value from a
+    request can reach this f-string (the no-string-built-SQL guard in the test
+    suite still applies to every data statement).
+    """
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) -> None:
+    """Idempotent ``ALTER TABLE … ADD COLUMN``.
+
+    Why this exists: an ALTER added to an already-applied migration never runs
+    again — a database that had already executed that version silently keeps the
+    old shape, and the app then fails at runtime on a missing column. Exactly
+    that happened here (the dev database sat at v4 without ``replayed_at``, and
+    every request 500'd) while a test suite that always created fresh databases
+    stayed green. Migrations that add a column now check first, and a dedicated
+    test migrates a *legacy* database to prove it.
+    """
+    if column not in _columns(conn, table):
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
+def _ensure_replayed_at(conn: sqlite3.Connection) -> None:
+    """v4/v5: token-replay tombstone column (safe to attempt in either)."""
+    _add_column(conn, "auth_sessions", "replayed_at", "TEXT")
+
+
+# Additive only. Bump SCHEMA_VERSION and append a migration — never edit a
+# migration that may already have run somewhere (that is how a database ends up
+# with a schema its own version number swears it has; see _add_column).
+
+_MIGRATIONS: dict[int, list] = {
     1: [
         """CREATE TABLE IF NOT EXISTS users (
             id            TEXT PRIMARY KEY,
@@ -202,18 +234,53 @@ _MIGRATIONS = {
         "UPDATE auth_sessions SET session_key = token_hash WHERE session_key IS NULL",
     ],
     4: [
-        # v4 — replay handling that cannot log a user out of every device.
-        # `fingerprint` records the client identity that created the session, so
-        # a late same-device request can be told apart from a stolen-token
-        # replay; `replay_strikes` counts replay observations per family and
-        # only escalates to family revocation past a threshold. All additive.
+        # v4 — the two streams that landed independently, unioned:
+        # (a) shared-limiter counters (what makes the limit hold across workers),
+        # (b) document metadata (bytes live outside the web root; this maps them),
+        # (c) user-visible replay events + the replayed-token tombstone column,
+        # (d) fingerprint / replay_strikes for cross-device replay detection.
+        """CREATE TABLE IF NOT EXISTS rate_limit_hits (
+            key TEXT NOT NULL,
+            ts  REAL NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_rate_limit_key_ts ON rate_limit_hits(key, ts)",
+        "CREATE INDEX IF NOT EXISTS idx_rate_limit_ts ON rate_limit_hits(ts)",
+        """CREATE TABLE IF NOT EXISTS documents (
+            id          TEXT PRIMARY KEY,
+            session_id  TEXT NOT NULL,
+            user_id     TEXT REFERENCES users(id) ON DELETE CASCADE,
+            doc_type    TEXT,
+            filename    TEXT NOT NULL,
+            stored_name TEXT NOT NULL,
+            media_type  TEXT NOT NULL,
+            size_bytes  INTEGER NOT NULL,
+            sha256      TEXT NOT NULL,
+            created_at  TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_documents_session ON documents(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id)",
+        "ALTER TABLE auth_sessions ADD COLUMN replayed_at TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at)",
+        """CREATE TABLE IF NOT EXISTS auth_security_events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     TEXT,
+            session_key TEXT,
+            kind        TEXT NOT NULL,
+            detail      TEXT,
+            client      TEXT,
+            occurred_at TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_secev_user ON auth_security_events(user_id, occurred_at)",
+        "CREATE INDEX IF NOT EXISTS idx_secev_key ON auth_security_events(session_key, kind, occurred_at)",
         "ALTER TABLE auth_sessions ADD COLUMN fingerprint TEXT",
         "ALTER TABLE auth_sessions ADD COLUMN replay_strikes INTEGER NOT NULL DEFAULT 0",
     ],
     5: [
-        # v5 — wired uploads: the hardened upload gate finally has a caller, so
-        # its metadata needs a home. Stored bytes never live in the database;
-        # this is metadata + ownership only. All additive.
+        # v5 — wired uploads + long-form notes metadata, plus the repair pass
+        # (a database that applied an earlier revision of v4 was left without
+        # the tombstone column). Every statement is idempotent.
+        "ALTER TABLE auth_sessions ADD COLUMN replayed_at TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at)",
         """CREATE TABLE IF NOT EXISTS uploads (
             id            TEXT PRIMARY KEY,
             session_id    TEXT NOT NULL,
@@ -228,9 +295,6 @@ _MIGRATIONS = {
         )""",
         "CREATE INDEX IF NOT EXISTS idx_uploads_session ON uploads(session_id)",
         "CREATE INDEX IF NOT EXISTS idx_uploads_user ON uploads(user_id)",
-        # Long-form application notes. A legitimately large free-text field
-        # is exactly the input a one-size-fits-all body cap used to reject —
-        # its own endpoint carries its own, larger body policy.
         """CREATE TABLE IF NOT EXISTS session_notes (
             session_id TEXT PRIMARY KEY,
             notes      TEXT NOT NULL,
@@ -238,9 +302,75 @@ _MIGRATIONS = {
         )""",
     ],
     6: [
-        # v6 — a superseded token may be healed at most once. Without this
-        # counter, every retry of a stale tab minted a new live token.
+        # v6 — a superseded token may be healed at most once (heal_count), and
+        # the landing spot for any lineage that applied the other side's v4/v5
+        # first: `_apply` checks live columns and CREATE…IF NOT EXISTS never
+        # re-runs, so a pre-union database converges instead of skipping these
+        # statements forever.
         "ALTER TABLE auth_sessions ADD COLUMN heal_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE auth_sessions ADD COLUMN fingerprint TEXT",
+        "ALTER TABLE auth_sessions ADD COLUMN replay_strikes INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE auth_sessions ADD COLUMN replayed_at TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at)",
+        """CREATE TABLE IF NOT EXISTS uploads (
+            id            TEXT PRIMARY KEY,
+            session_id    TEXT NOT NULL,
+            user_id       TEXT REFERENCES users(id) ON DELETE SET NULL,
+            original_name TEXT,
+            stored_name   TEXT NOT NULL,
+            content_type  TEXT,
+            kind          TEXT NOT NULL,
+            size_bytes    INTEGER NOT NULL,
+            sha256        TEXT NOT NULL,
+            created_at    TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_uploads_session ON uploads(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_uploads_user ON uploads(user_id)",
+        """CREATE TABLE IF NOT EXISTS session_notes (
+            session_id TEXT PRIMARY KEY,
+            notes      TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )""",
+    ],
+    7: [
+        # v7 — cross-lineage repair. A database created by the other
+        # implementation's history (already at its own v4/v5/v6) never ran the
+        # branch-side statements above; this version runs them idempotently so
+        # every lineage converges on the union schema instead of failing at
+        # runtime on a missing table.
+        """CREATE TABLE IF NOT EXISTS rate_limit_hits (
+            key TEXT NOT NULL,
+            ts  REAL NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_rate_limit_key_ts ON rate_limit_hits(key, ts)",
+        "CREATE INDEX IF NOT EXISTS idx_rate_limit_ts ON rate_limit_hits(ts)",
+        """CREATE TABLE IF NOT EXISTS documents (
+            id          TEXT PRIMARY KEY,
+            session_id  TEXT NOT NULL,
+            user_id     TEXT REFERENCES users(id) ON DELETE CASCADE,
+            doc_type    TEXT,
+            filename    TEXT NOT NULL,
+            stored_name TEXT NOT NULL,
+            media_type  TEXT NOT NULL,
+            size_bytes  INTEGER NOT NULL,
+            sha256      TEXT NOT NULL,
+            created_at  TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_documents_session ON documents(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id)",
+        "ALTER TABLE auth_sessions ADD COLUMN replayed_at TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at)",
+        """CREATE TABLE IF NOT EXISTS auth_security_events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     TEXT,
+            session_key TEXT,
+            kind        TEXT NOT NULL,
+            detail      TEXT,
+            client      TEXT,
+            occurred_at TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_secev_user ON auth_security_events(user_id, occurred_at)",
+        "CREATE INDEX IF NOT EXISTS idx_secev_key ON auth_security_events(session_key, kind, occurred_at)",
     ],
 }
 

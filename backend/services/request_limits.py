@@ -52,10 +52,15 @@ class BodyTooLarge(Exception):
         self.policy = policy
 
     def as_json(self) -> dict:
+        from backend.services.limits import body_limit_for
+
         return {
             "detail": "Payload too large.",
             "limit_bytes": self.limit,
             "policy": self.policy,
+            # Human scope label ("chat", "upload", …) — the branch's 413
+            # contract and the value clients adapted to first.
+            "scope": body_limit_for(self.path).scope,
             "hint": (
                 "This endpoint accepts at most "
                 f"{self.limit} bytes; see GET /api/meta for the full limit table."
@@ -149,6 +154,7 @@ class BodyLimitMiddleware:
                     policy=policy.name,
                 ).as_json(),
             )
+            response.headers["X-Max-Body-Bytes"] = str(limit)
             await response(scope, receive, send)
 
     async def _reject(
@@ -172,6 +178,7 @@ class BodyLimitMiddleware:
                 policy=policy,
             ).as_json(),
         )
+        response.headers["X-Max-Body-Bytes"] = str(limit)
         await response(scope, receive, send)
 
 
@@ -187,7 +194,9 @@ async def payload_too_large_handler(request, exc: BodyTooLarge):  # noqa: ANN001
         exc.limit,
         exc.policy,
     )
-    return JSONResponse(status_code=413, content=exc.as_json())
+    response = JSONResponse(status_code=413, content=exc.as_json())
+    response.headers["X-Max-Body-Bytes"] = str(exc.limit)
+    return response
 
 
 __all__ = [

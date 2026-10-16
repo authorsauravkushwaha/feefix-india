@@ -2,13 +2,31 @@
 
 Base URL: `/api` (same origin as the web app). All bodies are JSON.
 
-Interactive docs (Swagger): `GET /docs` when the server is running.
+Interactive docs (Swagger): `GET /docs` — **enabled by default**, together with
+`/redoc` and the machine-readable `/openapi.json`. They are a client/QA contract,
+not an attack surface: every route answers whether or not the docs are shown, so
+`FEEFIX_DISABLE_DOCS=1` is a cosmetic switch and not a control.
+
+Request-body caps are **per endpoint** and enforced while the body is read
+(chunked requests included). A rejected body gets `413` with
+`X-Max-Body-Bytes` and `{"limit_bytes": …, "scope": …}`:
+
+| Route class | Cap (default) | Env knob |
+|---|---|---|
+| auth | 8 KB | `FEEFIX_MAX_AUTH_BODY_BYTES` |
+| Q&A (`/api/ask`) | 32 KB | `FEEFIX_MAX_ASK_BODY_BYTES` |
+| chat | 64 KB | `FEEFIX_MAX_CHAT_BODY_BYTES` |
+| profiles / tracker / match | 64 KB | `FEEFIX_MAX_PROFILE_BODY_BYTES` |
+| other JSON API | 256 KB | `FEEFIX_MAX_BODY_BYTES` |
+| documents (upload) | file budget + framing | `FEEFIX_MAX_UPLOAD_BYTES` |
+
+`GET /api/health` returns the effective values under `limits`.
 
 ## Meta
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/health` | Liveness + loaded scheme count |
+| GET | `/api/health` | Liveness + **effective configuration**: password scheme, rate-limit store (and whether it is shared), secret-policy status, body/field limits, document counts. Never rate-limited, never leaks secrets. |
 | GET | `/api/meta` | Enums: states, categories, course levels, genders, minority communities, tracker statuses |
 | GET | `/api/stats` | Catalogue totals (schemes, verified count, benefit pool…) |
 | GET | `/api/i18n/{lang}` | UI dictionary (`en`, `bn`, `hi`, `ta`) |
@@ -40,13 +58,47 @@ POST /api/auth/link-session { "session_id": "wizard-uuid" }   (Bearer)
   → binds the anonymous wizard session to the account — after this, data follows
     the login on any device, and anonymous access to that session gets HTTP 403.
 GET  /api/auth/export                        (Bearer) → full account data (portability)
-DELETE /api/auth/account                     (Bearer) → erase account + all owned data
+DELETE /api/auth/account                     (Bearer) → erase account + all owned data + uploaded files
+GET  /api/auth/security-events?limit=50      (Bearer) → session-security signals
+  → replay/quarantine events for this account. A single `token_replay` is usually
+    a stale tab: the stale token is revoked, the session survives, and the client
+    (and the user) can see it. Sustained replays escalate to family revocation.
+POST /api/auth/logout-all                    (Bearer) → sign out of every session
 ```
 
 Errors: wrong password and unknown email return identical `401` bodies
 (no account enumeration). Auth endpoints are rate-limited
-(10 attempts / 5 min per IP+account → `429`). All `/api/*` responses carry
+(10 attempts / 5 min per IP+account → `429` with `Retry-After` and
+`X-RateLimit-Scope: auth`). If the password-hashing pool is saturated (a bounded
+resource, `FEEFIX_KDF_CONCURRENCY`), auth endpoints answer **`503` +
+`Retry-After: 2`** — a retryable capacity signal, identical for known, unknown
+and wrong-credential requests, and never a fake "invalid password". All `/api/*` responses carry
 CSP/nosniff/no-store security headers. See `docs/security/SECURITY.md`.
+
+## Documents (uploads)
+
+Hardened, and **actually called** — the gate in `services/upload.py` plus the
+store in `services/documents.py` are what these routes use, so the control is
+live rather than aspirational. Files land outside the web root under a random
+name; the original filename is metadata only.
+
+```
+POST   /api/students/{sid}/documents          (multipart: file, doc_type)
+  → 201 { "uploaded": true, "document": { id, doc_type, filename, media_type,
+                                           size_bytes, sha256, created_at,
+                                           download_url } }
+  → 422 for a dangerous extension, a content/type mismatch (renamed shell.php),
+    an empty file or one over the size cap — with the reason in `detail`.
+GET    /api/students/{sid}/documents          → metadata list
+GET    /api/students/{sid}/documents/{id}     → the file itself, always as
+                                                Content-Disposition: attachment
+DELETE /api/students/{sid}/documents/{id}     → remove metadata + file
+```
+
+Ownership follows every other session-scoped resource: an account-bound session
+requires its owner's bearer token (403 otherwise), and a foreign session's
+document id is a 404. Deletes (document, or the whole account) remove the bytes
+from disk.
 
 ## Matching (the core)
 

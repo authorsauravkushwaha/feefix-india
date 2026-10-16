@@ -24,7 +24,6 @@ import hashlib
 import math
 import os
 import re
-from dataclasses import dataclass
 from typing import Protocol
 
 _TOKEN_RE = re.compile(r"[a-z0-9.]+")
@@ -43,14 +42,58 @@ class NeuralEmbedder:
     name = "neural"
 
     MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+    #: Model load must never hang the process. fastembed has no timeout of its
+    #: own, so a blocked/blackholed connection (offline CI, egress-restricted
+    #: container, HuggingFace outage) used to hang *forever* — it took the whole
+    #: test suite and every boot path with it. Now the load is bounded and the
+    #: caller falls back to the built-in n-gram embedder.
+    LOAD_TIMEOUT_S = float(os.environ.get("FEEFIX_AI_LOAD_TIMEOUT", "20"))
 
-    def __init__(self, timeout_s: float = 30.0):
+    def __init__(self, timeout_s: float | None = None, allow_download: bool | None = None):
         from fastembed import TextEmbedding  # lazy import: optional dependency
 
-        self._model = TextEmbedding(model_name=self.MODEL)
+        timeout_s = self.LOAD_TIMEOUT_S if timeout_s is None else timeout_s
+        if allow_download is None:
+            allow_download = os.environ.get("FEEFIX_AI_ALLOW_DOWNLOAD", "1").lower() not in (
+                "0", "false", "no", "off",
+            )
+        self._model = _load_with_timeout(
+            lambda: TextEmbedding(model_name=self.MODEL, local_files_only=not allow_download),
+            timeout_s,
+        )
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         return [list(map(float, v)) for v in self._model.embed(texts)]
+
+
+def _load_with_timeout(factory, timeout_s: float):
+    """Run a blocking model load in a worker thread with a hard deadline.
+
+    The thread is a daemon, so a load that refuses to finish cannot keep the
+    interpreter (or a pytest run) alive; the caller gets a ``TimeoutError`` and
+    degrades to the offline embedder. Bounded latency beats best quality.
+    """
+    import threading
+
+    result: dict = {}
+
+    def worker() -> None:
+        try:
+            result["value"] = factory()
+        except BaseException as exc:  # noqa: BLE001 - re-raised in the caller
+            result["error"] = exc
+
+    thread = threading.Thread(target=worker, name="feefix-model-load", daemon=True)
+    thread.start()
+    thread.join(timeout_s)
+    if thread.is_alive():
+        raise TimeoutError(
+            f"model load exceeded {timeout_s:.0f}s (offline or blocked network) — "
+            "set FEEFIX_AI_BACKEND=ngram to skip the download entirely"
+        )
+    if "error" in result:
+        raise result["error"]
+    return result["value"]
 
 
 # --------------------------------------------------------------------------- #

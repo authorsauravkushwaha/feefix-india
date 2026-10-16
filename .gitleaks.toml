@@ -31,6 +31,11 @@ paths = [
     '''(^|/)tests/test_secret_hygiene\.py$''',
     '''(^|/)tests/test_otp_delivery\.py$''',
     '''(^|/)tests/test_fuzz_security\.py$''',
+    # Tests that write fake, obviously-not-real credential-shaped strings into
+    # temp files or environment variables to prove the scanner fires and the
+    # boot/OTP policy reads its config — same justification as the entries above.
+    '''(^|/)tests/test_secret_scan\.py$''',
+    '''(^|/)tests/test_boot_policy\.py$''',
     # The clipboard module and its test: refusal cases require token-shaped and
     # OTP-shaped sample values.
     '''(^|/)tests/js/clipboard\.test\.mjs$''',

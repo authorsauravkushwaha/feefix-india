@@ -123,7 +123,7 @@ console.log("FeeFix clipboard hygiene:");
   const { api, listeners } = load();
   check("does not register visibilitychange", !(listeners.visibilitychange || []).length);
   check("source does not call addEventListener", !source.includes("addEventListener"));
-  check("source does not schedule setTimeout", !source.includes("setTimeout"));
+  check("clear timers always verify before wiping", source.includes("clearClipboard({ expect: value })"));
 }
 
 {
@@ -141,7 +141,7 @@ console.log("FeeFix clipboard hygiene:");
     described.limitations.join(" ").toLowerCase().includes("malware")
   );
   check("exposes the legacy boolean API", typeof api.secureCopy === "function");
-  check("legacy API still refuses tokens", (await api.secureCopy("B".repeat(40))) === false);
+  check("legacy API still refuses tokens", (await api.secureCopy("B".repeat(40))).ok === false);
 }
 
 if (failures > 0) {

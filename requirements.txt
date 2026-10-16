@@ -1,29 +1,29 @@
 # FeeFix India — runtime + dev dependencies
 fastapi>=0.115
 uvicorn[standard]>=0.30
+python-multipart>=0.0.9   # multipart parsing for the document-upload route
 
-# Password hashing — Argon2id (memory-hard). Required in production: a deploy
-# configured for Argon2id refuses to start without it rather than silently
-# downgrading to PBKDF2 (see backend/services/passwords.py).
+# Memory-hard password hashing (Argon2id). This is a *deliberate* dependency:
+# PBKDF2 in the stdlib was CPU-cheap to parallelise on GPUs, and "no external
+# packages" is not worth a weaker password hash. If the wheel cannot be
+# installed, the service degrades to hashlib.scrypt (also memory-hard) and says
+# so at boot — it never silently falls back to PBKDF2.
 argon2-cffi>=23.1
 
-# Shared rate-limit counters across workers/instances. Optional locally; set
-# FEEFIX_REDIS_URL to activate (see backend/services/ratelimit.py).
-redis>=5.0
-
-# Multipart form parsing for the document-upload endpoint.
-python-multipart>=0.0.9
-
 # Free, local AI embeddings (open weights, no API keys). Optional — when the
-# model weights can't be downloaded, the built-in n-gram embedder takes over.
+# model weights can't be downloaded (or the download stalls), the built-in
+# n-gram embedder takes over. The load is bounded by FEEFIX_AI_LOAD_TIMEOUT.
 fastembed>=0.3
 
 # tests only
 pytest>=8.0
 pytest-asyncio>=0.23
-httpx>=0.27  # TestClient transport
-hypothesis>=6.100  # property-based/fuzz tests (tests/test_fuzz_security.py)
-fakeredis>=2.20  # in-process Redis for distributed-rate-limit tests (optional)
+httpx>=0.27        # TestClient transport
+hypothesis>=6.100  # property-based tests (parsers, upload validation, tokens)
+
+# tests only — a fake Redis server (with server-side Lua) so the multi-instance
+# rate-limit store is covered by the suite instead of by inspection.
+fakeredis[lua]>=2.20
 
 # Security gates, installed in CI's sast-and-dependencies job and by
 # pre-commit. Declared here too so `pip install -r requirements.txt` reproduces

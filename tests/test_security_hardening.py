@@ -88,8 +88,13 @@ def test_aged_token_rotates_and_a_stale_replay_does_not_kill_the_live_session(cl
                  ((datetime.now(timezone.utc) - timedelta(seconds=auth_svc.OVERLAP_S + 600))
                   .isoformat(timespec="seconds"), auth_svc._token_hash(token)))
     conn.commit()
+    replayed = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert replayed.status_code == 401
+    assert replayed.headers.get("X-Session-Warning") == "stale-token-replayed"
+    # …the attacker gains nothing by replaying it again…
     assert client.get("/api/auth/me",
                       headers={"Authorization": f"Bearer {token}"}).status_code == 401
+    # …and the legitimate session keeps working (no self-inflicted logout).
     assert client.get("/api/auth/me",
                       headers={"Authorization": f"Bearer {new_token}"}).status_code == 200
 
@@ -327,6 +332,7 @@ def test_upload_gate_is_wired_into_a_route():
 
 
 def test_upload_rejects_dangerous_and_spoofed_files():
+    from backend.services.limits import MAX_UPLOAD_BYTES
     from backend.services.upload import validate_upload
     assert validate_upload("cv.pdf", b"%PDF-1.7 ok")[0] is True
     assert validate_upload("shell.php", b"<?php ?>")[0] is False
@@ -334,8 +340,8 @@ def test_upload_rejects_dangerous_and_spoofed_files():
     assert validate_upload("fake.pdf", b"<?php echo 1; ?>")[0] is False   # magic mismatch
     assert validate_upload("x.svg", b"<svg onload=alert(1)>")[0] is False
     assert validate_upload("empty.pdf", b"")[0] is False
-    from backend.services.limits import MAX_UPLOAD_BYTES
-    assert validate_upload("big.pdf", b"%PDF-" + b"a" * MAX_UPLOAD_BYTES)[0] is False
+    # Oversize is judged against the configured cap, not a hard-coded 2 MB.
+    assert validate_upload("big.pdf", b"%PDF-" + b"a" * (MAX_UPLOAD_BYTES + 1))[0] is False
 
 
 def test_upload_filename_cannot_escape_directory():

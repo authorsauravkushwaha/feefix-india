@@ -31,7 +31,7 @@ pip-audit -r requirements.txt          # dependency CVEs
 | 2 | **Clipboard** | `web/frontend/secure-clipboard.js`, `tests/js/clipboard.test.mjs` | **This is a usability measure, not a security control** — `describe()` returns `securityControl: false` and the module says so in its own header. `copyWithHygiene()` refuses credential-shaped values (token, 6-digit OTP, 40-char token shape, anything equal to `feefix.token`), clears on `visibilitychange`, and expires the copy after a short TTL (default 20 s). What it cannot do: malware already on the machine reads the clipboard the moment it is set, and the TTL is a browser-dependent timer that fails silently if the tab is closed. Treat clipboard secrecy as unavailable; the token is never placed there, never in a URL, and never logged. |
 | 3 | **SQL / NoSQL injection** | `backend/services/db.py`, `backend/services/otp.py` | Every statement is parameterized; a test scans the source to keep it that way. SQLite has no NoSQL/`$where` surface. Injection payloads are inert data. |
 | 4 | **Secret leaks in the repo** | `agents/secret_scan.py`, `.github/workflows/ci.yml`, `.pre-commit-config.yaml` | A committed-secret scanner runs **in CI, in pre-commit (staged files) and in pre-push (full tree)**, so a leak cannot be pushed by accident. It catches provider-token shapes, high-entropy assignments, base64-obfuscated keys, `"a" + "b"` string-split secrets and DSNs with passwords — including in unusual file extensions. Its own reports and the archived pytest XML are never scanned, so a finding is reported once, as itself. Findings are printed as GitHub **check annotations** in CI (`--annotate`), so a red gate is readable from `gh pr checks` and the API and not only from a log blob. **Limits:** pattern + entropy detection is not proof of absence, obfuscation it has never seen will pass, the history scan covers the checked-out history (an unmerged branch is scanned by that branch's own CI and by the pull request merge commit), and a scanner is bypassed by `# secret-scan: allow <reason>` or branch protection being off. It raises the cost of an accident; it does not replace rotation. Third-party scanning (gitleaks) runs alongside it in CI, so a miss by one is a hit for the other. |
-| 5 | **Long-password DoS / weak hashing** | `backend/services/passwords.py`, `tests/test_password_hashing.py` | **Argon2id** (`time_cost=2`, `memory_cost=19 MiB`, `parallelism=1` — OWASP parameters) is the production default: `FEEFIX_ENV=production` or `FEEFIX_PASSWORD_ALGO=argon2id` makes a deployment **refuse to start** without `argon2-cffi` rather than silently falling back. PBKDF2-HMAC-SHA256 (600k rounds) remains for stdlib-only/dev use and existing hashes, which are **re-hashed to Argon2id on the next successful login** (the plaintext is only available then). Passwords are length-capped at the schema *and* service layer and pre-hashed with SHA-256 before the KDF, so KDF work is constant regardless of submitted length. |
+| 5 | **Long-password DoS / weak hashing** | `backend/services/passwords.py`, `tests/test_password_hashing.py` | **Argon2id** (`time_cost=2`, `memory_cost=19 MiB`, `parallelism=1` — OWASP parameters) is the production default: `FEEFIX_ENV=production` or `FEEFIX_PASSWORD_ALGO=argon2id` makes a deployment **refuse to start** without `argon2-cffi` rather than silently falling back. PBKDF2-HMAC-SHA256 (600k rounds) remains for standard-library-only/dev use and existing hashes, which are **re-hashed to Argon2id on the next successful login** (the plaintext is only available then). Passwords are length-capped at the schema *and* service layer and pre-hashed with SHA-256 before the KDF, so KDF work is constant regardless of submitted length. |
 | 6 | **ReDoS in parsing** | `backend/services/numerals.py`, `tests/test_numerals.py`, `tests/test_fuzz_security.py` | Income/number parsing is **table-driven** (`i18n` rules + digit-translation maps) instead of per-script `\uXXXX` regexes; every user string is length-capped before any regex runs and quantifiers are bounded. A generated corpus + fuzz suite asserts totality (never raises), bounded output (`0 ≤ n ≤ 10¹³`) and idempotence. The old hand-maintained escape tables conflated Devanagari AA (अा) with Bengali AA (আ) — the bug class this replaced. |
 | 7 | **Server-side template injection** | `backend/api/routes.py`, `web/frontend/app.js` | The API returns JSON only; there is no server-side template engine. The one HTML the server emits (OAuth handoff) passes through `_json_html_safe()`, which neutralises `</script>`, attribute and entity breakouts. The SPA escapes every interpolated value (`esc()`/`safeUrl()`). |
 | 8 | **Error handling & info leakage** | `backend/main.py`, `backend/api/responses.py` | The catch-all handler logs the traceback server-side and returns an opaque `{"detail":"Internal server error.","request_id":…}`. Validation errors are rendered through `SafeJSONResponse`, which can always encode: a lone surrogate (`"\ud800"`, valid JSON that Python happily parses) used to reach the response renderer and turn a client typo into a 500 — the fuzz suite found it, schema validation now rejects lone surrogates with a clean 422, and the response class is the backstop. **Docs note:** `/docs`, `/redoc` and `/openapi.json` are **on by default**. Gating them removes no endpoint and no attack surface — the API answers identically without them — so the toggle exists only for operators who want a documentation-free surface, and the docs say so instead of implying a control. |
@@ -138,39 +138,14 @@ WAL + foreign keys + race-safe versioned migrations · non-root container.
 | Flakiness | `flake-watch` CI job | Runs the concurrency, property and migration suites **three times per build**. Intermittent failures in those files — real subprocesses, real ports, real clocks, randomised input — otherwise show up as a green/red lottery, and a gate people do not trust is a gate people skip. |
 | The gates themselves | `tests/test_ci_config.py` | Silent rot: a gate that references a renamed module, a dropped test file, a demoted job (`continue-on-error`), a shallow clone that cannot see history, or an action still on a retired runtime. The workflow is parsed as data, its commands are run for real where they are cheap, and the mutations above are asserted to fail the build. |
 
-## Verifying it yourself
+## What is *not* covered (honest gaps)
 
-```bash
-python -m pytest                                   # full suite (472 tests)
-python -m pytest tests/test_fuzz_security.py        # property-based/adversarial
-python -m pytest tests/test_ci_config.py            # the gates themselves
-bandit -q -r backend agents ai ml -x tests -ll
-pip-audit -r requirements.txt
-python -m agents.secret_scan                        # repo scan (exit 1 on findings)
-python -m agents.secret_scan --staged               # pre-commit mode (staged files)
-python -m agents.secret_scan --history              # added lines in this branch's history
-python -m agents.secret_scan --annotate             # findings as GitHub check annotations
-python -m agents.verify_dataset                     # + --check-urls for liveness
-pre-commit run --all-files                          # what a developer's loop runs
-./scripts/verify.sh                                 # every CI gate, one command
-```
-
-## What this document does **not** claim
-
-Hand-written tests by the same author as the code prove *consistency*, not
-security. Same-author suites systematically miss the assumptions the author
-never questioned (this map's most recent findings — the surrogate 500, the XFF
-bucket bypass, the session-id rule, and a calendar-day-dependent assertion that
-went red with no code change — came from the fuzz/CI-contract suites and a live
-server probe, not from review of the passing tests). The
-controls above reduce the cost and blast radius of the mistakes we know about;
-they are not a substitute for independent review, a real penetration test
-against a deployed instance, or a bug-bounty. Those are on the roadmap below,
-and no amount of green checkmarks replaces them.
-
-## Roadmap (free, incremental)
-
-1. Independent third-party review of the auth/session and upload paths.
-2. TOTP second factor + step-up re-auth for destructive actions.
-3. Postgres-backed deployments inherit the same contract (`docs/deploy/DEPLOYMENT.md`).
-4. Fill/embed a real corpus for the local AI layer once a model host is allowlisted.
+* No external penetration test, no third-party review, no bug-bounty history.
+* The fuzzer is a TestClient harness: it does not exercise real HTTP framing,
+  TLS termination, proxy behaviour or browser-side logic.
+* The SQLite-backed limiter shares state through *one database file* — correct
+  for one host (any number of workers), not for a multi-region deployment.
+  That needs Redis, and `topology_warnings()` says so at boot.
+* Denial-of-service resistance is argued from bounded work per request, not
+  measured under a real flood.
+* The dataset's factual accuracy is a separate concern from its security.
