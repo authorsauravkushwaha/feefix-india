@@ -11,7 +11,7 @@ Instead of *"Where can I find scholarships?"* — FeeFix answers
 **"Which schemes fit my profile, why do I qualify, and what should I do next?"**
 
 [![CI](https://github.com/authorsauravkushwaha/feefix-india/actions/workflows/ci.yml/badge.svg)](https://github.com/authorsauravkushwaha/feefix-india/actions)
-[![Tests](https://img.shields.io/badge/tests-466%20passing-brightgreen)](#-testing)
+[![Tests](https://img.shields.io/badge/tests-470%20passing-brightgreen)](#-testing)
 [![Schemes](https://img.shields.io/badge/verified%20schemes-71-blue)](#-the-dataset)
 [![Languages](https://img.shields.io/badge/languages-en%20·%20বাংলা%20·%20हिन्दी%20·%20தமிழ்-orange)](#-four-languages-native-script)
 [![Security](https://img.shields.io/badge/security-Argon2id%20·%20CSP%20·%20shared%20rate%20limit-critical)](docs/security/SECURITY.md)
@@ -165,7 +165,7 @@ cd feefix-india
 ```
 
 ```bash
-./scripts/dev.sh --test                       # 466 tests
+./scripts/dev.sh --test                       # 470 tests
 .venv/bin/python -m agents.verify_dataset     # dataset health audit
 .venv/bin/python -m ml.experiments.simulate_outcomes   # V2 ranker demo
 ```
@@ -225,7 +225,7 @@ feefix-india/
 │                            #     gates are themselves tested (tests/test_ci_config.py)
 ├── scripts/dev.sh           # one-command dev bootstrap
 ├── scripts/verify.sh        # every CI gate locally, one command
-└── tests/                   # 466 tests (incl. fuzz · distributed · CI-contract)
+└── tests/                   # 470 tests (incl. fuzz · distributed · CI-contract)
 ```
 
 ## 🗺 Roadmap

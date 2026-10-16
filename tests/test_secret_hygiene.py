@@ -339,3 +339,30 @@ def test_inline_waiver_works_and_is_per_line():
     )
     findings = _scan_text("config/limits.py", text)
     assert [f["line"] for f in findings] == [2], findings
+
+
+# --------------------------------------------------------------------------- #
+# CLI contract: the gate must be usable and must refuse to guess
+# --------------------------------------------------------------------------- #
+def test_cli_help_does_not_silently_run_the_scan():
+    """`--help` printed nothing and scanned the repo instead, which is exactly
+    how a tool teaches people not to trust its flags."""
+    from agents.secret_scan import main
+
+    assert main(["--help"]) == 0
+    assert main(["-h"]) == 0
+
+
+def test_cli_rejects_unknown_flags_instead_of_ignoring_them():
+    """An ignored typo (`--jsn report.json`) would silently drop the artifact."""
+    from agents.secret_scan import main
+
+    assert main(["--jsn", "out.json"]) == 2
+
+
+def test_cli_flags_used_by_ci_and_pre_commit_are_advertised():
+    """The usage text is the contract CI relies on."""
+    from agents.secret_scan import _USAGE
+
+    for flag in ("--path", "--json", "--staged", "--help"):
+        assert flag in _USAGE, f"{flag} is used but not documented"

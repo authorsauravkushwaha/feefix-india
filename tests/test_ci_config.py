@@ -194,7 +194,9 @@ def test_failing_tests_are_reported_as_annotations(ci):
     assert "tee pytest-output.txt" in suite_step["run"], (
         "the annotation step reads the captured output"
     )
-    assert "--junitxml=pytest-report.xml" in suite_step["run"]
+    assert "--junit-xml=pytest-report.xml" in suite_step["run"], (
+        "pytest documents --junit-xml; --junitxml is a legacy alias"
+    )
     upload = [
         s for s in steps
         if str(s.get("uses", "")).startswith("actions/upload-artifact")
@@ -229,6 +231,50 @@ def test_concurrency_and_property_suites_are_run_repeatedly(ci):
     assert "::error" in script, "flake-watch failures would be opaque"
     assert "FAILED|ERROR" in script, "flake-watch must name the failing test"
     assert "exit 1" in script, "flake-watch must fail the build"
+
+
+def test_every_flag_ci_passes_is_actually_supported(ci, tmp_path):
+    """A renamed CLI flag is the quietest way for a gate to die.
+
+    `python -m agents.verify_dataset --check-urls` and friends are only as good
+    as the flags they pass: drop `--staged` from a scanner and it silently scans
+    the wrong thing; rename `--json` and the archived report stops being
+    produced. Each module CI invokes is asked for its own `--help`, and the
+    flags are asserted to appear there.
+    """
+    commands = [c for c in _run_commands(ci) if c.startswith("python -m ")]
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(REPO),
+        "FEEFIX_AI_BACKEND": "ngram",
+        "FEEFIX_DB": str(tmp_path / "flags.db"),
+    }
+
+    checked = 0
+    for command in commands:
+        parts = command.split()
+        module, flags = parts[2], [p for p in parts[3:] if p.startswith("--")]
+        # Long options may be written as --flag=value.
+        flags = [f.split("=")[0] for f in flags]
+        if not flags:
+            continue
+        result = subprocess.run(
+            [sys.executable, "-m", module, "--help"],
+            cwd=REPO,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        assert result.returncode == 0, f"{module} --help failed: {result.stderr[-400:]}"
+        help_text = result.stdout + result.stderr
+        for flag in flags:
+            assert flag in help_text, (
+                f"CI runs `{command}` but {module} does not support {flag}"
+            )
+        checked += 1
+
+    assert checked >= 3, f"expected several flag-bearing commands, inspected {checked}"
 
 
 def test_verify_script_covers_every_ci_gate(ci):

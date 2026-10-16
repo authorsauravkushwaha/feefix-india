@@ -405,7 +405,40 @@ def scan_paths(paths: list[Path]) -> list[dict]:
     return _dedupe(findings)
 
 
+_USAGE = """FeeFix secret scanner — commit-time and CI gate for leaked credentials.
+
+Usage:
+  python -m agents.secret_scan [--path DIR] [--json FILE] [--staged]
+
+  --path DIR   scan a directory tree (default: this repository)
+  --json FILE  also write a machine-readable report (CI artifact)
+  --staged     scan only git-staged files (pre-commit mode)
+  --help       show this message
+
+Exit codes: 0 = clean, 1 = findings (fails the build on purpose).
+False positives: waive in-line with `# secret-scan: allow <reason>`,
+or list paths in .secretscanignore.
+"""
+
+
 def main(argv: list[str]) -> int:
+    # A CI tool that swallows `--help` and quietly runs the scan instead is a
+    # tool people stop trusting; the flag check below (tests/test_ci_config.py)
+    # asserts every flag CI passes is advertised here.
+    if "--help" in argv or "-h" in argv:
+        print(_USAGE, end="")
+        return 0
+
+    known = {"--path", "--json", "--staged"}
+    unknown = [
+        a for i, a in enumerate(argv)
+        if a.startswith("-") and a not in known
+    ]
+    if unknown:
+        print(f"unknown option(s): {' '.join(unknown)}", file=sys.stderr)
+        print("run with --help for usage", file=sys.stderr)
+        return 2
+
     root = REPO
     if "--path" in argv:
         root = Path(argv[argv.index("--path") + 1]).resolve()

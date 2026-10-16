@@ -88,7 +88,7 @@ WAL + foreign keys + race-safe versioned migrations · non-root container.
 ## Verifying it yourself
 
 ```bash
-python -m pytest                                   # full suite (466 tests)
+python -m pytest                                   # full suite (470 tests)
 python -m pytest tests/test_fuzz_security.py        # property-based/adversarial
 python -m pytest tests/test_ci_config.py            # the gates themselves
 bandit -q -r backend agents ai ml -x tests -ll

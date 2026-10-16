@@ -39,7 +39,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Full test suite
-        run: python -m pytest --junitxml=pytest-report.xml 2>&1 | tee pytest-output.txt
+        run: python -m pytest --junit-xml=pytest-report.xml 2>&1 | tee pytest-output.txt
 
       # A red job whose reason lives only in a log blob is a gate people learn to
       # ignore. Failed test ids are surfaced as check annotations (readable via

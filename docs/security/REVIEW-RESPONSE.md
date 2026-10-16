@@ -8,14 +8,14 @@ test that fails if the finding comes back.
 Verification commands:
 
 ```bash
-python -m pytest                                    # 466 passed
+python -m pytest                                    # 470 passed
 bandit -q -r backend agents ai ml -x tests -ll       # exit 0, 0 medium+
 pip-audit -r requirements.txt                        # no known vulnerabilities
 python -m agents.secret_scan                         # 0 findings on this repo
 pre-commit run --all-files                           # the developer-loop gates
 ```
 
-Test count went from **217 → 466**. The additions are the point of the exercise:
+Test count went from **217 → 470**. The additions are the point of the exercise:
 the old suite proved consistency, the new one probes the assumptions.
 
 | Test file | What it adds |
