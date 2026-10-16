@@ -368,6 +368,34 @@ running deployment: `..`, NUL, newline, 10 KB ids → `422` on upload, list,
 download and delete, with **nothing written to disk**; legitimate ids still
 work; and a cross-session read of a hostile id's upload → `404`.
 
+## D. The third-party scanner, and making failures self-describing
+
+Two CI lessons, both about gates that report *red* without reporting *why*:
+
+* The gitleaks job failed while our own scanner was clean. The repository
+  necessarily contains secret-shaped strings — `agents/secret_scan.py` holds the
+  provider regexes themselves, the hygiene/fuzz tests plant fake credentials to
+  prove detection, the docs show example DSNs, and token-shaped literals are
+  used as fuzz alphabets. An independent scanner is right to flag all of it, and
+  a blanket waiver is the wrong answer. `.gitleaks.toml` now **extends the
+  vendor defaults** (`useDefault = true`, so every rule stays active elsewhere)
+  and allowlists only specific, anchored paths with written reasons, plus
+  placeholder *value* patterns — so a real credential in those same files would
+  still be reported. `tests/test_ci_config.py` pins it: the config must exist,
+  extend the defaults, explain itself, and every path entry must be
+  file-scoped and anchored, with a future "ignore everything" edit failing the
+  build.
+* The test job failed in CI while the suite passed locally, and the failing
+  test's name existed only inside a log artifact that this environment cannot
+  reach. So the workflow now **names its own failures**: failed test ids are
+  emitted as check annotations and the junit report plus the captured output are
+  archived, with the annotation step written in plain shell that always exits 0
+  (it must never become a second, opaque failure of its own).
+
+With those in place the pipeline is green end to end on the current head —
+`test`, `secret-scan-third-party`, `sast-and-dependencies` all pass, and the
+scheduled `dataset-liveness` job stays off the critical path.
+
 ## What the second pass says about the first
 
 Both new findings were in places the first pass had *claimed* coverage: "the
