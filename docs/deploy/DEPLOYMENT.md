@@ -74,10 +74,10 @@ Spaces gives a permanent public URL (`https://<you>-feefix.hf.space`) — perfec
 |---|---|---|
 | `FEEFIX_ENV` | *(unset)* | `production` turns on fail-closed boot guards (see below) |
 | `FEEFIX_PASSWORD_ALGO` | `auto` → argon2id in prod | Argon2id is required for new hashes; a production deploy **refuses to start** if `argon2-cffi` is missing rather than silently downgrading to PBKDF2 |
-| `FEEFIX_SECRETS_STRICT` | *prod implies 1* | `1` refuses to boot on a placeholder/missing secret. `0` is an explicit, auditable downgrade to a warning |
+| `FEEFIX_SECRETS_STRICT` | *prod is always strict* | `1` refuses to boot on a placeholder/missing secret outside production too. `FEEFIX_SECRETS_STRICT=0` does **not** let a production deploy on `CHANGE_ME` start |
 | `FEEFIX_DB` | `runtime/feefix.db` | SQLite path — point at a **mounted volume**, or every deploy starts empty |
 | `FEEFIX_UPLOAD_DIR` | `runtime/uploads` | Uploaded documents — also belongs on the volume, and **not** inside a static mount |
-| `FEEFIX_REDIS_URL` | *(unset)* | **Set this whenever you run more than one worker/instance.** Without it every process keeps its own counters and the effective rate limit is `N ×` the configured one; the app warns at boot and `GET /api/health`'s `ratelimit.distributed` reads `false` |
+| `FEEFIX_REDIS_URL` | *(unset)* | **Required when `FEEFIX_INSTANCES` > 1.** Without it the process refuses to start — a warning used to keep serving and the limit was `N ×`. One host with several workers shares `FEEFIX_RATELIMIT_DB` (SQLite) instead. `render.yaml` wires a Key Value instance |
 | `FEEFIX_TRUST_PROXY` | `0` | `1` when TLS/HTTP terminates in front (Render, Fly, nginx, k8s ingress). Without it every request looks like it came from the proxy and all users share one bucket. The forwarded header is read **rightmost** (the hop your proxy observed), so a client cannot forge its identity |
 
 ### Rarely needed

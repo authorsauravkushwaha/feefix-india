@@ -12,8 +12,6 @@ import re
 BN_RE = re.compile(r"[ঀ-৿]")
 HI_RE = re.compile(r"[ऀ-ॿ]")
 TA_RE = re.compile(r"[஀-௿]")
-BN_DIGITS = str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789")
-HI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
 
 
 def detect_lang(text: str) -> str:

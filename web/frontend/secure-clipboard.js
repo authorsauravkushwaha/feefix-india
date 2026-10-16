@@ -1,46 +1,47 @@
-/* ==========================================================================
-   FeeFix clipboard hygiene — a USABILITY measure, not a security control.
+/* =========================================================================
+   FeeFix clipboard helper — NOT a security control.
 
-   WHAT THIS FILE CAN DO
-     • refuse to copy credential-shaped values (the auth token, an OTP code
-       pattern) so *the user* cannot accidentally paste a session credential
-       into a chat, a form, or a support ticket;
-     • clear the clipboard shortly after a copy, and again when the page is
-       hidden, so a copied value does not sit there indefinitely;
-     • report honestly whether the write/clear actually happened.
+   The only behaviour here that changes an outcome is refusal: credential-shaped
+   values (the session token, a 6-digit OTP, anything equal to feefix.token)
+   are never written to the clipboard by this page.
 
-   WHAT THIS FILE CANNOT DO — and must never be claimed to do
-     • It cannot stop clipboard *theft*. Malware, a rogue extension or a
-       keylogger reads the value the instant it is written — long before any
-       timer fires. The timer is a housekeeping nicety, not a defence.
-     • It cannot stop keyloggers or memory scraping, and it cannot revoke what
-       has already been read.
-     • It is browser- and permission-dependent: the async Clipboard API needs a
-       secure context, a user gesture and (on some browsers) explicit consent,
-       and the "clear" step silently fails when the document is not focused.
-       That is why every entry point returns a structured result instead of a
-       bare boolean — failures are visible to the caller, not swallowed.
-     • It says nothing about other devices or about data already in transit.
+   Everything else people attach to "clipboard protection" is theatre:
 
-   THE REAL CONTROLS for the token live server-side: opaque 256-bit tokens,
-   only their SHA-256 hash stored, rotation with replay detection, revocation on
-   logout, `Cache-Control: no-store`, and a CSP that forbids remote scripts.
-   This helper is the least important layer; it is documented as such in
-   docs/security/HARDENING.md so nobody mistakes it for defence in depth it
-   cannot provide.
+     • A timer that clears the clipboard ~20s later does not stop malware.
+       Malware, a rogue extension or a keylogger reads the value the instant
+       it is written, long before any timer fires.
+     • Clearing on visibilitychange is worse: it wipes whatever the user
+       copied, including text they meant to paste into another app, and it
+       fails silently when the document is unfocused.
+     • The async Clipboard API needs a secure context, a user gesture and
+       (on some browsers) permission. Failures used to be swallowed, which
+       made the control look like it had worked.
+
+   This module therefore does not auto-clear, does not register a
+   visibilitychange handler, and describe() reports securityControl: false
+   and autoClears: false. clearClipboard() exists only for a caller that has
+   already consumed a value inside this page (the OTP boxes) and wants to
+   drop it as a courtesy. That call is best-effort and reports why it failed.
+   It is not protection against malware, keyloggers or memory scraping.
+
+   The real controls for the session token are server-side: opaque 256-bit
+   tokens, only their SHA-256 hash stored, rotation that does not log every
+   device out, revocation on logout, Cache-Control: no-store, and a CSP that
+   forbids remote scripts. The token is never placed on the clipboard, never
+   in a URL, and never logged.
    ========================================================================== */
 (() => {
   "use strict";
 
-  const CLIPBOARD_TTL_MS = 20000; // housekeeping: drop a copied value after 20s
-  const TOKEN_HINT = /^[A-Za-z0-9_-]{32,}$/; // opaque session-token shape
-  const CODE_HINT = /^\d{6}$/; // one-time codes are 6 digits here
+  const TOKEN_HINT = /^[A-Za-z0-9_-]{32,}$/;
+  const CODE_HINT = /^\d{6}$/;
 
   const LIMITATIONS = Object.freeze([
     "Cannot stop malware, extensions or keyloggers from reading the clipboard.",
-    "Cannot undo a value that has already been copied and read.",
-    "Clearing may fail silently if the page loses focus or the browser denies permission.",
-    "Protects only this browser profile — not other devices or already-sent data.",
+    "Does not auto-clear. A timer cannot outrun a process that already read the value.",
+    "Does not wipe the clipboard when the tab is hidden — that destroyed unrelated copies and still was not protection.",
+    "Clearing, when a caller asks for it, may fail if the page is unfocused or permission is denied. The failure is reported, not hidden.",
+    "Protects only this page's decision not to write a credential. It says nothing about other devices or data already sent.",
   ]);
 
   function looksLikeSecret(value) {
@@ -71,12 +72,12 @@
 
   /**
    * Copy `text` if it is not credential-shaped.
-   * @returns {Promise<{ok: boolean, reason: string, ttlMs?: number}>}
+   * There is no TTL. Passing one is ignored — scheduling a clear was the
+   * false control.
+   * @returns {Promise<{ok: boolean, reason: string}>}
    */
-  async function copyWithHygiene(text, { ttl = CLIPBOARD_TTL_MS } = {}) {
+  async function copyWithHygiene(text) {
     if (looksLikeSecret(text)) {
-      // The one genuinely useful thing here: a credential never reaches the
-      // clipboard because *we* refuse to put it there.
       return { ok: false, reason: "refused-credential-shaped-value" };
     }
     if (!clipboardAvailable()) return { ok: false, reason: "clipboard-unavailable" };
@@ -85,34 +86,26 @@
     } catch (_) {
       return { ok: false, reason: "denied-or-unfocused" };
     }
-    if (ttl > 0) setTimeout(clearClipboard, ttl);
-    return { ok: true, reason: "copied", ttlMs: ttl };
+    return { ok: true, reason: "copied" };
   }
 
   /** Back-compat boolean wrapper (older call sites). */
-  async function secureCopy(text, options) {
-    const result = await copyWithHygiene(text, options);
+  async function secureCopy(text) {
+    const result = await copyWithHygiene(text);
     return result.ok;
   }
 
-  // Housekeeping: drop a copied value when the user leaves the page/tab.
-  if (typeof document !== "undefined" && document.addEventListener) {
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") clearClipboard();
-    });
-  }
-
   window.FeeFixClipboard = {
-    secureCopy, // legacy boolean API
-    copyWithHygiene, // structured API — prefer this
+    secureCopy,
+    copyWithHygiene,
     clearClipboard,
     looksLikeSecret,
     limitations: LIMITATIONS,
     describe: () => ({
       available: clipboardAvailable(),
-      ttlMs: CLIPBOARD_TTL_MS,
-      // Explicit, in-code admission of what this module is not.
       securityControl: false,
+      autoClears: false,
+      clearsOnHide: false,
       limitations: LIMITATIONS.slice(),
     }),
   };

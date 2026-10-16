@@ -27,11 +27,12 @@ benign race logs the user out everywhere. So:
   mints a fresh sibling token for that device — the stale client *self-heals*
   instead of hard-failing;
 * beyond the overlap the stale token is refused (never the live one);
-* the family is revoked **only** when the replay pattern actually looks like
-  theft: ``FEEFIX_REPLAY_STRIKES`` (5) replayed tokens from a *different* client
-  fingerprint, under the ``balanced`` policy. ``strict`` restores the old
-  revoke-the-family behaviour for deployments that prefer it; ``lenient`` only
-  ever logs.
+* the family is **not** revoked because a rotated token was replayed. A mobile
+  client holding the previous token, or a tab that missed the rotation header,
+  must not be able to log the user out of every other device. Strikes are
+  recorded for operators; they do not kill the live session.
+  ``FEEFIX_REPLAY_POLICY=strict`` is the explicit opt-in that restores
+  revoke-the-family. ``lenient`` only logs.
 
 The trade-off is explicit and configurable rather than accidental — see
 ``docs/security/SECURITY.md``.
@@ -234,7 +235,7 @@ def _fetch_row(token: str):
     conn = db.get_connection()
     return conn.execute(
         "SELECT s.token_hash, s.expires_at, s.session_key, s.replaced_by, s.replaced_at,"
-        " s.replay_strikes, s.fingerprint, s.user_id,"
+        " s.replay_strikes, s.fingerprint, s.heal_count, s.user_id,"
         " u.id AS uid, u.email, u.name"
         " FROM auth_sessions s JOIN users u ON u.id = s.user_id"
         " WHERE s.token_hash=?",
@@ -278,10 +279,16 @@ def _user_of(row) -> dict:
 
 
 def _fingerprint_matches(row, client: str | None) -> bool:
-    """Same device? Unknown fingerprints are treated as a match (availability)."""
+    """Same device, proven — not merely uncontradicted.
+
+    A missing fingerprint used to count as a match. That let anyone holding a
+    just-rotated token omit ``User-Agent`` and receive a freshly minted
+    long-lived sibling (the heal path). Unknown is not same-device. The caller
+    still must not revoke the family; it only withholds the mint.
+    """
     recorded = row["fingerprint"] if "fingerprint" in row.keys() else None
     if not recorded or not client:
-        return True
+        return False
     return hmac.compare_digest(str(recorded), str(client))
 
 
@@ -301,41 +308,55 @@ def _handle_superseded(row, client: str | None) -> tuple[dict | None, str | None
     family = row["session_key"] or row["token_hash"]
 
     if age_s <= OVERLAP_S:
-        if same_device:
-            # Same device, late request: heal it by minting a fresh sibling
-            # token so it stops using the superseded one on its own.
+        if same_device and _claim_heal(row["token_hash"]):
+            # Same device, late request: heal it *once* by minting a fresh
+            # sibling so it stops using the superseded one. A retry loop must
+            # not mint a new live token on every request.
             db.audit(user["id"], "auth.token_overlap_healed", f"age={int(age_s)}s")
             return user, _mint_sibling(row, client)
-        # Different client inside the overlap window: allow (in-flight
-        # tolerance) but do not mint, and note the observation.
+        if same_device:
+            db.audit(user["id"], "auth.token_overlap_reused", f"age={int(age_s)}s")
+            return user, None
+        # Different or unproven client inside the overlap window: allow the
+        # in-flight request but do not mint a long-lived token, and do not
+        # touch the live session.
         db.audit(user["id"], "auth.token_overlap_foreign_client", f"age={int(age_s)}s")
         return user, None
 
-    # Beyond the overlap: genuine stale-token replay territory.
-    if REPLAY_POLICY == "lenient":
-        db.audit(user["id"], "auth.token_replay_observed", f"age={int(age_s)}s policy=lenient")
-        return None, None
+    # Beyond the overlap: the stale token is refused. The live session is kept
+    # unless the operator explicitly opted into family revocation.
     if REPLAY_POLICY == "strict":
         _revoke_family(family)
         db.audit(user["id"], "auth.token_reuse_revoked", f"age={int(age_s)}s policy=strict")
         return None, None
 
-    # balanced
     strikes = _strike_family(family, row["token_hash"])
-    if not same_device and strikes >= REPLAY_STRIKES:
-        _revoke_family(family)
-        db.audit(
-            user["id"],
-            "auth.token_reuse_revoked",
-            f"strikes={strikes} age={int(age_s)}s foreign_client=true",
-        )
-        return None, None
+    action = (
+        "auth.token_replay_observed" if REPLAY_POLICY == "lenient" else "auth.token_replay_rejected"
+    )
     db.audit(
         user["id"],
-        "auth.token_replay_rejected",
-        f"strikes={strikes} age={int(age_s)}s live_session_kept=true",
+        action,
+        f"strikes={strikes} age={int(age_s)}s live_session_kept=true policy={REPLAY_POLICY}",
     )
     return None, None
+
+
+def _claim_heal(token_hash: str) -> bool:
+    """Reserve the one heal this superseded token is allowed to mint.
+
+    Returns True only for the first caller. A stale tab that retries the old
+    token therefore cannot fill ``auth_sessions`` with sibling tokens.
+    """
+    conn = db.get_connection()
+    with db._lock:
+        cur = conn.execute(
+            "UPDATE auth_sessions SET heal_count = heal_count + 1"
+            " WHERE token_hash=? AND heal_count < 1",
+            (token_hash,),
+        )
+        conn.commit()
+    return cur.rowcount == 1
 
 
 def _mint_sibling(row, client: str | None) -> str:

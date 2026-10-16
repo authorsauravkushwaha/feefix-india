@@ -15,9 +15,10 @@ A boot-time ``log.warning`` for ``CHANGE_ME`` was advisory: the service happily
 served production traffic with a placeholder credential. :func:`enforce_secret_hygiene`
 now **refuses to start** when the deployment says it is production
 (``FEEFIX_ENV=production``) or opts in explicitly (``FEEFIX_SECRETS_STRICT=1``),
-listing every blocking finding. Non-production environments still warn, so
-local development and CI are not obstructed — the check is strict exactly where
-it matters.
+listing every blocking finding. ``FEEFIX_SECRETS_STRICT=0`` does not override
+production — that hatch used to let a deploy on ``CHANGE_ME`` keep serving.
+Non-production environments still warn, so local development and CI are not
+obstructed.
 """
 
 from __future__ import annotations
@@ -67,15 +68,25 @@ class SecretHygieneError(RuntimeError):
     """Raised at boot when a strict deployment has a placeholder/missing secret."""
 
 
+def _is_production() -> bool:
+    return (os.environ.get("FEEFIX_ENV") or "").strip().lower() in ("prod", "production")
+
+
 def strict_mode() -> bool:
     """Whether secret findings block startup.
 
-    ``FEEFIX_SECRETS_STRICT`` wins when set; otherwise production implies strict.
+    Production is always strict. ``FEEFIX_SECRETS_STRICT=0`` used to be an
+    escape hatch that let a deploy still on ``CHANGE_ME`` keep serving — the
+    advisory check the review called out. That hatch does not apply when
+    ``FEEFIX_ENV=production``. Outside production, ``FEEFIX_SECRETS_STRICT=1``
+    opts in and the default is warn-only so local development is not blocked.
     """
+    if _is_production():
+        return True
     raw = os.environ.get("FEEFIX_SECRETS_STRICT")
     if raw is not None and raw.strip():
         return raw.strip().lower() in ("1", "true", "yes", "on")
-    return (os.environ.get("FEEFIX_ENV") or "").strip().lower() in ("prod", "production")
+    return False
 
 
 def get_secret(name: str, *, required: bool = False, default: str | None = None) -> str | None:
@@ -187,9 +198,14 @@ def enforce_secret_hygiene() -> list[str]:
     blocking = [f for f in findings if f["level"] == "blocking"]
     if blocking and strict_mode():
         detail = "\n  - ".join(f["message"] for f in blocking)
+        hatch = (
+            "Production will not start with a placeholder secret. Rotate the value."
+            if _is_production()
+            else "Unset FEEFIX_SECRETS_STRICT, or fix the secrets."
+        )
         raise SecretHygieneError(
-            "Refusing to start: secret hygiene failed in strict mode "
+            "Refusing to start: secret hygiene failed "
             f"(FEEFIX_ENV={os.environ.get('FEEFIX_ENV', 'unset')}).\n  - {detail}\n"
-            "Fix the secrets, or set FEEFIX_SECRETS_STRICT=0 to downgrade to a warning."
+            f"{hatch}"
         )
     return [f["message"] for f in findings]

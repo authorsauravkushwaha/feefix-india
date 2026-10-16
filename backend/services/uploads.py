@@ -258,6 +258,31 @@ def delete_upload(session_id: str, upload_id: str, *, user_id: str | None = None
     return record["id"] == upload_id
 
 
+REQUIRED_OPENAPI_PATHS = (
+    "/api/uploads/{session_id}",
+    "/api/uploads/{session_id}/{upload_id}/content",
+    "/api/uploads/{session_id}/{upload_id}",
+)
+
+
+def assert_routes_wired(schema_paths: dict) -> None:
+    """Fail boot if the upload gate has no route.
+
+    A library that no route calls protects nothing. This runs from
+    ``create_app`` against the live schema, so deleting the routes — or moving
+    them to a router that is never included — stops the process instead of
+    shipping a control that exists only in the test suite.
+    """
+    missing = [path for path in REQUIRED_OPENAPI_PATHS if path not in schema_paths]
+    if missing:
+        raise RuntimeError(
+            "Upload validation is not wired into the running app (missing "
+            + ", ".join(missing)
+            + "). services/upload.py protects nothing unless these routes exist "
+            "and call store_upload."
+        )
+
+
 def describe_policy() -> dict:
     """Machine-readable upload policy (served at ``/api/meta``)."""
     return {

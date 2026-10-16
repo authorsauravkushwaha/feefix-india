@@ -229,16 +229,19 @@ def test_redis_retry_after_reflects_the_oldest_hit(fake_redis_server):
 # --------------------------------------------------------------------------- #
 # 4) configuration & topology awareness
 # --------------------------------------------------------------------------- #
-def test_boot_warns_loudly_when_scaled_without_a_shared_store(monkeypatch, caplog):
+def test_boot_refuses_a_scaled_in_process_limiter(monkeypatch):
+    """A warning that keeps serving is the bypass. Scaled memory counters must not boot."""
     monkeypatch.delenv("FEEFIX_REDIS_URL", raising=False)
     monkeypatch.delenv("REDIS_URL", raising=False)
     monkeypatch.setenv("WEB_CONCURRENCY", "4")
     ratelimit.configure(ratelimit.MemoryBackend(), force=True)
-    warning = ratelimit.warn_if_not_distributed()
-    assert warning and "FEEFIX_REDIS_URL" in warning
-    assert ratelimit.status()["distributed"] is False
-    assert ratelimit.status()["workers"] == 4
-    assert "FEEFIX_REDIS_URL" in ratelimit.status()["recommendation"]
+    info = ratelimit.status()
+    assert info["distributed"] is False
+    assert info["workers"] == 4
+    assert "FEEFIX_REDIS_URL" in (info["recommendation"] or "")
+    with pytest.raises(RuntimeError) as exc:
+        ratelimit.warn_if_not_distributed()
+    assert "FEEFIX_REDIS_URL" in str(exc.value) or "per-process" in str(exc.value)
 
 
 def test_single_process_deployment_is_not_warned(monkeypatch):
@@ -268,6 +271,79 @@ def test_backend_selection_auto_uses_redis_when_url_is_set(fake_redis_server, mo
         assert store.name == "redis"
         assert store.distributed is True
     finally:
+        ratelimit.configure(ratelimit.MemoryBackend(), force=True)
+
+
+def test_redis_retry_after_is_time_remaining_not_age(fake_redis_server):
+    """allow() used to return how old the oldest hit was, so Retry-After was inverted."""
+    backend = _redis_backend(_url(fake_redis_server))
+    window = 60
+    assert backend.allow("global", "8.8.8.8", 1, window) == (True, 0.0)
+    allowed, retry = backend.allow("global", "8.8.8.8", 1, window)
+    assert allowed is False
+    assert retry >= window - 5, f"retry_after should be ~{window}s remaining, got {retry}"
+
+
+def test_two_processes_share_one_sqlite_window(tmp_path):
+    """The multi-worker case, without Redis: two processes, one file, one quota."""
+    path = tmp_path / "shared.ratelimit.db"
+    script = (
+        "import sys\n"
+        f"sys.path.insert(0, {str(REPO)!r})\n"
+        "from backend.services.ratelimit import SqliteBackend\n"
+        f"store = SqliteBackend({str(path)!r})\n"
+        "ok = sum(store.allow('global', '1.2.3.4', 3, 60)[0] for _ in range(3))\n"
+        "print(ok)\n"
+    )
+    procs = [
+        subprocess.Popen(
+            [sys.executable, "-c", script],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for _ in range(2)
+    ]
+    outputs = []
+    for proc in procs:
+        out, err = proc.communicate(timeout=30)
+        assert proc.returncode == 0, err
+        outputs.append(int(out.strip()))
+    assert sum(outputs) == 3, f"shared file must enforce one quota, got {outputs}"
+
+
+def test_production_without_redis_uses_the_host_shared_store(monkeypatch, tmp_path):
+    monkeypatch.setenv("FEEFIX_ENV", "production")
+    monkeypatch.delenv("FEEFIX_REDIS_URL", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("FEEFIX_RATELIMIT_BACKEND", raising=False)
+    monkeypatch.setenv("FEEFIX_RATELIMIT_DB", str(tmp_path / "rl.db"))
+    monkeypatch.setenv("FEEFIX_INSTANCES", "1")
+    try:
+        store = ratelimit.configure(force=True)
+        assert store.name == "sqlite"
+        assert store.distributed is True
+        assert store.multi_instance is False
+        assert ratelimit.warn_if_not_distributed()  # honest: host-only, not silent
+    finally:
+        monkeypatch.delenv("FEEFIX_ENV", raising=False)
+        ratelimit.configure(ratelimit.MemoryBackend(), force=True)
+
+
+def test_multi_instance_without_redis_refuses_to_boot(monkeypatch, tmp_path):
+    monkeypatch.setenv("FEEFIX_ENV", "production")
+    monkeypatch.setenv("FEEFIX_INSTANCES", "2")
+    monkeypatch.delenv("FEEFIX_REDIS_URL", raising=False)
+    monkeypatch.setenv("FEEFIX_RATELIMIT_BACKEND", "sqlite")
+    monkeypatch.setenv("FEEFIX_RATELIMIT_DB", str(tmp_path / "rl.db"))
+    try:
+        ratelimit.configure(force=True)
+        with pytest.raises(RuntimeError) as exc:
+            ratelimit.warn_if_not_distributed()
+        assert "FEEFIX_REDIS_URL" in str(exc.value)
+    finally:
+        monkeypatch.delenv("FEEFIX_ENV", raising=False)
+        monkeypatch.delenv("FEEFIX_INSTANCES", raising=False)
         ratelimit.configure(ratelimit.MemoryBackend(), force=True)
 
 

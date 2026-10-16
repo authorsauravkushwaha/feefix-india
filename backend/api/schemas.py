@@ -20,6 +20,7 @@ from backend.services.limits import (
     MAX_MESSAGE_LEN,
     MAX_NAME_LEN,
     MAX_PASSWORD_LEN,
+    MAX_QUESTION_LEN,
     MAX_SCHEME_ID_LEN,
     MAX_SEARCH_LEN,
     MAX_SESSION_ID_LEN,
@@ -65,6 +66,22 @@ class TrackRequest(BaseModel):
     )
 
 
+class BulkTrackItem(BaseModel):
+    scheme_id: str = Field(min_length=1, max_length=MAX_SCHEME_ID_LEN)
+    status: str | None = Field(default=None, max_length=32)
+
+
+class BulkTrackRequest(BaseModel):
+    """A batch of tracker updates.
+
+    One-at-a-time ``PUT`` is the wrong shape for a student saving a dozen
+    schemes, and a global 1 MB cap was the wrong size for both that batch and
+    a chat turn. This body has its own policy (``bulk``).
+    """
+
+    updates: list[BulkTrackItem] = Field(min_length=1, max_length=200)
+
+
 class ChatRequest(BaseModel):
     message: SafeText = Field(min_length=1, max_length=MAX_MESSAGE_LEN)
     chat_id: str | None = Field(default=None, max_length=MAX_SESSION_ID_LEN)
@@ -88,7 +105,7 @@ class NotesRequest(BaseModel):
 
 
 class AskRequest(BaseModel):
-    question: SafeText = Field(min_length=2, max_length=1000)
+    question: SafeText = Field(min_length=2, max_length=MAX_QUESTION_LEN)
     session_id: str | None = Field(
         default=None,
         max_length=MAX_SESSION_ID_LEN,

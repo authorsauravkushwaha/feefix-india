@@ -102,7 +102,7 @@
             <input maxlength="1" inputmode="numeric" /><input maxlength="1" inputmode="numeric" />
           </div>
           <p class="ff-hint" data-msg></p>
-          <p class="ff-hint" data-clip-note>Pasted codes are cleared from the clipboard when the browser allows it — that is convenience, not protection against malware on this device.</p>
+          <p class="ff-hint" data-clip-note>FeeFix never copies your session token. Clearing a code after you paste it here is convenience, not protection against malware on this device.</p>
           <button class="ff-btn" type="submit" data-act="verify">Verify & enter →</button>
           <p class="ff-hint">Didn't get it?
             <button type="button" class="ff-resend" data-act="resend" disabled>Resend (<span data-cd>40</span>s)</button>
@@ -135,7 +135,7 @@
             <input maxlength="1" inputmode="numeric" /><input maxlength="1" inputmode="numeric" />
           </div>
           <p class="ff-hint" data-msg></p>
-          <p class="ff-hint" data-clip-note>Pasted codes are cleared from the clipboard when the browser allows it — that is convenience, not protection against malware on this device.</p>
+          <p class="ff-hint" data-clip-note>FeeFix never copies your session token. Clearing a code after you paste it here is convenience, not protection against malware on this device.</p>
           <button class="ff-btn" type="submit" data-act="verify">Verify & enter →</button>
           <p class="ff-hint">Didn't get it?
             <button type="button" class="ff-resend" data-act="resend" disabled>Resend (<span data-cd>40</span>s)</button>

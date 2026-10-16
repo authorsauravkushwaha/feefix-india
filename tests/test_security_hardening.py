@@ -298,11 +298,14 @@ def test_docs_are_enabled_by_default_and_can_be_opted_out(monkeypatch):
     schema = client_.get("/openapi.json").json()
     assert "/api/uploads/{session_id}" in schema["paths"]
 
-    # Opting out works for deployments that genuinely want a docs-free surface.
+    # Interactive docs can be hidden. The schema stays: hiding it broke generated
+    # clients and removed no route.
     monkeypatch.setenv("FEEFIX_DISABLE_DOCS", "1")
     assert docs_enabled() is False
     docs_client = TestClient(create_app())
-    assert docs_client.get("/openapi.json").status_code == 404
+    assert docs_client.get("/docs").status_code == 404
+    assert docs_client.get("/openapi.json").status_code == 200
+    assert "/api/uploads/{session_id}" in docs_client.get("/openapi.json").json()["paths"]
 
 
 def test_validation_error_has_no_stacktrace(client):
@@ -331,7 +334,8 @@ def test_upload_rejects_dangerous_and_spoofed_files():
     assert validate_upload("fake.pdf", b"<?php echo 1; ?>")[0] is False   # magic mismatch
     assert validate_upload("x.svg", b"<svg onload=alert(1)>")[0] is False
     assert validate_upload("empty.pdf", b"")[0] is False
-    assert validate_upload("big.pdf", b"%PDF-" + b"a" * 3_000_000)[0] is False
+    from backend.services.limits import MAX_UPLOAD_BYTES
+    assert validate_upload("big.pdf", b"%PDF-" + b"a" * MAX_UPLOAD_BYTES)[0] is False
 
 
 def test_upload_filename_cannot_escape_directory():

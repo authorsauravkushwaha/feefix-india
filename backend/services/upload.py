@@ -1,9 +1,10 @@
-"""Hardened file-upload validation — use this for *any* file FeeFix accepts.
+"""Hardened file-upload validation — the only acceptable check for file bytes.
 
-FeeFix ships no upload endpoint today, but students will eventually attach
-income certificates, marksheets and disability certificates. This module is the
-single, audited gate every future upload must pass through, so a dangerous file
-never reaches disk:
+``POST /api/uploads/{session_id}`` is the caller. ``services/uploads.py`` is the
+only writer, and ``create_app`` refuses to start if those routes disappear from
+the OpenAPI schema. A future endpoint that accepts ``UploadFile`` without going
+through :func:`validate_upload` fails ``tests/test_uploads.py`` (the scan covers
+the whole backend, not one file). This module is not a dormant checkbox:
 
 * **Extension allowlist** — only document/image types (``.pdf/.png/.jpg/.jpeg``);
   never ``.php/.html/.svg/.exe`` or anything scriptable.
@@ -61,6 +62,10 @@ def sanitize_filename(filename: str) -> str:
     name = os.path.basename((filename or "").replace("\\", "/")).strip()
     name = name.replace("\x00", "")
     name = _SAFE_NAME_RE.sub("_", name)
+    # Collapse ".." after the allowlist fold. "0.." is not a separator, but it
+    # is still a traversal token and the property test treats it as one.
+    while ".." in name:
+        name = name.replace("..", "_")
     name = name.lstrip(".")
     return name[:128] or "upload"
 

@@ -153,7 +153,21 @@ def test_password_hash_cost_is_length_independent():
 
 
 def test_dummy_verify_burns_a_verification_and_never_succeeds():
+    passwords.reset_for_tests()
     assert passwords.dummy_verify("anything-1234") is False
+    # Unknown-account timing must use the same algorithm as a real row.
+    # A PBKDF2 dummy beside an Argon2id hash is user enumeration.
+    if passwords.argon2_available() and passwords.active_algorithm() == "argon2id":
+        assert passwords._DUMMY_HASH.startswith("argon2id$")
+
+
+def test_production_refuses_an_explicit_pbkdf2_policy(monkeypatch):
+    monkeypatch.setenv("FEEFIX_ENV", "production")
+    monkeypatch.setenv("FEEFIX_PASSWORD_ALGO", "pbkdf2")
+    passwords.reset_for_tests()
+    with pytest.raises(RuntimeError) as exc:
+        passwords.hash_password("still-not-argon2")
+    assert "pbkdf2" in str(exc.value).lower() or "argon2" in str(exc.value).lower()
 
 
 def test_unknown_email_login_takes_a_kdf_path(client):

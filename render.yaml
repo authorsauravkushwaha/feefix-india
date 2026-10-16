@@ -1,4 +1,13 @@
 services:
+  # Shared counters. Without this, a second instance (or a second worker that
+  # does not share a disk) multiplies every rate limit by N. The app refuses
+  # to boot in that topology if this URL is missing.
+  - type: keyvalue
+    name: feefix-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []  # private network only — the web service reaches it internally
+
   - type: web
     name: feefix-india
     runtime: python
@@ -26,16 +35,18 @@ services:
         value: "1"
 
       # -- shared state: rate limiting across instances ----------------------- #
-      # Without this, each Render instance keeps its own counters and an
-      # attacker simply spreads requests across instances (limit × N).
-      # Wire a Key Value / Redis instance and paste its URL here:
-      #   - key: FEEFIX_REDIS_URL
-      #     fromService:
-      #       type: redis
-      #       name: feefix-redis
-      #       property: connectionString
-      # Auth and expensive endpoints fail *closed* if the store is unreachable
-      # (FEEFIX_RATELIMIT_FAIL_MODE default = "auth").
+      # Wired, not commented out. A missing URL in a multi-instance deploy is a
+      # boot failure (services/ratelimit.py), not a log line.
+      - key: FEEFIX_REDIS_URL
+        fromService:
+          type: keyvalue
+          name: feefix-redis
+          property: connectionString
+      - key: FEEFIX_RATELIMIT_BACKEND
+        value: redis
+      - key: FEEFIX_INSTANCES
+        value: "1"
+      # Auth and expensive endpoints fail *closed* if the store is unreachable.
       - key: FEEFIX_RATELIMIT_FAIL_MODE
         value: "auth"
       # Render terminates TLS in front of the service, so without this every

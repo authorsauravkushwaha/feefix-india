@@ -25,7 +25,7 @@ from pathlib import Path
 RUNTIME_DIR = Path(__file__).resolve().parents[2] / "runtime"
 DEFAULT_DB = RUNTIME_DIR / "feefix.db"
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
@@ -229,13 +229,18 @@ _MIGRATIONS = {
         "CREATE INDEX IF NOT EXISTS idx_uploads_session ON uploads(session_id)",
         "CREATE INDEX IF NOT EXISTS idx_uploads_user ON uploads(user_id)",
         # Long-form application notes. A legitimately large free-text field
-        # (20 KB default) is exactly the input a one-size-fits-all body cap used
-        # to reject — its own endpoint carries its own, larger body policy.
+        # is exactly the input a one-size-fits-all body cap used to reject —
+        # its own endpoint carries its own, larger body policy.
         """CREATE TABLE IF NOT EXISTS session_notes (
             session_id TEXT PRIMARY KEY,
             notes      TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )""",
+    ],
+    6: [
+        # v6 — a superseded token may be healed at most once. Without this
+        # counter, every retry of a stale tab minted a new live token.
+        "ALTER TABLE auth_sessions ADD COLUMN heal_count INTEGER NOT NULL DEFAULT 0",
     ],
 }
 

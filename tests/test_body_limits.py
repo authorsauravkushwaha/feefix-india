@@ -46,6 +46,16 @@ def test_limits_are_per_endpoint_not_one_size_fits_all():
     assert auth <= 16_000, "credentials are tiny; the KDF must never see a large body"
 
 
+def test_bulk_tracker_is_not_held_to_the_chat_or_single_status_cap():
+    from backend.services.limits import body_limit_bytes
+
+    bulk = body_limit_bytes("POST", "/api/tracker/sess/bulk")
+    single = body_limit_bytes("PUT", "/api/tracker/sess/scheme")
+    chat = body_limit_bytes("POST", "/api/chat")
+    assert bulk > chat > single
+    assert bulk >= 256_000
+
+
 def test_policy_table_is_exposed_and_explained():
     described = describe_limits()
     assert {entry["name"] for entry in described} >= {
@@ -214,6 +224,9 @@ def test_every_body_policy_regex_matches_something():
         "notes": "PUT /api/students/s/notes",
         "conversation": "POST /api/chat",
         "events": "POST /api/events",
+        "bulk": "POST /api/tracker/sess/bulk",
+        "tracker": "PUT /api/tracker/sess/scheme",
+        "dispatch": "POST /api/students/sess/reminders/dispatch",
         "auth": "POST /api/auth/login",
         "api-default": "POST /api/stats",
         "static-default": "POST /",

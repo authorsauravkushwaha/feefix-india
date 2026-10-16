@@ -39,14 +39,30 @@ def test_vocabulary_lives_in_data_not_in_source_escapes():
 
 def test_every_supported_language_has_the_full_multiplier_vocabulary():
     """Adding a language without its crore/lakh/thousand words fails the build."""
-    missing = numerals.assert_coverage({"en", "hi", "bn", "ta"})
+    missing = numerals.assert_coverage(
+        {"en", "hi", "bn", "ta", "gu", "kn", "te", "ml", "or", "pa", "mr", "as", "ur"}
+    )
     assert missing == [], f"numeral vocabulary incomplete for: {missing}"
+
+
+def test_digit_and_word_glyphs_are_in_the_script_they_claim():
+    """The Devanagari-AA-in-the-Bengali-table bug, as a check instead of a hope."""
+    errors = numerals.assert_script_integrity()
+    assert errors == [], errors
 
 
 def test_digit_sets_are_well_formed():
     for lang, digits in numerals.table()["digit_sets"].items():
         assert len(digits) == 10, f"{lang}: expected 10 glyphs, got {digits!r}"
         assert len(set(digits)) == 10, f"{lang}: duplicate glyphs in {digits!r}"
+
+
+def test_broader_locale_number_formats_and_scripts():
+    """Indian grouping, European grouping, and a non-Hindi lakh word."""
+    assert numerals.parse_amount("1.234,56") == 1234
+    assert numerals.parse_amount("2.000.000") == 2_000_000
+    assert numerals.parse_amount("૨ લાખ") == 200_000  # Gujarati digits + લાખ
+    assert numerals.parse_amount("೨ ಲಕ್ಷ") == 200_000
 
 
 def test_describe_table_is_serialisable():

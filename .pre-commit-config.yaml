@@ -30,6 +30,15 @@ repos:
         pass_filenames: false
         files: ^(backend|agents|ai|ml)/.*\.py$
 
+      - id: feefix-secret-scan-history
+        name: FeeFix secret scan (full git history)
+        description: A secret committed and then deleted still fails the push.
+        entry: python -m agents.secret_scan --history
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
       - id: feefix-tests
         name: full test suite
         entry: python -m pytest

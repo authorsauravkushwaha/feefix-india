@@ -72,7 +72,10 @@ def test_placeholder_secret_blocks_a_production_boot(clean_secret_env):
         sec.enforce_secret_hygiene()
     message = str(exc.value)
     assert "GITHUB_CLIENT_SECRET" in message
-    assert "FEEFIX_SECRETS_STRICT=0" in message, "the operator needs a documented way out"
+    assert "FEEFIX_SECRETS_STRICT=0" not in message, (
+        "production must not advertise a switch that lets CHANGE_ME keep serving"
+    )
+    assert "will not start" in message.lower() or "rotate" in message.lower()
 
 
 def test_placeholder_secret_only_warns_outside_production(clean_secret_env):
@@ -91,12 +94,14 @@ def test_explicit_strict_flag_applies_everywhere(clean_secret_env):
         sec.enforce_secret_hygiene()
 
 
-def test_env_var_can_downgrade_production_to_warnings(clean_secret_env):
+def test_production_cannot_be_downgraded_to_a_warning(clean_secret_env):
+    """The old hatch: FEEFIX_SECRETS_STRICT=0 let a production deploy on CHANGE_ME start."""
     clean_secret_env.setenv("FEEFIX_ENV", "production")
     clean_secret_env.setenv("FEEFIX_SECRETS_STRICT", "0")
     clean_secret_env.setenv("OTP_SMTP_PASS", "password")
-    assert sec.enforce_secret_hygiene() != []      # reported…
-    assert sec.strict_mode() is False              # …but not fatal
+    assert sec.strict_mode() is True
+    with pytest.raises(sec.SecretHygieneError):
+        sec.enforce_secret_hygiene()
 
 
 def test_app_refuses_to_start_with_a_placeholder_secret(clean_secret_env):
@@ -326,6 +331,33 @@ def test_real_password_in_a_dsn_is_still_a_finding():
     assert [f["type"] for f in findings] == ["dsn_with_password"]
 
 
+def test_bare_waiver_and_overbroad_ignore_do_not_silence_a_secret(tmp_path):
+    from agents.secret_scan import scan
+
+    sample = "8f3a" + "1c7e5b2d80469af1c2"
+    (tmp_path / "leaky.py").write_text(
+        f'API_KEY = "{sample}"  # secret-scan: allow\n',
+        encoding="utf-8",
+    )
+    assert scan(tmp_path), "a waiver without a reason must not hide a secret"
+    (tmp_path / ".secretscanignore").write_text("**\n", encoding="utf-8")
+    findings = scan(tmp_path)
+    assert any(f["type"] == "overbroad_ignore" for f in findings)
+    assert any(f["type"] == "assigned_secret" for f in findings)
+
+
+def test_hex_and_unicode_escaped_provider_tokens_are_findings():
+    from agents.secret_scan import _scan_text
+
+    token = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+    hexed = token.encode().hex()
+    escaped = "".join(f"\\u{ord(ch):04x}" for ch in token)
+    assert any(f["type"].endswith("github_token") for f in _scan_text("cfg.py", f'KEY = "{hexed}"'))
+    assert any(
+        "github_token" in f["type"] for f in _scan_text("cfg.py", f'KEY = "{escaped}"')
+    )
+
+
 def test_inline_waiver_works_and_is_per_line():
     """The documented escape hatch must exist, and must not silence neighbours."""
     from agents.secret_scan import _scan_text
@@ -364,5 +396,5 @@ def test_cli_flags_used_by_ci_and_pre_commit_are_advertised():
     """The usage text is the contract CI relies on."""
     from agents.secret_scan import _USAGE
 
-    for flag in ("--path", "--json", "--staged", "--help"):
+    for flag in ("--path", "--json", "--staged", "--history", "--help"):
         assert flag in _USAGE, f"{flag} is used but not documented"

@@ -87,20 +87,91 @@ def normalize_digits(text: str) -> str:
     return (text or "").translate(_digit_translation())
 
 
-def normalize(text: str) -> str:
-    """Canonicalise input: NFC, digits → ASCII, currency/strip noise removed.
+# Expected Unicode block for each digit set. A Devanagari glyph pasted into the
+# Bengali row (the original corruption) fails this check instead of parsing as
+# the wrong script's zero.
+_DIGIT_BLOCKS: dict[str, tuple[int, int]] = {
+    "hi": (0x0966, 0x096F),
+    "mr": (0x0966, 0x096F),
+    "ne": (0x0966, 0x096F),
+    "bn": (0x09E6, 0x09EF),
+    "as": (0x09E6, 0x09EF),
+    "ta": (0x0BE6, 0x0BEF),
+    "gu": (0x0AE6, 0x0AEF),
+    "kn": (0x0CE6, 0x0CEF),
+    "te": (0x0C66, 0x0C6F),
+    "ml": (0x0D66, 0x0D6F),
+    "or": (0x0B66, 0x0B6F),
+    "pa": (0x0A66, 0x0A6F),
+    "ur": (0x06F0, 0x06F9),
+    "ar": (0x0660, 0x0669),
+}
 
-    NFC matters because Indic text may arrive decomposed (``ा`` + nukta forms),
-    which would otherwise defeat plain substring matching — the bug class that
-    produced the corrupted escape sequence in the first place.
+# Multiplier words must actually be in that language's script. English
+# abbreviations live only under "en".
+_WORD_SCRIPT: dict[str, tuple[int, int]] = {
+    "hi": (0x0900, 0x097F),
+    "mr": (0x0900, 0x097F),
+    "bn": (0x0980, 0x09FF),
+    "as": (0x0980, 0x09FF),
+    "ta": (0x0B80, 0x0BFF),
+    "gu": (0x0A80, 0x0AFF),
+    "kn": (0x0C80, 0x0CFF),
+    "te": (0x0C00, 0x0C7F),
+    "ml": (0x0D00, 0x0D7F),
+    "or": (0x0B00, 0x0B7F),
+    "pa": (0x0A00, 0x0A7F),
+    "ur": (0x0600, 0x06FF),
+}
+
+_GROUPED_NUMBER = re.compile(
+    r"(?<!\d)(?:"
+    r"\d{1,3}(?:\.\d{3})+(?:,\d+)?"          # 1.234.567,89  (European)
+    r"|\d{1,3}(?:,\d{2,3})+(?:\.\d+)?"       # 2,00,000 / 1,234,567.89
+    r"|\d{1,3}(?:[ \u00a0\u202f\u2009]\d{2,3})+(?:[.,]\d+)?"
+    r")(?!\d)"
+)
+
+
+def _fold_grouped_number(token: str) -> str:
+    """Turn a grouped numeral into a plain ASCII number, keeping the decimal."""
+    if re.fullmatch(r"\d{1,3}(?:\.\d{3})+(?:,\d+)?", token):
+        return token.replace(".", "").replace(",", ".")
+    decimal = ""
+    body = token
+    tail = re.search(r"([.,])(\d+)$", token)
+    if tail and tail.group(1) == "." and not re.fullmatch(r"\d{1,3}(?:\.\d{3})+", token):
+        decimal = "." + tail.group(2)
+        body = token[: tail.start()]
+    elif tail and tail.group(1) == "," and re.fullmatch(r"\d{1,3}(?:\.\d{3})+(?:,\d+)?", token):
+        decimal = "." + tail.group(2)
+        body = token[: tail.start()]
+    body = re.sub(r"[ ,\u00a0\u202f\u2009']", "", body)
+    return body + decimal
+
+
+def _fold_grouped_numbers(text: str) -> str:
+    return _GROUPED_NUMBER.sub(lambda match: _fold_grouped_number(match.group(0)), text)
+
+
+def normalize(text: str) -> str:
+    """Canonicalise input: NFC, digits → ASCII, grouping folded, noise removed.
+
+    NFC matters because Indic text may arrive decomposed, which would otherwise
+    defeat plain substring matching — the bug class that produced the corrupted
+    escape sequence in the first place. Grouping is folded *before* commas are
+    stripped, so ``1.234,56`` (European) is not silently read as ``1.23456``.
     """
     text = unicodedata.normalize("NFC", text or "")
     text = normalize_digits(text.lower())
+    # Arabic thousands / decimal separators → the forms the folder understands.
+    text = text.replace("\u066c", ",").replace("\u066b", ".")
     for token in table()["currency_tokens"]:
         token = unicodedata.normalize("NFC", token.lower())
         if token in text:
             text = text.replace(token, " ")
-    for junk in (",", "\u00a0", "_", "'"):
+    text = _fold_grouped_numbers(text)
+    for junk in (",", "\u00a0", "\u202f", "\u2009", "_", "'"):
         text = text.replace(junk, "")
     return text.strip()
 
@@ -166,6 +237,45 @@ def supported_languages() -> set[str]:
     for entry in table()["multipliers"]:
         langs.update(entry["words"].keys())
     return langs
+
+
+def assert_script_integrity() -> list[str]:
+    """Return human-readable errors when a glyph is in the wrong Unicode block.
+
+    This is the check the hand-maintained ``\\uXXXX`` tables did not have: a
+    Bengali letter typed into a Hindi word, or a Devanagari digit in the Tamil
+    set, fails here instead of parsing as silence.
+    """
+    errors: list[str] = []
+    for lang, digits in table()["digit_sets"].items():
+        block = _DIGIT_BLOCKS.get(lang)
+        if block is None:
+            errors.append(f"digit_sets.{lang}: no expected Unicode block")
+            continue
+        lo, hi = block
+        for glyph in digits:
+            if not (lo <= ord(glyph) <= hi):
+                errors.append(
+                    f"digit_sets.{lang}: {glyph!r} (U+{ord(glyph):04X}) is outside "
+                    f"U+{lo:04X}–U+{hi:04X}"
+                )
+    for entry in table()["multipliers"]:
+        for lang, words in entry["words"].items():
+            if lang == "en":
+                continue
+            block = _WORD_SCRIPT.get(lang)
+            if block is None:
+                errors.append(f"multipliers.{entry['label']}.{lang}: no expected script")
+                continue
+            lo, hi = block
+            for word in words:
+                letters = [ch for ch in word if ch.isalpha()]
+                if not letters or not any(lo <= ord(ch) <= hi for ch in letters):
+                    errors.append(
+                        f"multipliers.{entry['label']}.{lang}: {word!r} is not in "
+                        f"U+{lo:04X}–U+{hi:04X}"
+                    )
+    return errors
 
 
 def assert_coverage(required: set[str]) -> list[str]:

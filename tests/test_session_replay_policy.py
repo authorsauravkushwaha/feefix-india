@@ -142,7 +142,14 @@ def test_strict_policy_revokes_the_family_when_configured(client, monkeypatch):
     assert _me(client, live).status_code == 401, "strict mode revokes the family"
 
 
-def test_balanced_policy_escalates_after_repeated_foreign_replays(client, monkeypatch):
+def test_balanced_policy_never_revokes_the_family_for_a_replay(client, monkeypatch):
+    """A mobile client retrying an old token must not log the web session out.
+
+    Strike-based family revocation was the same footgun with a higher threshold:
+    a different User-Agent (the phone) replaying a rotated token a handful of
+    times killed every device. balanced records the strikes and keeps the live
+    session. strict is the explicit opt-in that still revokes.
+    """
     monkeypatch.setattr(auth_svc, "REPLAY_POLICY", "balanced")
     monkeypatch.setattr(auth_svc, "REPLAY_STRIKES", 2)
     token = _register(client)
@@ -150,12 +157,13 @@ def test_balanced_policy_escalates_after_repeated_foreign_replays(client, monkey
     live = _rotate(client, token)
     _set_replaced_at(token, 3600)
 
-    # The owner's fingerprint is the default TestClient one; a thief presents a
-    # different client fingerprint each time.
-    assert _me(client, token, user_agent="thief-1").status_code == 401
-    assert _me(client, live).status_code == 200, "one strike must not log the user out"
-    assert _me(client, token, user_agent="thief-2").status_code == 401
-    assert _me(client, live).status_code == 401, "escalation after the strike threshold"
+    for agent in ("MobileApp/1.0", "MobileApp/1.1", "MobileApp/1.2", "thief-browser"):
+        assert _me(client, token, user_agent=agent).status_code == 401
+        assert _me(client, live).status_code == 200, agent
+    conn = db.get_connection()
+    actions = [r["action"] for r in conn.execute("SELECT action FROM audit_log")]
+    assert "auth.token_reuse_revoked" not in actions
+    assert "auth.token_replay_rejected" in actions
 
 
 def test_lenient_policy_only_audits(client, monkeypatch):
@@ -197,6 +205,43 @@ def test_fingerprint_ignores_absent_headers_and_hashes_the_rest():
     b = auth_svc.client_fingerprint(_Req({"user-agent": "UA-2", "accept-language": "en"}))
     assert a and b and a != b
     assert len(a) == 16 and "UA-1" not in a
+
+
+def test_a_stale_token_is_healed_once_not_on_every_retry(client):
+    token = _register(client)
+    _age_creation(client, token)
+    live = _rotate(client, token)
+    _set_replaced_at(token, 30)
+
+    first = _me(client, token)
+    assert first.status_code == 200
+    healed = first.headers.get("X-Session-Token")
+    assert healed and healed != token
+    second = _me(client, token)
+    assert second.status_code == 200
+    assert second.headers.get("X-Session-Token") is None, "a retry must not mint another live token"
+    assert _me(client, live).status_code == 200
+    assert _me(client, healed).status_code == 200
+
+
+def test_unproven_fingerprint_does_not_receive_a_minted_token():
+    """Omitting User-Agent used to count as 'same device' and mint a fresh token."""
+    from backend.services import auth as auth_svc
+
+    class _Req:
+        def __init__(self, headers):
+            self.headers = headers
+
+    assert auth_svc.client_fingerprint(_Req({})) is None
+    # Direct: a row with a fingerprint and a caller with none is not a match.
+    row = {"fingerprint": "abc123", "keys": lambda: ["fingerprint"]}
+
+    class _Row(dict):
+        def keys(self):
+            return ["fingerprint"]
+
+    assert auth_svc._fingerprint_matches(_Row({"fingerprint": "abc"}), None) is False
+    assert auth_svc._fingerprint_matches(_Row({"fingerprint": None}), "abc") is False
 
 
 def test_policy_summary_is_serialisable():
