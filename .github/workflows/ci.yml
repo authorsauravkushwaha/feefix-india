@@ -78,14 +78,19 @@ jobs:
             pytest-output.txt
           if-no-files-found: ignore
 
+      # --annotate puts each finding on the check run itself. A red secret scan
+      # whose findings live only in the log blob is a gate people learn to
+      # ignore (and, for one red run, one nobody could even read: the blob was
+      # not reachable from the API). Findings are now readable from
+      # `gh pr checks`, the UI and the check-runs endpoint.
       - name: Secret scan (in-house, no committed credentials)
-        run: python -m agents.secret_scan --json secret-scan-report.json
+        run: python -m agents.secret_scan --json secret-scan-report.json --annotate
 
       # Working-tree scan misses a secret that was committed and then deleted.
       # This is the same detector over git history, so disabling the gitleaks
       # job (or this one) is not by itself a bypass.
       - name: Secret scan (in-house, full git history)
-        run: python -m agents.secret_scan --history --json secret-scan-history.json
+        run: python -m agents.secret_scan --history --json secret-scan-history.json --annotate
 
       - name: Upload secret-scan report
         if: always()

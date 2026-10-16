@@ -65,6 +65,47 @@ services:
       - key: FEEFIX_UPLOAD_DIR
         value: /var/data/uploads
 
+      # -- OTP delivery: codes must reach a real inbox / phone ---------------- #
+      # FEEFIX_ENV=production above already means: with no gateway configured,
+      # code sign-in answers 503 and the UI hides it. Nothing is ever faked.
+      # Fill in ONE email row and/or ONE SMS row in the dashboard (`sync: false`
+      # keeps the values out of git), then check /api/health → otp_delivery.
+      # Walkthrough: docs/deploy/DEPLOYMENT.md
+      - key: FEEFIX_OTP_PEPPER
+        generateValue: true          # pins the code pepper across instances/restarts
+      # -- email (Gmail app password, Brevo, Resend, or your own SMTP relay) -- #
+      - key: OTP_SMTP_HOST
+        sync: false                  # e.g. smtp.gmail.com
+      - key: OTP_SMTP_PORT
+        value: "587"                 # 465 = implicit TLS (OTP_SMTP_SECURE=1)
+      - key: OTP_SMTP_USER
+        sync: false
+      - key: OTP_SMTP_PASS
+        sync: false                  # Gmail: a 16-character app password
+      - key: OTP_SMTP_FROM
+        sync: false
+      - key: OTP_BREVO_API_KEY
+        sync: false                  # HTTPS alternative when SMTP ports are blocked
+      - key: OTP_RESEND_API_KEY
+        sync: false
+      # -- SMS (all paid; SMS cannot be free anywhere) ------------------------ #
+      - key: OTP_TWILIO_SID
+        sync: false
+      - key: OTP_TWILIO_TOKEN
+        sync: false
+      - key: OTP_TWILIO_FROM
+        sync: false
+      - key: OTP_MSG91_AUTH_KEY
+        sync: false                  # India (DLT template required)
+      - key: OTP_MSG91_TEMPLATE_ID
+        sync: false
+      - key: OTP_FAST2SMS_KEY
+        sync: false                  # India, cheapest (+91 only)
+      - key: OTP_SMS_WEBHOOK_URL
+        sync: false                  # any other gateway: POST {to, code, text}
+      - key: OTP_SMS_WEBHOOK_TOKEN
+        sync: false
+
       # -- API surface -------------------------------------------------------- #
       # Interactive docs are ON by default; this documents how to opt out.
       # Turning them off is *cosmetic* — it hides documentation, never an

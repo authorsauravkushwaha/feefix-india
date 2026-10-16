@@ -54,7 +54,8 @@ def _opaque(seed: int = 0) -> str:
 
 @pytest.fixture()
 def clean_secret_env(monkeypatch):
-    for name in list(sec._EXPECTED_SECRETS) + list(sec._OTP_CHANNEL_HINTS):
+    for name in (list(sec._EXPECTED_SECRETS) + list(sec._OTP_CHANNEL_HINTS)
+                 + list(sec._DEV_ECHO_FLAGS)):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.delenv("FEEFIX_ENV", raising=False)
     monkeypatch.delenv("FEEFIX_SECRETS_STRICT", raising=False)
@@ -277,6 +278,180 @@ def test_scanner_can_emit_json_for_ci(planted, tmp_path, capsys):
     assert payload["findings"], "the CI artifact must contain the findings"
 
 
+def test_findings_are_printed_as_check_annotations(planted, capsys):
+    """A red scan must be readable from the API, not only from a log blob.
+
+    One CI run failed this gate with its findings visible nowhere but a log the
+    API could not fetch; `--annotate` is the fix (pytest failures are surfaced
+    the same way).
+    """
+    from agents import secret_scan
+
+    assert secret_scan.main(["--path", str(planted), "--annotate"]) == 1
+    lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("::error")]
+    assert lines, "no annotations were emitted"
+    assert all(ln.startswith("::error title=secret-scan ") for ln in lines)
+    assert any("file=svc/config.py" in ln and "line=1" in ln for ln in lines), lines
+    # Annotations are single-line workflow commands: a raw newline or `%` in a
+    # snippet would silently truncate what the reviewer sees.
+    assert not any("\n" in ln or "%" in ln for ln in lines), lines
+
+
+def test_a_crashing_scan_is_still_readable_from_the_annotations(monkeypatch, capsys):
+    """The other way this gate can go red: the scanner itself dies."""
+    from agents import secret_scan
+
+    def boom(argv):  # noqa: ANN001
+        raise RuntimeError("scanner exploded")
+
+    monkeypatch.setattr(secret_scan, "main", boom)
+    with pytest.raises(RuntimeError):
+        secret_scan._run([])
+    assert "::error title=secret-scan crashed::RuntimeError: scanner exploded" in (
+        capsys.readouterr().out
+    )
+
+
+def _git(repo: Path, *args: str) -> None:
+    import subprocess
+
+    subprocess.run(
+        ["git", "-c", "user.email=test@example.com", "-c", "user.name=test", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _repo_with_history(tmp_path: Path) -> Path:
+    """One commit: something wafer-thin to waive, something real to report."""
+    repo = tmp_path / "repo"
+    (repo / "vendor").mkdir(parents=True)
+    (repo / "runtime").mkdir()
+    (repo / "app").mkdir()
+    # Provider-shaped literal in a waived directory, and one under runtime/
+    # (the directory the working-tree walker never enters).
+    (repo / "vendor" / "sample.py").write_text(f'GH = "{_ghp_token()}"\n', encoding="utf-8")
+    (repo / "runtime" / "outbox.jsonl").write_text(
+        f'{{"note": "{_ghp_token()}"}}\n', encoding="utf-8"
+    )
+    (repo / "app" / "config.py").write_text(
+        "\n".join(["# config", "", f'API_KEY = "{_opaque(9)}"', ""]), encoding="utf-8"
+    )
+    (repo / ".secretscanignore").write_text("vendor/**\n", encoding="utf-8")
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "fixture")
+    return repo
+
+
+def test_history_scan_honours_what_the_working_tree_scan_skips(tmp_path):
+    """Both modes must agree on *what* is scanned, or the gates argue.
+
+    ``--history`` ignored the ignore file, the runtime directory and the cache
+    directories that the working-tree walker applies, so a documented waiver
+    worked in one mode and not the other. It also reported line 1 for every hit,
+    which is not where the credential is.
+    """
+    from agents.secret_scan import scan, scan_history
+
+    repo = _repo_with_history(tmp_path)
+
+    local = scan(repo)
+    assert [f["file"] for f in local] == ["app/config.py"], local
+    assert local[0]["type"] == "assigned_secret"
+
+    history = scan_history(repo)
+    assert [f["file"] for f in history] == ["history:app/config.py"], (
+        f"waived and non-source paths are not history findings either: {history}"
+    )
+    assert history[0]["line"] == local[0]["line"] == 3, (
+        "a finding must point at the line the credential is on"
+    )
+
+
+def test_history_scan_still_catches_a_secret_hidden_by_a_later_commit(tmp_path):
+    """The exemptions must not have neutered the thing history mode exists for."""
+    from agents.secret_scan import scan, scan_history
+
+    repo = _repo_with_history(tmp_path)
+    (repo / "app" / "config.py").unlink()
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "remove the key")
+
+    assert scan(repo) == [], "the working tree is genuinely clean now"
+    assert [f for f in scan_history(repo) if "config.py" in f["file"]], (
+        "a secret deleted after being committed is still in history"
+    )
+
+
+def test_history_scan_covers_this_history_not_every_branch_on_the_remote(tmp_path):
+    """Scope: the checked-out history, not every branch anyone happens to have.
+
+    ``git log --all`` made one open branch's deliberately fake
+    ``tests/fixtures/secret_scan_samples.py`` fail unrelated branches' builds,
+    and the path-scoped waiver for such a file lives in the branch that owns it.
+    A secret on an unmerged branch is still scanned where it matters: that
+    branch's own CI, and the pull request's merge commit.
+    """
+    from agents.secret_scan import scan, scan_history
+
+    repo = tmp_path / "repo"
+    (repo / "app").mkdir(parents=True)
+    (repo / "app" / "main.py").write_text("print('hello')\n", encoding="utf-8")
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "clean tip")
+
+    _git(repo, "checkout", "-q", "-b", "someone-elses-branch")
+    (repo / "app" / "leaky.py").write_text(f'GH = "{_ghp_token()}"\n', encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "work in progress")
+    _git(repo, "checkout", "-q", "main")
+
+    assert scan(repo) == []
+    assert scan_history(repo) == [], "another branch's tip is not this history"
+
+    _git(repo, "checkout", "-q", "someone-elses-branch")
+    assert [f for f in scan_history(repo) if "leaky.py" in f["file"]], (
+        "on that branch, the same commit is a finding"
+    )
+
+
+def test_the_scan_does_not_report_its_own_artifacts(tmp_path):
+    """The findings a scan writes are not a *second* set of findings.
+
+    CI failed a second time on the report of the first failure: the archived
+    history report and the junit XML quoted the sample credentials they were
+    about, and the tree scan re-reported every one of them.
+    """
+    import json
+
+    from agents.secret_scan import scan
+
+    (tmp_path / "secret-scan-history.json").write_text(
+        json.dumps(
+            {
+                "scope": "git history",
+                "findings": [
+                    {
+                        "file": "history:tests/fixtures/samples.py",
+                        "line": 1,
+                        "type": "github_token",
+                        "snippet": f'GH = "{_ghp_token()}"',
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "pytest-report.xml").write_text(
+        f'<failure>client_secret = "{_opaque(4)}"</failure>\n', encoding="utf-8"
+    )
+    assert scan(tmp_path) == []
+
+
 def test_ignore_file_is_honoured(tmp_path):
     from agents.secret_scan import scan
 
@@ -396,5 +571,60 @@ def test_cli_flags_used_by_ci_and_pre_commit_are_advertised():
     """The usage text is the contract CI relies on."""
     from agents.secret_scan import _USAGE
 
-    for flag in ("--path", "--json", "--staged", "--history", "--help"):
+    for flag in ("--path", "--json", "--annotate", "--staged", "--history", "--help"):
         assert flag in _USAGE, f"{flag} is used but not documented"
+
+
+# --------------------------------------------------------------------------- #
+# OTP delivery configuration is part of secret hygiene
+# --------------------------------------------------------------------------- #
+def test_production_refuses_a_reply_carrying_a_live_signin_code(clean_secret_env):
+    """A deploy that asks for codes in the response is not a configuration.
+
+    It hands anyone who can call the endpoint a code that signs them in as
+    somebody else, so it is a boot failure rather than a log line.
+    """
+    clean_secret_env.setenv("FEEFIX_ENV", "production")
+    clean_secret_env.setenv("FEEFIX_OTP_DEV_ECHO_PHONE", "1")
+    with pytest.raises(sec.SecretHygieneError):
+        sec.enforce_secret_hygiene()
+
+
+def test_demo_echo_outside_production_is_a_warning_not_a_wall(clean_secret_env):
+    clean_secret_env.setenv("FEEFIX_OTP_DEV_ECHO", "1")
+    findings = sec.enforce_secret_hygiene()          # local development is not obstructed
+    assert any("FEEFIX_OTP_DEV_ECHO" in f for f in findings)
+    assert all(f["level"] == "warning" for f in sec.assess_secrets())
+
+
+def test_production_without_a_gateway_warns_but_still_boots(clean_secret_env):
+    """Password and GitHub sign-in still work — this must not block the boot."""
+    clean_secret_env.setenv("FEEFIX_ENV", "production")
+    findings = sec.assess_secrets()
+    assert any(f["name"] == "OTP delivery" and f["level"] == "warning" for f in findings)
+    assert sec.enforce_secret_hygiene()               # returns instead of raising
+    clean_secret_env.setenv("OTP_SMTP_HOST", "smtp.example.com")
+    assert not any(f["name"] == "OTP delivery" for f in sec.assess_secrets())
+
+
+@pytest.mark.parametrize("flag", [
+    "OTP_MSG91_TEMPLATE_ID", "OTP_FAST2SMS_SENDER_ID", "OTP_VONAGE_API_KEY",
+    "OTP_SMS_WEBHOOK_URL", "OTP_EMAIL_WEBHOOK_URL", "OTP_BREVO_API_KEY",
+])
+def test_every_delivery_channel_requires_the_pinned_pepper(clean_secret_env, flag):
+    """Without FEEFIX_OTP_PEPPER each worker mints its own, and codes stop
+    verifying when a request lands on a different instance."""
+    clean_secret_env.setenv(flag, "configured")     # a channel is switched on…
+    findings = sec.assess_secrets()                 # …while the pepper stays unset
+    assert any("FEEFIX_OTP_PEPPER" in f["message"] for f in findings), flag
+
+
+def test_new_gateway_secrets_are_shape_checked(clean_secret_env):
+    clean_secret_env.setenv("OTP_BREVO_API_KEY", "changeme")
+    clean_secret_env.setenv("OTP_MSG91_AUTH_KEY", "s" * 24)
+    clean_secret_env.setenv("OTP_MSG91_TEMPLATE_ID", "feefix_login")
+    messages = [f["message"] for f in sec.assess_secrets()]
+    assert any("OTP_BREVO_API_KEY" in m for m in messages)
+    clean_secret_env.delenv("OTP_MSG91_AUTH_KEY")   # companion set, secret absent
+    messages = [f["message"] for f in sec.assess_secrets()]
+    assert any("OTP_MSG91_AUTH_KEY is unset" in m for m in messages)
