@@ -63,3 +63,30 @@ class TestReminderScheduler:
 def test_statuses_order_documented():
     assert STATUSES.index("saved") < STATUSES.index("applied")
     assert STATUSES[-2:] == ["approved", "rejected"]
+
+
+def test_url_check_reports_unreachable_sources_instead_of_raising():
+    """The scheduled liveness job must survive a hostile network.
+
+    Verified against the real world during development: with every external host
+    blocked, `--check-urls` reported each source as `url_unreachable` and exited
+    0 — no traceback, no crash. A CI job that dies loudly when a portal is down
+    is a job somebody disables, so the contract is "report, do not raise".
+    """
+    from agents.verify_dataset import check_url
+
+    # RFC 2606 reserves .invalid: resolution fails immediately, offline or not.
+    ok, detail = check_url("https://feefix-does-not-exist.invalid/apply", timeout=5)
+    assert ok is False
+    assert isinstance(detail, str) and detail, "an unreachable URL must say why"
+    assert "Traceback" not in detail
+
+
+def test_url_check_rejects_non_http_schemes():
+    """A data:/file:/gopher: URL must never be fetched (scheme pin)."""
+    from agents.verify_dataset import check_url
+
+    for url in ("file:///etc/passwd", "gopher://example.com", "ftp://example.com/x"):
+        ok, detail = check_url(url, timeout=5)
+        assert ok is False, f"{url} was fetched"
+        assert "scheme" in detail.lower() or "unsupported" in detail.lower(), detail

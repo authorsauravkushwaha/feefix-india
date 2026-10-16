@@ -82,13 +82,14 @@ WAL + foreign keys + race-safe versioned migrations · non-root container.
 | SAST | `ci.yml` job `sast-and-dependencies` | `bandit -ll` — medium+ findings fail the build |
 | Dependency CVEs | same job | `pip-audit -r requirements.txt` |
 | Dataset liveness | scheduled `dataset-liveness` job | Dead source URLs and schema drift in `data/` |
+| Dead source URLs | scheduled `dataset-liveness` job | Probes every official portal URL and reports each failure as a finding. Verified against a fully blocked network: it reports, exits 0 and never raises — a liveness job that dies when a portal is down is a job somebody disables. |
 | Flakiness | `flake-watch` CI job | Runs the concurrency, property and migration suites **three times per build**. Intermittent failures in those files — real subprocesses, real ports, real clocks, randomised input — otherwise show up as a green/red lottery, and a gate people do not trust is a gate people skip. |
 | The gates themselves | `tests/test_ci_config.py` | Silent rot: a gate that references a renamed module, a dropped test file, a demoted job (`continue-on-error`), a shallow clone that cannot see history, or an action still on a retired runtime. The workflow is parsed as data, its commands are run for real where they are cheap, and the mutations above are asserted to fail the build. |
 
 ## Verifying it yourself
 
 ```bash
-python -m pytest                                   # full suite (470 tests)
+python -m pytest                                   # full suite (472 tests)
 python -m pytest tests/test_fuzz_security.py        # property-based/adversarial
 python -m pytest tests/test_ci_config.py            # the gates themselves
 bandit -q -r backend agents ai ml -x tests -ll
