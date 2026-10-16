@@ -7,6 +7,38 @@ services:
     branch: main
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    disk:
+      name: feefix-runtime
+      mountPath: /opt/render/project/src/runtime
+      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
+      # Render terminates TLS in front of the app, so the real client IP is the
+      # rightmost X-Forwarded-For entry (one trusted proxy). Without this the
+      # limiter would bucket every request under the proxy's address.
+      - key: FEEFIX_TRUSTED_PROXY_COUNT
+        value: "1"
+      # Fail startup on placeholder/half-configured secrets instead of warning.
+      - key: FEEFIX_STRICT_SECRETS
+        value: "1"
+      # Accounts, tracker rows, rate-limit counters and uploaded documents.
+      - key: FEEFIX_DB
+        value: /opt/render/project/src/runtime/feefix.db
+      - key: FEEFIX_UPLOAD_DIR
+        value: /opt/render/project/src/runtime/uploads
+      # No model download on a free instance: the built-in embedder is offline
+      # and instant, and the neural load is bounded anyway (FEEFIX_AI_LOAD_TIMEOUT).
+      - key: FEEFIX_AI_BACKEND
+        value: ngram
+      # Set this only when running more than one instance — the sqlite limiter
+      # already shares counters across worker processes on a single host.
+      # - key: FEEFIX_REDIS_URL
+      #   sync: false
+      # Optional integrations (leave unset to keep those sign-in doors closed).
+      # - key: GITHUB_CLIENT_ID
+      #   sync: false
+      # - key: GITHUB_CLIENT_SECRET
+      #   sync: false
+      # - key: FEEFIX_OTP_PEPPER
+      #   sync: false

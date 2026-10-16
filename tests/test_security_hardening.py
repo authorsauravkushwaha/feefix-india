@@ -43,7 +43,16 @@ def _own_session(client, sid):
 
 
 # ===================================================================== 1 REPLAY
-def test_aged_token_rotates_and_stale_replay_revokes_family(client):
+def test_aged_token_rotates_and_a_stale_replay_is_neutralised(client):
+    """Rotation + replay detection, without logging the user out everywhere.
+
+    The old version of this test asserted that one replayed token revoked the
+    whole session family. That *was* the availability bug (a stale tab or an
+    offline mobile client logged the user out of everything), so the assertion
+    was inverted deliberately: the replayed token dies, the live session
+    survives, and the event is recorded and surfaced. Family revocation is now
+    an opt-in policy / an escalation — covered in tests/test_session_reuse_policy.py.
+    """
     token = _register(client).json()["token"]
     from backend.services import auth as auth_svc, db
     conn = db.get_connection()
@@ -61,16 +70,20 @@ def test_aged_token_rotates_and_stale_replay_revokes_family(client):
                       headers={"Authorization": f"Bearer {new_token}"}).status_code == 200
 
     # A thief replaying the superseded token after the grace window is detected:
-    # the whole session family is revoked, so neither the stale nor the fresh
-    # token works any more.
+    # the replayed token is tombstoned and reported…
     conn.execute("UPDATE auth_sessions SET replaced_at=? WHERE token_hash=?",
                  ((datetime.now(timezone.utc) - timedelta(seconds=300))
                   .isoformat(timespec="seconds"), auth_svc._token_hash(token)))
     conn.commit()
+    replayed = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert replayed.status_code == 401
+    assert replayed.headers.get("X-Session-Warning") == "stale-token-replayed"
+    # …the attacker gains nothing by replaying it again…
     assert client.get("/api/auth/me",
                       headers={"Authorization": f"Bearer {token}"}).status_code == 401
+    # …and the legitimate session keeps working (no self-inflicted logout).
     assert client.get("/api/auth/me",
-                      headers={"Authorization": f"Bearer {new_token}"}).status_code == 401
+                      headers={"Authorization": f"Bearer {new_token}"}).status_code == 200
 
 
 def test_oauth_state_is_single_use(client, monkeypatch):
@@ -237,6 +250,7 @@ def test_validation_error_has_no_stacktrace(client):
 
 # ========================================================== 9 FILE UPLOAD
 def test_upload_rejects_dangerous_and_spoofed_files():
+    from backend.services.limits import MAX_UPLOAD_BYTES
     from backend.services.upload import validate_upload
     assert validate_upload("cv.pdf", b"%PDF-1.7 ok")[0] is True
     assert validate_upload("shell.php", b"<?php ?>")[0] is False
@@ -244,7 +258,8 @@ def test_upload_rejects_dangerous_and_spoofed_files():
     assert validate_upload("fake.pdf", b"<?php echo 1; ?>")[0] is False   # magic mismatch
     assert validate_upload("x.svg", b"<svg onload=alert(1)>")[0] is False
     assert validate_upload("empty.pdf", b"")[0] is False
-    assert validate_upload("big.pdf", b"%PDF-" + b"a" * 3_000_000)[0] is False
+    # Oversize is judged against the configured cap, not a hard-coded 2 MB.
+    assert validate_upload("big.pdf", b"%PDF-" + b"a" * (MAX_UPLOAD_BYTES + 1))[0] is False
 
 
 def test_upload_filename_cannot_escape_directory():

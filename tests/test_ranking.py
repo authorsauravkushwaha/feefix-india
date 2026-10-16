@@ -62,12 +62,20 @@ def test_rolling_schemes_have_no_days_left(dataset):
 
 
 def test_expired_pushed_to_bottom(dataset):
-    future = TODAY + timedelta(days=10)
+    # Derive the "everything still open" reference date from the dataset instead
+    # of assuming TODAY+10 precedes every deadline: that assumption silently
+    # rots as the calendar advances past a scheme deadline (it already did).
+    dated = sorted(
+        s.deadline.date
+        for s in dataset.schemes
+        if s.deadline.date and not s.deadline.rolling
+    )
+    assert dated, "dataset must contain at least one dated deadline"
+    future = min(dated)  # on the earliest deadline day, nothing has expired yet
     ranked = _rank(dataset, today=future)
-    # every deadline still open ⇒ nothing expired ⇒ expired flag False
     assert all(not r.expired for r in ranked)
 
-    far_future = TODAY + timedelta(days=400)
+    far_future = max(dated) + timedelta(days=1)  # the day after the last deadline
     ranked_late = _rank(dataset, today=far_future)
     expired = [r for r in ranked_late if r.expired]
     open_ones = [r for r in ranked_late if not r.expired]

@@ -8,7 +8,7 @@ immediately in any phone browser (add-to-home-screen = instant "app").
 ## Prerequisite
 
 ```bash
-./scripts/dev.sh --test   # 151 tests green locally
+./scripts/dev.sh --test   # full suite green locally
 ```
 
 ---
@@ -21,9 +21,31 @@ immediately in any phone browser (add-to-home-screen = instant "app").
    * **Build command**: `pip install -r requirements.txt`
    * **Start command**: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
 4. Add a **Render Disk** (1 GB free) mounted at `/opt/render/project/src/runtime`
-   so `runtime/feefix.db` (accounts, tracker, outcome events) survives restarts.
+   so `runtime/feefix.db` (accounts, tracker, outcome events, rate-limit
+   counters, uploaded documents) survives restarts.
+5. Environment variables worth setting in production:
+
+   | Variable | Why |
+   |---|---|
+   | `FEEFIX_TRUSTED_PROXY_COUNT=1` | Render terminates TLS in front of the app, so the real client IP is the *rightmost* `X-Forwarded-For` entry — required for correct rate limiting (and never spoofable). |
+   | `FEEFIX_STRICT_SECRETS=1` | Fail startup on placeholder/half-configured secrets instead of warning. Production markers (`RENDER`, `FLY_APP_NAME`, `K_SERVICE`) already enable strict mode automatically. |
+   | `FEEFIX_REDIS_URL` | Only for **more than one instance**: the sqlite limiter shares counters across worker processes on one host, but a multi-instance deployment needs Redis to keep one limit. |
+   | `FEEFIX_DB` | Point the SQLite file at the mounted disk. |
+   | `FEEFIX_UPLOAD_DIR` | Where uploaded documents live (default `runtime/uploads`, on the disk). |
+   | `FEEFIX_AI_BACKEND=ngram` | Skip the neural-model download on a tiny/free instance (faster boots, no egress). |
+
+   The app logs its effective configuration at boot
+   (`hashing=…, rate-limit store=…, secrets=strict|advisory`) and reports it on
+   `GET /api/health` — verify rather than assume.
 5. Free tier sleeps when idle — first visit takes ~30s, then it's instant.
 6. Set the service URL as the repo's **Website** link on GitHub.
+
+> **Workers and the rate limiter.** The limiter's default store is the app's
+> SQLite file, so `--workers 4` on one host still enforces one shared limit
+> (verified by tests that spawn real processes). Horizontal scaling to multiple
+> instances needs `FEEFIX_REDIS_URL`; without it, `services/ratelimit.py` logs a
+> loud topology warning at boot (and refuses to start in strict mode) rather
+> than silently multiplying every limit by the number of replicas.
 
 ## Option B — Fly.io (free allowance)
 

@@ -1,12 +1,22 @@
 # FeeFix India — runtime + dev dependencies
 fastapi>=0.115
 uvicorn[standard]>=0.30
+python-multipart>=0.0.9   # multipart parsing for the document-upload route
+
+# Memory-hard password hashing (Argon2id). This is a *deliberate* dependency:
+# PBKDF2 in the stdlib was CPU-cheap to parallelise on GPUs, and "no external
+# packages" is not worth a weaker password hash. If the wheel cannot be
+# installed, the service degrades to hashlib.scrypt (also memory-hard) and says
+# so at boot — it never silently falls back to PBKDF2.
+argon2-cffi>=23.1
 
 # Free, local AI embeddings (open weights, no API keys). Optional — when the
-# model weights can't be downloaded, the built-in n-gram embedder takes over.
+# model weights can't be downloaded (or the download stalls), the built-in
+# n-gram embedder takes over. The load is bounded by FEEFIX_AI_LOAD_TIMEOUT.
 fastembed>=0.3
 
 # tests only
 pytest>=8.0
 pytest-asyncio>=0.23
-httpx>=0.27  # TestClient transport
+httpx>=0.27        # TestClient transport
+hypothesis>=6.100  # property-based tests (parsers, upload validation, tokens)

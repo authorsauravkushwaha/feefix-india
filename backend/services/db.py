@@ -22,7 +22,7 @@ from pathlib import Path
 RUNTIME_DIR = Path(__file__).resolve().parents[2] / "runtime"
 DEFAULT_DB = RUNTIME_DIR / "feefix.db"
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
@@ -62,9 +62,41 @@ def reset_for_tests(path: Path) -> None:
 
 
 # -- migrations --------------------------------------------------------------
-# Additive only. Bump SCHEMA_VERSION and append a migration.
+def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """Column names of ``table``.
 
-_MIGRATIONS = {
+    The table name is a module constant, never user input — no value from a
+    request can reach this f-string (the no-string-built-SQL guard in the test
+    suite still applies to every data statement).
+    """
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def _add_column(conn: sqlite3.Connection, table: str, column: str, decl: str) -> None:
+    """Idempotent ``ALTER TABLE … ADD COLUMN``.
+
+    Why this exists: an ALTER added to an already-applied migration never runs
+    again — a database that had already executed that version silently keeps the
+    old shape, and the app then fails at runtime on a missing column. Exactly
+    that happened here (the dev database sat at v4 without ``replayed_at``, and
+    every request 500'd) while a test suite that always created fresh databases
+    stayed green. Migrations that add a column now check first, and a dedicated
+    test migrates a *legacy* database to prove it.
+    """
+    if column not in _columns(conn, table):
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
+def _ensure_replayed_at(conn: sqlite3.Connection) -> None:
+    """v4/v5: token-replay tombstone column (safe to attempt in either)."""
+    _add_column(conn, "auth_sessions", "replayed_at", "TEXT")
+
+
+# Additive only. Bump SCHEMA_VERSION and append a migration — never edit a
+# migration that may already have run somewhere (that is how a database ends up
+# with a schema its own version number swears it has; see _add_column).
+
+_MIGRATIONS: dict[int, list] = {
     1: [
         """CREATE TABLE IF NOT EXISTS users (
             id            TEXT PRIMARY KEY,
@@ -156,6 +188,63 @@ _MIGRATIONS = {
         # Backfill legacy rows (created before v3) so family revocation works.
         "UPDATE auth_sessions SET session_key = token_hash WHERE session_key IS NULL",
     ],
+    4: [
+        # v4 — three additive tables.
+        #
+        # (a) rate_limit_hits: the sliding-window counters used by the *shared*
+        #     limiter. Living in this database is what makes the limit hold
+        #     across worker processes (the in-memory dict could not).
+        """CREATE TABLE IF NOT EXISTS rate_limit_hits (
+            key TEXT NOT NULL,
+            ts  REAL NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_rate_limit_key_ts ON rate_limit_hits(key, ts)",
+        "CREATE INDEX IF NOT EXISTS idx_rate_limit_ts ON rate_limit_hits(ts)",
+        # (b) documents: metadata for uploaded documents. The bytes live on disk
+        #     outside the web root under a random name; this row is the only map
+        #     from a user-visible document id to that file.
+        """CREATE TABLE IF NOT EXISTS documents (
+            id          TEXT PRIMARY KEY,
+            session_id  TEXT NOT NULL,
+            user_id     TEXT REFERENCES users(id) ON DELETE CASCADE,
+            doc_type    TEXT,
+            filename    TEXT NOT NULL,
+            stored_name TEXT NOT NULL,
+            media_type  TEXT NOT NULL,
+            size_bytes  INTEGER NOT NULL,
+            sha256      TEXT NOT NULL,
+            created_at  TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_documents_session ON documents(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id)",
+        # (c) auth_security_events: token-replay/quarantine signals. Kept so the
+        #     *user* can see suspicious session activity and act (sign out
+        #     everywhere) — detection that silently logs users out everywhere is
+        #     a self-inflicted outage, not a control.
+        # Tombstone for a replayed token (idempotent: see _ensure_replayed_at).
+        _ensure_replayed_at,
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at)",
+        """CREATE TABLE IF NOT EXISTS auth_security_events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     TEXT,
+            session_key TEXT,
+            kind        TEXT NOT NULL,
+            detail      TEXT,
+            client      TEXT,
+            occurred_at TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_secev_user ON auth_security_events(user_id, occurred_at)",
+        "CREATE INDEX IF NOT EXISTS idx_secev_key ON auth_security_events(session_key, kind, occurred_at)",
+    ],
+    5: [
+        # v5 — repair pass. A database that had already applied an *earlier
+        # revision of v4* was left without the replay tombstone column (schema
+        # drift on an additive migration). These statements are idempotent, so
+        # running them is safe on every path: fresh install, v3 upgrade, and the
+        # patched-in-place case.
+        _ensure_replayed_at,
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at)",
+    ],
 }
 
 
@@ -165,7 +254,10 @@ def migrate(conn: sqlite3.Connection | None = None) -> None:
         current = conn.execute("PRAGMA user_version").fetchone()[0]
         for version in range(current + 1, SCHEMA_VERSION + 1):
             for statement in _MIGRATIONS[version]:
-                conn.execute(statement)
+                if callable(statement):     # data/DDL that must be conditional
+                    statement(conn)
+                else:
+                    conn.execute(statement)
             # `version` is a loop-controlled int; PRAGMA takes no bind param, so
             # coerce it defensively. This is a schema version, never user data.
             conn.execute("PRAGMA user_version=" + str(int(version)))

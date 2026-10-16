@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from backend.api.schemas import (
     AskRequest,
@@ -55,10 +55,11 @@ def _bearer_token(request: Request) -> str | None:
 
 def _current_user(request: Request) -> dict | None:
     # Populated by the session middleware (one resolve + one rotation per
-    # request). Fall back to a direct resolve for call sites outside it.
-    cached = getattr(request.state, "user", None)
-    if cached is not None:
-        return cached
+    # request). The flag matters: when the middleware legitimately resolved
+    # *nothing* (anonymous caller), re-resolving here would run the replay
+    # detection a second time and log duplicate security events.
+    if getattr(request.state, "session_resolved", False):
+        return getattr(request.state, "user", None)
     from backend.services import auth as auth_svc
 
     return auth_svc.resolve_token(_bearer_token(request))
@@ -166,14 +167,55 @@ def export_data(request: Request) -> dict:
     return {"user": user, **exporter(user["id"])}
 
 
-@router.delete("/auth/account")
+@router.delete("/auth/account", tags=["auth"])
 def delete_account(request: Request) -> dict:
-    """Right to erasure: account, tokens and all owned data — gone."""
+    """Right to erasure: account, tokens, owned data and uploaded files — gone."""
     from backend.services import auth as auth_svc
 
     user = _require_user(request)
     auth_svc.delete_account(user["id"])
     return {"deleted": True}
+
+
+@router.get("/auth/security-events", tags=["auth"])
+def auth_security_events(request: Request, limit: int = 50) -> dict:
+    """Session-security signals for *this* account (replays, quarantines).
+
+    This is the user-facing half of replay detection: an aggressive "log out
+    everywhere" on the first stale token is a self-inflicted outage, so the
+    service quarantines instead — and shows the user what it saw, so they can
+    make the call themselves.
+    """
+    from backend.services import auth as auth_svc
+
+    user = _require_user(request)
+    events = auth_svc.security_events(user["id"], limit=limit)
+    return {
+        "count": len(events),
+        "events": events,
+        "interpretation": (
+            "A single 'token_replay' is usually a stale tab or an app holding a "
+            "rotated token; the stale token is revoked and the session survives. "
+            "Repeated replays escalate to revoking every token for that sign-in."
+        ),
+    }
+
+
+@router.post("/auth/logout-all", tags=["auth"])
+def logout_all(request: Request) -> dict:
+    """Deliberate 'sign out everywhere' — the availability-safe counterpart to
+    automatic family revocation."""
+    from backend.services import auth as auth_svc
+
+    from backend.services import ratelimit
+
+    user = _require_user(request)
+    auth_svc.revoke_all_user_tokens(user["id"])
+    auth_svc.record_security_event(
+        user["id"], None, "user_revoked_all_sessions", "user-requested sign out everywhere",
+        ratelimit.client_ip(request),
+    )
+    return {"revoked": True, "scope": "all-sessions"}
 
 
 # -- OTP sign-in (email & international phone) ---------------------------------
@@ -304,14 +346,41 @@ _HANDOFF_HTML = """<!DOCTYPE html><html><head><meta charset="utf-8" />
 
 
 # -- meta -----------------------------------------------------------------------
-@router.get("/health")
+@router.get("/health", tags=["meta"])
 def health(request: Request) -> dict:
+    """Liveness plus the *effective* security configuration.
+
+    Reported here instead of being guessed at: which password scheme is live,
+    which rate-limit store is counting (and whether it is shared), how the
+    secret policy is set, the per-endpoint body caps and how many documents are
+    stored. No secrets, hashes or filenames ever appear.
+    """
+    from backend.services import auth as auth_svc
+    from backend.services import documents as documents_svc
+    from backend.services import ratelimit
+    from backend.services.limits import limit_report
+    from backend.services.secrets import secret_status
+
     qa = getattr(request.app.state, "qa", None)
     return {
         "status": "ok",
         "service": "feefix-india",
         "schemes_loaded": len(_dataset(request).schemes),
         "ai_backend": qa.backend if qa else "offline",
+        "password_hashing": {
+            "scheme": auth_svc.hash_backend(),
+            "parameters": auth_svc.hash_backend_note(),
+            "kdf_concurrency": auth_svc.KDF_CONCURRENCY,
+            "legacy_pbkdf2_rows": "verified and upgraded to the current scheme on next sign-in",
+        },
+        "rate_limit": ratelimit.describe(),
+        "secrets": secret_status(),
+        "limits": limit_report(),
+        "documents": documents_svc.storage_stats(),
+        "interactive_docs": {
+            "enabled": getattr(request.app.state, "docs_enabled", True),
+            "note": "hiding docs removes no endpoint and no attack surface — it is a cosmetic switch",
+        },
     }
 
 
@@ -398,6 +467,122 @@ def get_profile(session_id: str, request: Request) -> dict:
     _authorize_session(request, session_id)
     profile = _tracker(request).load_profile(session_id)
     return {"session_id": session_id, "profile": profile}
+
+
+# -- documents (uploads) ---------------------------------------------------------------
+# The hardened gate in ``services/upload.py`` is only a real control because
+# *these* routes call it: every byte a student attaches goes through the
+# extension allowlist, magic-byte sniffing and the size cap, then to disk
+# outside the web root under a random name. Nothing else in the app writes a
+# file from user input.
+def _document_public(row: dict) -> dict:
+    """Metadata only (never the stored name / filesystem layout)."""
+    return {
+        "id": row["id"],
+        "session_id": row["session_id"],
+        "doc_type": row.get("doc_type"),
+        "filename": row["filename"],
+        "media_type": row["media_type"],
+        "size_bytes": row["size_bytes"],
+        "sha256": row["sha256"],
+        "created_at": row["created_at"],
+        "download_url": f"/api/students/{row['session_id']}/documents/{row['id']}",
+    }
+
+
+def _enforce_upload_limit(request: Request) -> None:
+    """Uploads get the tight 'expensive' bucket too — they cost disk, not CPU."""
+    from backend.services import ratelimit
+
+    client = ratelimit.client_ip(request)
+    if not ratelimit.check_expensive(client, "upload"):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many uploads — try again shortly.",
+            headers={"Retry-After": str(ratelimit.retry_after(client, "exp:upload"))},
+        )
+
+
+@router.post("/students/{session_id}/documents", status_code=201, tags=["students"])
+async def upload_document(
+    session_id: str,
+    request: Request,
+    file: UploadFile = File(..., description="PDF/PNG/JPEG document"),
+    doc_type: str = Form(default=""),
+) -> dict:
+    """Upload one document (income certificate, marksheet, …).
+
+    Rejections are explicit: dangerous extensions, a content type that does not
+    match the bytes, empty files and oversized files all answer 422 with the
+    reason — the client is told what to fix instead of being silently dropped.
+    """
+    from backend.services import documents as documents_svc
+    from backend.services.limits import MAX_DOC_TYPE_LEN, MAX_UPLOAD_BYTES
+    from backend.services.upload import UploadError
+
+    _authorize_session(request, session_id)
+    _enforce_upload_limit(request)
+    # Read at most one byte past the cap: a lying client cannot make us buffer
+    # an unbounded body even if the framing layer let it through.
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    user = _current_user(request)
+    try:
+        row = documents_svc.store_document(
+            session_id=session_id,
+            user_id=user["id"] if user else None,
+            filename=file.filename or "",
+            content=content,
+            doc_type=(doc_type or "")[:MAX_DOC_TYPE_LEN],
+        )
+    except UploadError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"uploaded": True, "document": _document_public(row)}
+
+
+@router.get("/students/{session_id}/documents", tags=["students"])
+def list_documents(session_id: str, request: Request) -> dict:
+    from backend.services import documents as documents_svc
+
+    _authorize_session(request, session_id)
+    rows = documents_svc.list_documents(session_id)
+    return {"session_id": session_id, "count": len(rows),
+            "documents": [_document_public(r) for r in rows]}
+
+
+@router.get("/students/{session_id}/documents/{doc_id}", tags=["students"])
+def download_document(session_id: str, doc_id: str, request: Request) -> FileResponse:
+    """Serve a document to its owner — always as an attachment, never inline.
+
+    ``Content-Disposition: attachment`` + ``nosniff`` means a stored file can
+    never be interpreted as HTML/JS in the app's origin even if a polyglot ever
+    slipped past validation.
+    """
+    from backend.services import documents as documents_svc
+
+    _authorize_session(request, session_id)
+    row = documents_svc.get_document(session_id, doc_id)
+    path = documents_svc.resolve_path(row["stored_name"]) if row else None
+    if row is None or path is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return FileResponse(
+        path,
+        media_type=row["media_type"],
+        headers={
+            "Content-Disposition": f'attachment; filename="{row["filename"]}"',
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.delete("/students/{session_id}/documents/{doc_id}", tags=["students"])
+def delete_document(session_id: str, doc_id: str, request: Request) -> dict:
+    from backend.services import documents as documents_svc
+
+    _authorize_session(request, session_id)
+    if not documents_svc.delete_document(session_id, doc_id):
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"deleted": True, "id": doc_id}
 
 
 # -- tracker --------------------------------------------------------------------------

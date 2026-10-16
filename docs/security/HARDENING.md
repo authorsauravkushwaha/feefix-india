@@ -1,37 +1,67 @@
 # FeeFix Threat Hardening Map
 
-Every attack class below is answered by **concrete, tested code** in this
-repository — not just policy. The regression suite in
-[`tests/test_security_hardening.py`](../tests/test_security_hardening.py)
-proves each control. Run it with `python -m pytest`.
+Every attack class below is answered by **concrete, tested code** — not policy,
+and not a checkbox. Each row names the file, the control, and the test that keeps
+it honest.
 
-| # | Attack | Where it's answered | Control |
-|---|--------|---------------------|---------|
-| 1 | **Replay attack** | `services/auth.py`, `backend/main.py`, `web/frontend/app.js` | Opaque bearer tokens are **rotated** once they've lived `ROTATE_AFTER_S` (24 h); the fresh token returns in `X-Session-Token`. A token that was already rotated and is then **replayed after the grace window revokes the whole session family** (reuse detection). OAuth `state` and OTP codes are single-use. |
-| 2 | **Clipboard attack** | `web/frontend/secure-clipboard.js`, `web/frontend/auth-gate.js` | `FeeFixClipboard.secureCopy()` **refuses to copy the auth token** (or anything token-shaped) and auto-clears the clipboard ~20 s after any copy. The OTP paste-to-fill path wipes the clipboard immediately so a copied code can't linger for malware. The token never lives in the clipboard, a URL, or a log. |
-| 3 | **SQL / NoSQL injection** | `services/db.py`, `services/sqlite_store.py`, `services/otp.py` | **Every** statement is parameterized; no string-built SQL exists (a test scans the source to keep it that way). SQLite has no NoSQL/`$where` surface. Injection payloads are treated as inert data. |
-| 4 | **Secret key leaks** | `.gitignore`, `agents/secret_scan.py`, CI | The OTP pepper (`runtime/.otp_pepper`) and `.env*`/`*.pem`/`*.key` are **git-ignored**. A **secret-scanning agent** gates CI — it flags provider-token shapes and secret-name assignments while ignoring URLs, test fixtures and placeholders. |
-| 5 | **Long-password DoS** | `services/auth.py`, `api/schemas.py`, `services/limits.py` | Passwords are **length-capped** (`MAX_PASSWORD_LEN`) at the schema *and* service layer, and **pre-hashed with SHA-256 before PBKDF2** so KDF work is constant regardless of length — a 100 MB "password" can't burn CPU. |
-| 6 | **ReDoS** | `services/limits.py`, `services/chat.py`, `api/schemas.py` | All user text is **length-capped before any regex runs**; income parsers use **bounded digit quantifiers** (`\d{1,12}`) so a long digit-run can't trigger super-linear backtracking; a timing test asserts pathological inputs finish fast. |
-| 7 | **Server-side template injection** | `api/routes.py`, `web/frontend/app.js` | The API returns **JSON only** — there is no server-side template engine to inject into. The one HTML the server emits (the OAuth handoff) splices payload through `_json_html_safe()`, which neutralises `</script>`, attribute and entity breakouts. The SPA renders everything through `esc()` / `safeUrl()`. |
-| 8 | **Error handling & info leakage** | `backend/main.py` | The catch-all handler **logs the traceback server-side** and returns an opaque `{"detail":"Internal server error.","request_id":…}` — never a class name, message or stack. Interactive API docs (`/docs`, `/openapi.json`) are **off unless `FEEFIX_ENABLE_DOCS` is set**. |
-| 9 | **File upload security** | `services/upload.py` | A single hardened gate for any future upload: **extension allowlist**, **magic-byte content sniffing** (a renamed `shell.php`→`.pdf` is rejected), size cap, path-traversal-safe filenames, random storage names, never executable. |
-| 10 | **Secret management** | `services/secrets.py` | Secrets are read **only from the environment**; `weak_secret_findings()` warns at boot if a configured secret looks like a placeholder. No secret is ever hard-coded or defaulted to a real value. |
-| 11 | **Input validation** | `services/limits.py`, `api/schemas.py`, `models/student.py`, `backend/main.py` | Centralized length caps on every field; enum-constrained profiles; **1 MB request-body limit** enforced before parsing; `domicile`/`minority_community` bounded. Oversized/invalid input → `413`/`422`, never processed. |
-| 12 | **Rate limiting** | `services/ratelimit.py`, `backend/main.py` | Sliding-window limits with **per-endpoint tiers** (tight limits on CPU-heavy AI endpoints), a **memory-bounded** hit table (its own DoS vector), proxy-aware client IP (`X-Forwarded-For` only behind a trusted proxy), and a `Retry-After` header on `429`. |
-| 13 | **authentication ≠ authorization** | `api/routes.py` | Authentication (`_require_user`) proves *who you are*; authorization (`_authorize_session`) proves *you own this session's data*. Ownership is now enforced on **every** endpoint that touches a session — profile, tracker, match, ML rank, reminders, dispatch, events and personalised Q&A. Anonymous sessions stay open by design. |
+> **What this document is not:** proof that FeeFix is secure. It is a map of the
+> controls that exist and how they are verified. There has been **no third-party
+> penetration test and no external security review** — the suite, the fuzzer and
+> the audit tooling were all written by the same person who wrote the code, so
+> they share its blind spots. Treat the tables below as "what was defended and
+> how it is checked", never as "what is proven safe".
+
+Run the evidence yourself:
+
+```bash
+python -m pytest                                     # suite incl. property tests
+python -m pytest tests/test_rate_limit_shared.py     # limiter across processes
+python -m scripts.fuzz_api --requests 2000 --seed 1  # randomised API probing
+python -m agents.secret_scan --history --check-ci    # secrets + CI wiring
+node --test "web/tests/*.test.mjs"                   # clipboard behaviour
+pip-audit -r requirements.txt                        # dependency advisories
+```
+
+| # | Attack | Where it's answered | Control | Test |
+|---|--------|---------------------|---------|------|
+| 1 | **Replay attack** | `services/auth.py`, `backend/main.py` | Bearer tokens rotate after 24 h (`X-Session-Token`). A replayed superseded token is **tombstoned immediately** and reported (`X-Session-Warning`), while the live token keeps working — sustained replay (≥3 in the window) or an opt-in `FEEFIX_SESSION_REUSE_POLICY=revoke_family` escalates to revoking the family. Events are visible at `GET /api/auth/security-events`; the user's own hammer is `POST /api/auth/logout-all`. OAuth `state` and OTP codes are single-use. | `test_session_reuse_policy.py` |
+| 2 | **Clipboard** | `web/frontend/secure-clipboard.js` | **The helper is UX hygiene, not a security control** — clipboard-stealing malware reads a value the instant it is written. What it *does* enforce: the session token (or any token-shaped value) is **never copied**, and the courtesy wipe only fires after reading the clipboard back and confirming it still holds our value, so the user's own clipboard content is never destroyed. Failures are reported, not swallowed. | `web/tests/clipboard.test.mjs`, `test_security_hardening.py` |
+| 3 | **SQL / NoSQL injection** | `services/db.py`, `services/sqlite_store.py`, `services/otp.py` | Every statement is parameterized; a test scans the source so no string-built SQL can land. SQLite has no NoSQL surface. Injection payloads are inert data. | `test_security_hardening.py` |
+| 4 | **Secret key leaks** | `agents/secret_scan.py`, `.gitignore`, CI | Scanner covers provider token shapes, **entropy** (including 40+ hex characters), **split/re-joined literals**, and every text file (not an extension allowlist). `--history` scans `git log -p`, `--check-ci` asserts the CI step is unconditional, and false positives are handled with `.secretscanignore` / `# pragma: allowlist secret` instead of disabling the job. | `test_wiring_and_claims.py` |
+| 5 | **Long-password DoS** | `services/auth.py`, `services/limits.py` | Passwords are length-capped in the schema *and* the service, and **pre-hashed with SHA-256** so KDF cost is independent of input size. Memory-hard hashing is itself bounded: at most `FEEFIX_KDF_CONCURRENCY` (default 4) concurrent KDFs, so 48 MiB-per-hash cannot be turned into RAM exhaustion. | `test_password_hashing.py` |
+| 6 | **ReDoS** | `services/limits.py`, `services/numerals.py` | All user text is length-capped before any regex runs; digit runs use bounded quantifiers; the income lexicon is compiled from **escaped data**, not hand-written alternations. Timing tests keep pathological inputs fast. | `test_security_hardening.py`, `test_numerals_i18n.py` |
+| 7 | **Server-side template injection** | `api/routes.py`, `web/frontend/app.js` | The API returns JSON only — there is no server-side template engine. The single HTML page (OAuth handoff) splices its payload through `_json_html_safe()`, which neutralises `</script>`, entity and line-terminator breakouts, and is property-tested with arbitrary Unicode. | `test_fuzzing.py` |
+| 8 | **Error handling & info leakage** | `backend/main.py` | The catch-all handler logs the traceback server-side and returns an opaque `{"detail": "Internal server error.", "request_id": …}`. The fuzzer asserts no `Traceback`, path or internal class name ever reaches a client. Interactive docs are **on by default** — hiding them never was a control; see the note below. | `test_fuzzing.py` |
+| 9 | **File upload security** | `services/upload.py`, `services/documents.py`, `api/routes.py` | A real, wired-in pipeline: extension allowlist, magic-byte sniffing, size cap, sanitised filenames, random storage names **outside the web root**, `attachment` + `nosniff` on download, ownership checks, and file deletion on account erasure. Earlier this module was hardened but called by nothing; that is now covered by tests and by a static wiring check. | `test_uploads_api.py`, `test_wiring_and_claims.py` |
+| 10 | **Secret management** | `services/secrets.py` | Secrets are read from the environment only. The boot check **enforces**: in strict mode (`FEEFIX_STRICT_SECRETS=1`, or production markers such as `RENDER`/`FLY_APP_NAME`/`K_SERVICE`) a placeholder or half-configured credential **aborts startup**. In development it warns loudly. | `test_boot_policy.py` |
+| 11 | **Input validation** | `services/limits.py`, `services/body_limit.py`, `api/schemas.py` | Central caps, **per endpoint** (chat 64 KB, Q&A 32 KB, auth 8 KB, JSON API 256 KB, uploads their own budget) — every knob env-tunable. Bodies are counted **while they stream**, so a chunked request with no `Content-Length` cannot bypass the gate, and the 413 reports the limit and scope so a legitimate large client can adapt. | `test_body_limits.py` |
+| 12 | **Rate limiting** | `services/ratelimit.py`, `backend/main.py` | Sliding-window limits with a **shared store by default** (SQLite, atomic via `BEGIN IMMEDIATE`; Redis when `FEEFIX_REDIS_URL` is set) so limits hold across worker processes and instances. The process-local store is opt-in, warns loudly when workers are configured, and is regression-tested for the multiplication it causes. Bounded counter table, proxy-aware client IP anchored to the *right* of `X-Forwarded-For`, `Retry-After` on 429, and store outages that are counted in `/api/health` (fail-closed if `FEEFIX_RATELIMIT_FAIL_MODE=closed`). | `test_rate_limit_shared.py` |
+| 13 | **authentication ≠ authorization** | `api/routes.py` | `_require_user` proves identity; `_authorize_session` proves ownership — enforced on every session-scoped endpoint including documents, ML rank and events. Anonymous sessions stay open by design. | `test_uploads_api.py`, `test_security_hardening.py` |
+
+## Why interactive docs are ON
+
+`/docs`, `/redoc` and `/openapi.json` are enabled by default. Turning them off
+removed no endpoint and no attack surface — every route answered anyway — while
+breaking generated clients, QA and tooling. The API is protected by auth,
+ownership checks, validation, body caps and rate limits, not by hiding its shape.
+`FEEFIX_DISABLE_DOCS=1` still works if you want it; treat that as cosmetic.
 
 ## Defence in depth already present
 
-PBKDF2-HMAC-SHA256 (600k rounds, per-user salt) · SHA-256-hashed revocable
-session tokens · uniform login errors (no user-enumeration) · strict CSP ·
-HSTS · `no-store` on `/api/*` · CORS closed by default · append-only audit log ·
-SQLite WAL + foreign keys. See [`SECURITY.md`](SECURITY.md).
+Argon2id (t=3, m=48 MiB, p=1; legacy PBKDF2 rows re-hash on next sign-in) ·
+SHA-256-hashed revocable session tokens · uniform login errors (no
+user-enumeration) · strict CSP · HSTS · `no-store` on `/api/*` · CORS closed by
+default · append-only audit log · SQLite WAL + foreign keys + versioned
+migrations. See [`SECURITY.md`](SECURITY.md).
 
-## Verifying it yourself
+## What is *not* covered (honest gaps)
 
-```bash
-python -m pytest tests/test_security_hardening.py   # one suite per attack class
-python -m agents.secret_scan                        # no committed secrets
-python -m agents.verify_dataset                     # dataset + (--check-urls) liveness
-```
+* No external penetration test, no third-party review, no bug-bounty history.
+* The fuzzer is a TestClient harness: it does not exercise real HTTP framing,
+  TLS termination, proxy behaviour or browser-side logic.
+* The SQLite-backed limiter shares state through *one database file* — correct
+  for one host (any number of workers), not for a multi-region deployment.
+  That needs Redis, and `topology_warnings()` says so at boot.
+* Denial-of-service resistance is argued from bounded work per request, not
+  measured under a real flood.
+* The dataset's factual accuracy is a separate concern from its security.

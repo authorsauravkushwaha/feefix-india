@@ -1,0 +1,99 @@
+{
+  "_comment": [
+    "Number/scale lexicon for income parsing — DATA, not code.",
+    "Written in real Unicode (no backslash-u escape sequences): the previous",
+    "parser hard-coded them per language inside regex alternations, which is how a",
+    "Devanagari letter silently ended up in the Bengali entry.",
+    "Adding a language = adding one block here. `validate_lexicon()` checks that",
+    "every entry's characters belong to that language's declared scripts, and the",
+    "test suite re-runs that check, so a wrong-script glyph fails CI instead of",
+    "silently mis-parsing a student's income.",
+    "Scales are 10^n: crore = 10,000,000 (Indian) — previously unsupported."
+  ],
+  "version": 2,
+  "scales": {
+    "crore": 10000000,
+    "lakh": 100000,
+    "thousand": 1000
+  },
+  "languages": {
+    "en": {
+      "name": "English",
+      "scripts": ["Latin"],
+      "words": {
+        "crore": ["crore", "crores", "cr"],
+        "lakh": ["lakh", "lakhs", "lac", "lacs", "lakh(s)", "l"],
+        "thousand": ["thousand", "thousands", "k"]
+      }
+    },
+    "hi": {
+      "name": "Hindi",
+      "scripts": ["Devanagari"],
+      "words": {
+        "crore": ["करोड़", "करोड", "करोड़ों"],
+        "lakh": ["लाख", "लाखों"],
+        "thousand": ["हजार", "हज़ार", "हजारों"]
+      }
+    },
+    "bn": {
+      "name": "Bengali",
+      "scripts": ["Bengali"],
+      "words": {
+        "crore": ["কোটি", "কোটির"],
+        "lakh": ["লাখ", "লক্ষ", "লক্ষে"],
+        "thousand": ["হাজার", "হাজারে"]
+      }
+    },
+    "ta": {
+      "name": "Tamil",
+      "scripts": ["Tamil"],
+      "words": {
+        "crore": ["கோடி"],
+        "lakh": ["லட்சம்", "இலட்சம்", "லட்சம"],
+        "thousand": ["ஆயிரம்", "ஆயிர"]
+      }
+    },
+    "mr": {
+      "name": "Marathi",
+      "scripts": ["Devanagari"],
+      "words": {
+        "crore": ["कोटी"],
+        "lakh": ["लाख"],
+        "thousand": ["हजार", "हजारो"]
+      }
+    },
+    "kn": {
+      "name": "Kannada",
+      "scripts": ["Kannada"],
+      "words": {
+        "crore": ["ಕೋಟಿ"],
+        "lakh": ["ಲಕ್ಷ"],
+        "thousand": ["ಸಾವಿರ"]
+      }
+    },
+    "te": {
+      "name": "Telugu",
+      "scripts": ["Telugu"],
+      "words": {
+        "crore": ["కోటి"],
+        "lakh": ["లక్ష", "లక్షల"],
+        "thousand": ["వెయ్యి", "వేయి"]
+      }
+    }
+  },
+  "digit_sets": {
+    "Devanagari": "०१२३४५६७८९",
+    "Bengali": "০১২৩৪৫৬৭৮৯",
+    "Tamil": "௦௧௨௩௪௫௬௭௮௯",
+    "Gujarati": "૦૧૨૩૪૫૬૭૮૯",
+    "Gurmukhi": "੦੧੨੩੪੫੬੭੮੯",
+    "Kannada": "೦೧೨೩೪೫೬೭೮೯",
+    "Malayalam": "൦൧൨൩൪൫൬൭൮൯",
+    "Odia": "୦୧୨୩୪୫୬୭୮୯",
+    "Telugu": "౦౧౨౩౪౫౬౭౮౯",
+    "ArabicIndic": "٠١٢٣٤٥٦٧٨٩",
+    "ExtendedArabicIndic": "۰۱۲۳۴۵۶۷۸۹",
+    "Thai": "๐๑๒๓๔๕๖๗๘๙"
+  },
+  "currency_markers": ["₹", "rs.", "rs", "inr", "rupees", "रुपये", "रु", "টাকা", "টাকার", "ரூ", "ரூபாய்"]
+}

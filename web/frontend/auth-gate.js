@@ -218,9 +218,13 @@
           const digits = (e.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, 6);
           digits.split("").forEach((d, j) => { if (boxes[j]) boxes[j].value = d; });
           boxes[Math.min(digits.length, 5)].focus();
-          // Clipboard-attack hardening: a pasted one-time code must not linger
-          // in the clipboard for malware or a later stray paste to harvest.
-          window.FeeFixClipboard && window.FeeFixClipboard.clearClipboard();
+          // Courtesy wipe only: the pasted code must not linger for a later
+          // stray paste. clearClipboard() verifies the clipboard still holds
+          // that exact value before touching it, so a user who copied something
+          // else in the meantime keeps their clipboard intact. This is UX
+          // hygiene, not protection against clipboard-stealing malware.
+          window.FeeFixClipboard &&
+            window.FeeFixClipboard.clearClipboard({ expect: e.clipboardData.getData("text") });
         });
       });
     });

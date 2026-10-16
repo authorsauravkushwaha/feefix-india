@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history: the secret scan walks git log
 
       - uses: actions/setup-python@v5
         with:
@@ -24,11 +26,17 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Full test suite
+      - name: Full test suite (incl. property-based + multi-process limiter tests)
         run: python -m pytest
 
-      - name: Secret scan (no committed credentials)
+      - name: Secret scan — working tree (offline heuristics + entropy)
         run: python -m agents.secret_scan
+
+      - name: Secret scan — git history (a deleted secret is still a leaked secret)
+        run: python -m agents.secret_scan --history
+
+      - name: Secret-scan wiring self-check (the control must stay wired in)
+        run: python -m agents.secret_scan --check-ci
 
       - name: Dataset Verification Agent (offline)
         run: python -m agents.verify_dataset
@@ -38,6 +46,42 @@ jobs:
 
       - name: Agent dry-run (reminder scheduler)
         run: python -m agents.reminder_scheduler --dry-run
+
+  security-evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Dependency vulnerabilities (fails on a known-vulnerable pin)
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+
+      - name: API fuzz run (no 5xx, no hang, no leaked internals)
+        run: python -m scripts.fuzz_api --requests 2000 --seed 20260101 --timeout 5
+
+      - name: Rate limiter under real multi-process topology
+        run: python -m pytest tests/test_rate_limit_shared.py -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Clipboard helper behaviour tests
+        run: node --test "web/tests/*.test.mjs"
 
   dataset-liveness:
     runs-on: ubuntu-latest

@@ -11,10 +11,10 @@ Instead of *"Where can I find scholarships?"* — FeeFix answers
 **"Which schemes fit my profile, why do I qualify, and what should I do next?"**
 
 [![CI](https://github.com/authorsauravkushwaha/feefix-india/actions/workflows/ci.yml/badge.svg)](https://github.com/authorsauravkushwaha/feefix-india/actions)
-[![Tests](https://img.shields.io/badge/tests-151%20passing-brightgreen)](#-testing)
+[![Tests](https://img.shields.io/badge/tests-300%2B%20incl.%20property%20%2B%20multi--process-brightgreen)](#-testing)
 [![Schemes](https://img.shields.io/badge/verified%20schemes-71-blue)](#-the-dataset)
 [![Languages](https://img.shields.io/badge/languages-en%20·%20বাংলা%20·%20हिन्दी%20·%20தமிழ்-orange)](#-four-languages-native-script)
-[![Security](https://img.shields.io/badge/security-PBKDF2%20·%20CSP%20·%20rate%20limit-critical)](docs/security/SECURITY.md)
+[![Security](https://img.shields.io/badge/security-Argon2id%20·%20shared%20rate%20limit%20·%20CSP-critical)](docs/security/SECURITY.md)
 [![AI](https://img.shields.io/badge/AI-100%25%20free%20local%20%7C%20zero%20paid%20APIs-8b5cf6)](ai/README.md)
 [![Python](https://img.shields.io/badge/python-3.11+-3776ab?logo=python&logoColor=white)](#)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.1xx-009688?logo=fastapi&logoColor=white)](#)
@@ -62,14 +62,14 @@ Wizard → explainable ranked matches → dashboard (tracker, reminders, sign-in
 | **Ranking** | `backend/matching_engine/ranker.py` | `45·clarity + urgency + benefit + verified`, deadline-aware, badges. |
 | **Free-local AI** | `ai/` | Semantic search + **grounded Q&A with citations** — answers assembled only from verified dataset fields (+ near-miss radar). In-process embeddings (`fastembed`/MiniLM or built-in sublinear-TF n-gram embedder). **No paid APIs, ever.** |
 | **ML outcome ranking (V2)** | `ml/ranking/` · `POST /api/events` · `GET /api/ml/rank` | Tracker buttons (`viewed/applied/approved/…`) stream outcome events with their V1 signal snapshots → tiny logistic model re-ranks matches (**⚡ ML preview** toggle, synthetic bootstrap until ≥25 real events). *Same signals V1 uses — no invented facts.* |
-| **Security & accounts** | `backend/services/auth.py` · `db.py` · `ratelimit.py` · `secure_headers.py` | PBKDF2-SHA256 passwords (600k rounds, per-user salt) · SHA-256-hashed revocable session tokens · sliding-window rate limits · CSP/HSTS/nosniff/no-store headers · CORS closed by default · append-only audit log · uniform login errors · **data export + right-to-erasure**. → [`docs/security/SECURITY.md`](docs/security/SECURITY.md) |
+| **Security & accounts** | `backend/services/auth.py` · `db.py` · `ratelimit.py` · `secure_headers.py` · `documents.py` · `body_limit.py` | **Argon2id** passwords (memory-hard; legacy PBKDF2 rows upgrade on next sign-in) · SHA-256-hashed revocable session tokens with rotation + replay **quarantine** (a stale tab no longer logs you out everywhere) · sliding-window rate limits in a **shared** store (holds across workers/instances; Redis for multi-instance) · **per-endpoint** body caps enforced while the body streams · hardened **document uploads** wired into the API · CSP/HSTS/nosniff/no-store · CORS closed by default · append-only audit log · uniform login errors · **data export + right-to-erasure**. → [`docs/security/SECURITY.md`](docs/security/SECURITY.md) |
 | **Storage** | `backend/services/sqlite_store.py` | **SQLite (WAL mode)** — ACID, crash-safe, indexed, FK-enforced, versioned migrations, legacy JSONL auto-import. Postgres swap = one module (documented). |
 | **Data & verification** | `data/` | 71 curated schemes as structured, validated records + per-record **verification manifest**; `agents/verify_dataset.py` gates CI. |
 | **Reach layer** | `backend/services/chat.py` + `chat_i18n.py` | WhatsApp-style conversational matcher — *State → Course → Income → matches → free-text Q&A* — in **English, বাংলা, हिन्दी & தமிழ்** (native script detection, দেশি digits `২ লাখ`, Tamil `லட்சம்`, NFC-safe matching). |
 | **Agents** | `agents/` | Dataset verification agent (health audit + CI gate) · reminder scheduler (cron-friendly dispatcher). |
 | **Notifications** | `backend/notifications/` | Channel-agnostic reminders (console + WhatsApp outbox demo). |
 | **Android** | `mobile/android/` | Kotlin/Compose reference scaffold on the same API contract. |
-| **CI** | `.github/workflows/` | Tests + dataset agent + ML sanity + scheduler dry-run — free GitHub Actions. |
+| **CI** | `.github/workflows/` | Tests (incl. property-based + real multi-process limiter) + API fuzz run + dependency audit (`pip-audit`) + clipboard behaviour tests + secret scan **with git history and a wiring self-check** + dataset agent + ML sanity + scheduler dry-run — free GitHub Actions. |
 
 ## 🗺 Architecture
 
@@ -165,7 +165,7 @@ cd feefix-india
 ```
 
 ```bash
-./scripts/dev.sh --test                       # 151 tests
+./scripts/dev.sh --test                       # full suite
 .venv/bin/python -m agents.verify_dataset     # dataset health audit
 .venv/bin/python -m ml.experiments.simulate_outcomes   # V2 ranker demo
 ```
@@ -188,6 +188,14 @@ Export or erase your data anytime (`docs/api/API.md` → Accounts).
 | `test_auth` | register/login, token revocation, ownership 403s, rate limits, headers, export/erase, **no-plaintext-DB proof** |
 | `test_chat` · `test_i18n_rules` | 4-language parsing + full conversations + localized explanations |
 | `test_ai` · `test_agents` | grounding, search rankings, verifier, scheduler |
+| `test_password_hashing` | Argon2id default, legacy-hash upgrade on login, scrypt fallback, bounded KDF concurrency |
+| `test_rate_limit_shared` | the limiter across **real OS processes** (and the multiplication the in-memory store causes) |
+| `test_session_reuse_policy` | replay quarantine vs. escalation vs. opt-in family revoke, `logout-all`, security events |
+| `test_uploads_api` | upload → list → download → delete, traversal, spoofed/oversized files, ownership, erasure |
+| `test_body_limits` | per-endpoint caps + the chunked/no-`Content-Length` bypass |
+| `test_numerals_i18n` | the data-driven income lexicon, script validation, Hypothesis properties |
+| `test_fuzzing` | randomised probing of every route + property tests on parsers, tokens, HTML-safe JSON |
+| `test_wiring_and_claims` | controls are still wired in (no dead code), CI jobs intact, **docs match the code** |
 
 ## 📁 Repository map
 
@@ -214,7 +222,37 @@ feefix-india/
 ├── language/regional_support/  # en/bn/hi/ta dictionaries + explanation templates
 ├── .github/workflows/       # CI: tests + agents + ML sanity (free for public repos)
 ├── scripts/dev.sh           # one-command dev bootstrap
-└── tests/                   # 151 tests
+└── tests/                   # suite: units · property-based · multi-process · wiring claims
+```
+
+## 🔍 Security: what is proven, and what is not
+
+Security claims age badly, so this project states the boundary out loud:
+
+**Verified by tests in this repository** — memory-hard **Argon2id** password
+storage (legacy PBKDF2 rows re-hash on next sign-in); session rotation with
+replay detection that **quarantines** the replayed token instead of logging the
+user out everywhere; a rate limiter whose counters are **shared across
+processes**, proven by spawning real ones; **per-endpoint** body caps enforced
+while the body streams (chunked requests included); a hardened document-upload
+pipeline that is actually **called by a route**; a secret scan that reads git
+history, flags entropy and split literals, and verifies its own CI wiring;
+strict-mode boot that **refuses to start** on placeholder secrets.
+
+**Not proven** — there has been **no third-party penetration test and no external
+security review**. The suite, the property-based tests and the fuzzer were
+written by the same author as the code, so they share its blind spots. The
+fuzzer is a TestClient harness (no TLS, no proxy, no browser). DoS resistance is
+argued from bounded work per request, not measured under a real flood. A copied
+value is still readable by clipboard malware — the clipboard helper is UX
+hygiene, and says so. Run the evidence yourself:
+
+```bash
+python -m pytest                                       # suite
+python -m scripts.fuzz_api --requests 2000 --seed 1     # randomised API probing
+python -m pytest tests/test_rate_limit_shared.py        # limiter across processes
+python -m agents.secret_scan --history --check-ci       # secrets + CI wiring
+node --test "web/tests/*.test.mjs"                      # clipboard behaviour
 ```
 
 ## 🗺 Roadmap
