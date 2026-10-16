@@ -129,17 +129,12 @@ jobs:
               tail -3 flake-watch.log
             else
               cat flake-watch.log
-              # Job summaries are readable through the check-runs API, unlike
-              # the log blob: put the failing test ids and the assertion context
-              # where an agent (or a person on a phone) can actually see them.
-              {
-                echo "### flake-watch failed on pass $pass of 3"
-                echo '```'
-                grep -E "^(FAILED|ERROR) " flake-watch.log | head -30
-                echo '--- tail ---'
-                tail -80 flake-watch.log
-                echo '```'
-              } >> "$GITHUB_STEP_SUMMARY"
+              # Annotations are the one channel that is readable through the
+              # API as well as the UI (the log blob and the job summary are
+              # not): failing test ids first, then the assertion context.
+              grep -E "^(FAILED|ERROR) " flake-watch.log | head -30 | \
+                sed -E "s/^(FAILED|ERROR) /::error title=pytest-flake::/"
+              tail -25 flake-watch.log | sed 's/^/::error title=flake-watch-tail::/'
               exit 1
             fi
           done
