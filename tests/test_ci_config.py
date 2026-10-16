@@ -430,8 +430,13 @@ def test_cheap_ci_commands_execute_successfully(ci, tmp_path):
         "PYTHONPATH": str(REPO),
     }
     for command in commands:
-        # Redirect the report into the sandbox so the repo stays untouched.
-        actual = command.replace("secret-scan-report.json", str(tmp_path / "scan.json"))
+        # Redirect the reports into the sandbox so the repo stays untouched: a
+        # report left in the tree is a second file for the next scan to read,
+        # and CI once went red because the tree scan re-reported the findings
+        # quoted in the history report the suite had just dropped there.
+        actual = command.replace(
+            "secret-scan-report.json", str(tmp_path / "scan.json")
+        ).replace("secret-scan-history.json", str(tmp_path / "scan-history.json"))
         result = subprocess.run(
             [sys.executable, *actual.split()[1:]] if actual.startswith("python ") else actual,
             shell=not actual.startswith("python "),

@@ -312,6 +312,146 @@ def test_a_crashing_scan_is_still_readable_from_the_annotations(monkeypatch, cap
     )
 
 
+def _git(repo: Path, *args: str) -> None:
+    import subprocess
+
+    subprocess.run(
+        ["git", "-c", "user.email=test@example.com", "-c", "user.name=test", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _repo_with_history(tmp_path: Path) -> Path:
+    """One commit: something wafer-thin to waive, something real to report."""
+    repo = tmp_path / "repo"
+    (repo / "vendor").mkdir(parents=True)
+    (repo / "runtime").mkdir()
+    (repo / "app").mkdir()
+    # Provider-shaped literal in a waived directory, and one under runtime/
+    # (the directory the working-tree walker never enters).
+    (repo / "vendor" / "sample.py").write_text(f'GH = "{_ghp_token()}"\n', encoding="utf-8")
+    (repo / "runtime" / "outbox.jsonl").write_text(
+        f'{{"note": "{_ghp_token()}"}}\n', encoding="utf-8"
+    )
+    (repo / "app" / "config.py").write_text(
+        "\n".join(["# config", "", f'API_KEY = "{_opaque(9)}"', ""]), encoding="utf-8"
+    )
+    (repo / ".secretscanignore").write_text("vendor/**\n", encoding="utf-8")
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "fixture")
+    return repo
+
+
+def test_history_scan_honours_what_the_working_tree_scan_skips(tmp_path):
+    """Both modes must agree on *what* is scanned, or the gates argue.
+
+    ``--history`` ignored the ignore file, the runtime directory and the cache
+    directories that the working-tree walker applies, so a documented waiver
+    worked in one mode and not the other. It also reported line 1 for every hit,
+    which is not where the credential is.
+    """
+    from agents.secret_scan import scan, scan_history
+
+    repo = _repo_with_history(tmp_path)
+
+    local = scan(repo)
+    assert [f["file"] for f in local] == ["app/config.py"], local
+    assert local[0]["type"] == "assigned_secret"
+
+    history = scan_history(repo)
+    assert [f["file"] for f in history] == ["history:app/config.py"], (
+        f"waived and non-source paths are not history findings either: {history}"
+    )
+    assert history[0]["line"] == local[0]["line"] == 3, (
+        "a finding must point at the line the credential is on"
+    )
+
+
+def test_history_scan_still_catches_a_secret_hidden_by_a_later_commit(tmp_path):
+    """The exemptions must not have neutered the thing history mode exists for."""
+    from agents.secret_scan import scan, scan_history
+
+    repo = _repo_with_history(tmp_path)
+    (repo / "app" / "config.py").unlink()
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "remove the key")
+
+    assert scan(repo) == [], "the working tree is genuinely clean now"
+    assert [f for f in scan_history(repo) if "config.py" in f["file"]], (
+        "a secret deleted after being committed is still in history"
+    )
+
+
+def test_history_scan_covers_this_history_not_every_branch_on_the_remote(tmp_path):
+    """Scope: the checked-out history, not every branch anyone happens to have.
+
+    ``git log --all`` made one open branch's deliberately fake
+    ``tests/fixtures/secret_scan_samples.py`` fail unrelated branches' builds,
+    and the path-scoped waiver for such a file lives in the branch that owns it.
+    A secret on an unmerged branch is still scanned where it matters: that
+    branch's own CI, and the pull request's merge commit.
+    """
+    from agents.secret_scan import scan, scan_history
+
+    repo = tmp_path / "repo"
+    (repo / "app").mkdir(parents=True)
+    (repo / "app" / "main.py").write_text("print('hello')\n", encoding="utf-8")
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "clean tip")
+
+    _git(repo, "checkout", "-q", "-b", "someone-elses-branch")
+    (repo / "app" / "leaky.py").write_text(f'GH = "{_ghp_token()}"\n', encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "work in progress")
+    _git(repo, "checkout", "-q", "main")
+
+    assert scan(repo) == []
+    assert scan_history(repo) == [], "another branch's tip is not this history"
+
+    _git(repo, "checkout", "-q", "someone-elses-branch")
+    assert [f for f in scan_history(repo) if "leaky.py" in f["file"]], (
+        "on that branch, the same commit is a finding"
+    )
+
+
+def test_the_scan_does_not_report_its_own_artifacts(tmp_path):
+    """The findings a scan writes are not a *second* set of findings.
+
+    CI failed a second time on the report of the first failure: the archived
+    history report and the junit XML quoted the sample credentials they were
+    about, and the tree scan re-reported every one of them.
+    """
+    import json
+
+    from agents.secret_scan import scan
+
+    (tmp_path / "secret-scan-history.json").write_text(
+        json.dumps(
+            {
+                "scope": "git history",
+                "findings": [
+                    {
+                        "file": "history:tests/fixtures/samples.py",
+                        "line": 1,
+                        "type": "github_token",
+                        "snippet": f'GH = "{_ghp_token()}"',
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "pytest-report.xml").write_text(
+        f'<failure>client_secret = "{_opaque(4)}"</failure>\n', encoding="utf-8"
+    )
+    assert scan(tmp_path) == []
+
+
 def test_ignore_file_is_honoured(tmp_path):
     from agents.secret_scan import scan
 

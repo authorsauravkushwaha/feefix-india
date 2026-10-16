@@ -50,6 +50,17 @@ _SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", ".pytest_c
               ".hypothesis", "uploads"}
 _MAX_BYTES = 1_000_000
 _IGNORE_FILE = ".secretscanignore"
+#: Artifacts this pipeline writes about its own findings: the scanner's JSON
+#: reports and the archived pytest output. They quote findings on purpose, so
+#: scanning them reports every finding twice (once as a credential, once as a
+#: quoted copy) — which is how a red scan became a red scan for the *wrong*
+#: reason in CI. Everything they quote came from a file that is scanned directly.
+_GENERATED_ARTIFACTS = frozenset({
+    "secret-scan-report.json",
+    "secret-scan-history.json",
+    "pytest-report.xml",
+    "pytest-output.txt",
+})
 # A waiver without a reason is how a scanner gets silenced. The reason has to
 # be long enough that `# secret-scan: allow x` is not a bypass.
 _INLINE_ALLOW = re.compile(r"secret-scan:\s*allow\s+\S.{7,}", re.I)
@@ -164,6 +175,12 @@ def _iter_files(root: Path):
         if not path.is_file() or path.is_symlink():
             continue
         if any(part in _SKIP_DIRS for part in path.parts):
+            continue
+        if path.name in _GENERATED_ARTIFACTS:
+            # Outputs about findings, not inputs to scan. A red CI run went red a
+            # second time because the working-tree scan re-reported the sample
+            # credentials quoted inside the history report it had just written,
+            # and inside the junit XML that archived the same text.
             continue
         try:
             if path.stat().st_size > _MAX_BYTES or path.stat().st_size == 0:
@@ -468,17 +485,43 @@ def _staged_files(root: Path) -> list[Path]:
     return [root / line.strip() for line in out.splitlines() if line.strip()]
 
 
+def _history_path_is_exempt(path: str, globs: list[str]) -> bool:
+    """Would the working-tree scan have looked at this path at all?
+
+    The ``--history`` mode used to skip only the *display* of a path, so every
+    reason a file is not scanned for real (a test fixture that carries sample
+    credentials on purpose, an ignore glob, the runtime directory, a virtualenv)
+    was silently lost — and a branch carrying
+    ``tests/fixtures/secret_scan_samples.py`` turned every other branch's CI red.
+    History and working tree must agree on *what* is scanned, or the two gates
+    argue with each other.
+    """
+    if any(part in _SKIP_DIRS for part in Path(path).parts):
+        return True
+    return _ignored(path, globs)
+
+
 def scan_history(root: Path) -> list[dict]:
-    """Scan added lines in every commit, not only the working tree.
+    """Scan added lines in this branch's history, not only the working tree.
 
     Deleting a file after it was committed used to clear the in-house scanner
     while the secret stayed in git history. gitleaks covers that independently;
     this is the same check in the scanner we ship, so disabling one job is not
     enough.
+
+    Scope is the *checked-out* history (``HEAD``), deliberately not ``--all``:
+    ``--all`` reaches every branch on the remote, so one open branch's
+    deliberately fake ``tests/fixtures/secret_scan_samples.py`` turned unrelated
+    branches' builds red — and the path-scoped waiver for such a file lives in
+    the branch that owns it, not in everyone else's. An unmerged secret is still
+    scanned where it matters: when that branch's own CI runs, and again against
+    the pull request's merge commit, whose history contains those commits. The
+    same path exemptions as the working-tree scan apply here too, so the two
+    modes cannot disagree about what counts.
     """
     try:
         proc = subprocess.run(
-            ["git", "log", "-p", "--all", "-U0", "--no-color"],
+            ["git", "log", "-p", "HEAD", "-U0", "--no-color"],
             cwd=root,
             capture_output=True,
             text=True,
@@ -499,6 +542,7 @@ def scan_history(root: Path) -> list[dict]:
             "snippet": (proc.stderr or "git log failed")[:120],
         }]
     findings: list[dict] = []
+    globs, _rejected = _load_ignore_globs(root)
     current = "(commit)"
     lineno = 0
     for raw in proc.stdout.splitlines():
@@ -513,7 +557,13 @@ def scan_history(root: Path) -> list[dict]:
         if not raw.startswith("+") or raw.startswith("+++"):
             continue
         line = raw[1:]
-        findings.extend(_scan_text(f"history:{current}", line))
+        # Scan under the file's real path (that is what the exemptions match),
+        # then label the finding as history so the report says where it is.
+        if not _history_path_is_exempt(current, globs):
+            for finding in _scan_text(current, line):
+                finding["file"] = f"history:{finding['file']}"
+                finding["line"] = lineno
+                findings.append(finding)
         lineno += 1
     return _dedupe(findings)
 
@@ -560,7 +610,8 @@ Usage:
                can be read from the API (`gh pr checks`, the check-runs
                endpoint) instead of a log blob
   --staged     scan only git-staged files (pre-commit mode)
-  --history    scan added lines in every commit, not only the working tree
+  --history    scan added lines in this branch's history (HEAD), not only the
+               working tree
   --help       show this message
 
 Exit codes: 0 = clean, 1 = findings (fails the build on purpose).
