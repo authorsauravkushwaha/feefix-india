@@ -140,7 +140,7 @@ Twilio trial accounts can only message **verified** numbers — an unverified
 number comes back as `The number is unverified` in the audit log
 (`otp.send_failed.phone`), which is the single most common "it doesn't work".
 
-### 4. Prove it works
+### 4. Prove it works (locally: `cp .env.example .env`, then `./scripts/dev.sh`)
 
 ```bash
 python scripts/check_otp_delivery.py --email you@gmail.com
