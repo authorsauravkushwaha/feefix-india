@@ -86,6 +86,26 @@ class TrackerStore:
             entry = self._data.get(session_id, {}).get("__profile__")
             return entry["profile"] if entry else None
 
+    def set_notes(self, session_id: str, notes: str) -> dict:
+        """Long-form notes for a session (same contract as the SQLite store)."""
+        with self._lock:
+            self._data.setdefault(session_id, {})["__notes__"] = {
+                "notes": notes,
+                "updated_at": _utcnow(),
+            }
+            self._persist()
+            return {"session_id": session_id, "notes": notes,
+                    "updated_at": self._data[session_id]["__notes__"]["updated_at"]}
+
+    def get_notes(self, session_id: str) -> dict:
+        with self._lock:
+            entry = self._data.get(session_id, {}).get("__notes__")
+            return {
+                "session_id": session_id,
+                "notes": entry["notes"] if entry else "",
+                "updated_at": entry["updated_at"] if entry else None,
+            }
+
     @staticmethod
     def scheme_entries(board: dict[str, dict]) -> dict[str, dict]:
         """Strip internal keys (like __profile__) from a board."""

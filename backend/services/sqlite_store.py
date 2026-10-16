@@ -83,6 +83,28 @@ class SQLiteStore:
         ).fetchone()
         return json.loads(row["profile"]) if row else None
 
+    # -- notes (long-form, own body policy) --------------------------------------
+    def set_notes(self, session_id: str, notes: str) -> dict:
+        with db._lock:
+            self.conn.execute(
+                "INSERT INTO session_notes (session_id, notes, updated_at) VALUES (?,?,?)"
+                " ON CONFLICT(session_id) DO UPDATE SET"
+                "   notes=excluded.notes, updated_at=excluded.updated_at",
+                (session_id, notes, _utcnow()),
+            )
+            self.conn.commit()
+        return {"session_id": session_id, "notes": notes, "updated_at": _utcnow()}
+
+    def get_notes(self, session_id: str) -> dict:
+        row = self.conn.execute(
+            "SELECT notes, updated_at FROM session_notes WHERE session_id=?", (session_id,)
+        ).fetchone()
+        return {
+            "session_id": session_id,
+            "notes": row["notes"] if row else "",
+            "updated_at": row["updated_at"] if row else None,
+        }
+
     # -- ownership ---------------------------------------------------------------
     def bind_owner(self, session_id: str, user_id: str) -> None:
         """Attach an anonymous session's data to an account (login merge point)."""

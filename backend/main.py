@@ -7,6 +7,14 @@ Serves the REST API under ``/api`` and the web experience (static SPA) at
 
 One origin, one port — the web app only ever makes relative API calls, so the
 deployment is immune to host/origin mismatches behind any proxy.
+
+Boot sequence (fail *loudly* before serving, never halfway):
+
+1. password-hashing policy is resolved (Argon2id; a production deployment that
+   demands Argon2id and lacks ``argon2-cffi`` refuses to start),
+2. secret hygiene is enforced (placeholders block a strict/production boot),
+3. the rate-limit store is selected and checked against the detected topology
+   (multi-worker without a shared store is reported as an error, not ignored).
 """
 
 from __future__ import annotations
@@ -16,10 +24,12 @@ import os
 import secrets
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.api.responses import SafeJSONResponse, sanitize_for_json
 from backend.api.routes import router as api_router
 from backend.notifications import (
     ConsoleNotifier,
@@ -28,7 +38,12 @@ from backend.notifications import (
 )
 from backend.services import ratelimit
 from backend.services.dataset import DatasetService
-from backend.services.limits import MAX_BODY_BYTES
+from backend.services.middleware import RateLimitMiddleware, SessionMiddleware
+from backend.services.request_limits import (
+    BodyLimitMiddleware,
+    BodyTooLarge,
+    payload_too_large_handler,
+)
 from backend.services.secure_headers import SecurityHeadersMiddleware
 from backend.services.sqlite_store import SQLiteStore
 from backend.services.tracker import TrackerStore
@@ -43,24 +58,78 @@ _CORS_ORIGINS = [
     o.strip() for o in os.environ.get("FEEFIX_CORS_ORIGINS", "").split(",") if o.strip()
 ]
 _STORE = os.environ.get("FEEFIX_STORE", "sqlite")
-# Interactive API docs (Swagger / ReDoc / openapi.json) expose the full API
-# surface — handy in development, pure attack-surface in production. Off unless
-# explicitly enabled.
-_ENABLE_DOCS = os.environ.get("FEEFIX_ENABLE_DOCS", "").lower() in ("1", "true", "yes", "on")
+
+
+def docs_enabled() -> bool:
+    """Interactive docs are **on by default**.
+
+    Turning them off never removed a single endpoint: ``/api/...`` answers with
+    or without ``/docs``, so the "security" was optical — while breaking
+    Swagger/ReDoc, generated clients and QA tooling. The switch is kept only for
+    operators who genuinely want a documentation-free surface, and it is honest
+    about being cosmetic.
+
+    * ``FEEFIX_ENABLE_DOCS=0`` (or any falsy value) → off
+    * ``FEEFIX_DISABLE_DOCS=1`` → off (alias)
+    * anything else, or unset → on
+    """
+    explicit = os.environ.get("FEEFIX_ENABLE_DOCS")
+    if explicit is not None:
+        return explicit.strip().lower() not in ("0", "false", "no", "off", "")
+    if os.environ.get("FEEFIX_DISABLE_DOCS", "").strip().lower() in ("1", "true", "yes", "on"):
+        return False
+    return True
+
+
+def _boot_guards() -> dict:
+    """Resolve security policy before the app starts serving traffic."""
+    from backend.services import passwords
+    from backend.services.secrets import enforce_secret_hygiene
+
+    # (1) Password hashing: raises if the deployment demands Argon2id and the
+    #     library is missing — a silent downgrade is the one outcome we refuse.
+    hashing = passwords.describe()
+    if hashing.get("algorithm") == "unavailable":  # pragma: no cover - misconfig
+        raise RuntimeError(hashing.get("error", "password hashing unavailable"))
+    log.info("[boot] password hashing: %s", hashing)
+    if hashing["algorithm"] != "argon2id":
+        log.warning(
+            "[boot] password hashing is %s — install argon2-cffi (or set"
+            " FEEFIX_PASSWORD_ALGO=argon2id) for memory-hard hashing.",
+            hashing["algorithm"],
+        )
+
+    # (2) Secrets: warn by default, refuse to boot when strict (the default in
+    #     production). A deploy still on CHANGE_ME is a deployment error.
+    findings = enforce_secret_hygiene()
+    for finding in findings:
+        log.warning("[secrets] %s", finding)
+
+    # (3) Rate limiting: pick the store and be explicit about scaling reality.
+    store = ratelimit.configure()
+    warning = ratelimit.warn_if_not_distributed()
+    return {"password_hashing": hashing, "rate_limit": store.status(), "rate_limit_warning": warning}
 
 
 def create_app() -> FastAPI:
+    boot = _boot_guards()
+    enable_docs = docs_enabled()
+
     app = FastAPI(
         title="FeeFix India",
-        version="1.1.0",
+        version="1.2.0",
+        # Never 500 while *rendering* a response, whatever a client sent.
+        default_response_class=SafeJSONResponse,
         description=(
             "Personalized scholarship & fee-waiver matching platform for "
             "Indian students — discover, understand, apply, track."
         ),
-        docs_url="/docs" if _ENABLE_DOCS else None,
-        redoc_url="/redoc" if _ENABLE_DOCS else None,
-        openapi_url="/openapi.json" if _ENABLE_DOCS else None,
+        docs_url="/docs" if enable_docs else None,
+        redoc_url="/redoc" if enable_docs else None,
+        openapi_url="/openapi.json" if enable_docs else None,
     )
+    app.state.boot = boot
+    app.state.docs_enabled = enable_docs
 
     if _CORS_ORIGINS:
         app.add_middleware(
@@ -70,76 +139,31 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
 
-    # --- security middleware (outermost wins) --------------------------------
+    # --- middlewares (last added = outermost) ---------------------------------
+    # Order from inside out: CORS → body limits → rate limit → session →
+    # security headers. Headers wrap everything, so even a 413/429/500 carries
+    # them.
+    app.add_middleware(BodyLimitMiddleware)
+    app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(SessionMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
 
-    from starlette.middleware.base import BaseHTTPMiddleware
+    # A body that overruns its endpoint policy mid-stream → 413 (not 500).
+    app.add_exception_handler(BodyTooLarge, payload_too_large_handler)
 
-    class _BodyLimitMiddleware(BaseHTTPMiddleware):
-        """Reject oversized request bodies before any handler parses them.
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError):
+        """Validation errors, rendered safely.
 
-        A giant-payload / long-password flood never reaches PBKDF2, a regex, or
-        the JSON parser. Clients that stream without a Content-Length are still
-        bounded by the per-field length caps in the pydantic schemas.
+        FastAPI's default handler echoes the offending input back; a lone
+        surrogate in that input used to make the *error response* itself
+        un-encodable (a client-triggered 500). Sanitising the values and using
+        the encoding-safe response class keeps the failure a clean 422.
         """
+        from fastapi.encoders import jsonable_encoder
 
-        async def dispatch(self, request: Request, call_next):
-            if request.method in ("POST", "PUT", "PATCH"):
-                raw = request.headers.get("content-length")
-                if raw and raw.isdigit() and int(raw) > MAX_BODY_BYTES:
-                    return JSONResponse(
-                        status_code=413,
-                        content={"detail": "Payload too large."},
-                    )
-            return await call_next(request)
-
-    app.add_middleware(_BodyLimitMiddleware)
-
-    class _SessionMiddleware(BaseHTTPMiddleware):
-        """Resolve the bearer session once per request and rotate aged tokens.
-
-        Anti-replay: a token in continuous use for more than a day is silently
-        rotated and the fresh token handed back in ``X-Session-Token``. The
-        resolved user is cached on ``request.state`` so the whole request shares
-        one lookup (and one rotation decision).
-        """
-
-        async def dispatch(self, request: Request, call_next):
-            from backend.services import auth as auth_svc
-
-            header = request.headers.get("authorization", "")
-            token = header[7:].strip() if header.lower().startswith("bearer ") else None
-            user, new_token = auth_svc.resolve_and_rotate(token)
-            request.state.user = user
-            response = await call_next(request)
-            if new_token:
-                response.headers["X-Session-Token"] = new_token
-            return response
-
-    app.add_middleware(_SessionMiddleware)
-
-    class _RateLimitMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request, call_next):
-            path = request.url.path
-            if path.startswith("/api/"):
-                client = ratelimit.client_ip(request)
-                bucket = "global"
-                if path.startswith(ratelimit.EXPENSIVE_PATHS):
-                    bucket = "expensive"
-                allowed = (
-                    ratelimit.check_expensive(client, bucket)
-                    if bucket == "expensive"
-                    else ratelimit.check_global(client)
-                )
-                if not allowed:
-                    return JSONResponse(
-                        status_code=429,
-                        content={"detail": "Too many requests — slow down."},
-                        headers={"Retry-After": str(ratelimit.retry_after(client, "global"))},
-                    )
-            return await call_next(request)
-
-    app.add_middleware(_RateLimitMiddleware)
+        errors = sanitize_for_json(jsonable_encoder(exc.errors()))
+        return SafeJSONResponse(status_code=422, content={"detail": errors})
 
     # Application state — hardened SQLite store by default (WAL, FKs,
     # parameterized); FEEFIX_STORE=json keeps the legacy JSON store.
@@ -156,12 +180,6 @@ def create_app() -> FastAPI:
     from ai.qa import QaEngine
 
     app.state.qa = QaEngine(dataset)
-
-    # Warn (never crash) if a configured secret looks like a placeholder.
-    from backend.services.secrets import weak_secret_findings
-
-    for _finding in weak_secret_findings():
-        log.warning("[secrets] %s", _finding)
 
     @app.exception_handler(Exception)
     async def unhandled(request: Request, exc: Exception):  # pragma: no cover - safety net

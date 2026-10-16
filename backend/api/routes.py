@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from backend.api.schemas import (
     AskRequest,
@@ -15,6 +15,7 @@ from backend.api.schemas import (
     EventRequest,
     LinkSessionRequest,
     LoginRequest,
+    NotesRequest,
     OtpRequestBody,
     OtpVerifyBody,
     ProfileUpsertRequest,
@@ -23,7 +24,7 @@ from backend.api.schemas import (
 )
 from backend.models.student import StudentProfile
 from backend.services.chat import handle_message
-from backend.services.limits import MAX_SEARCH_LEN
+from backend.services.limits import MAX_SEARCH_LEN, MAX_UPLOAD_BYTES
 from backend.services.matching import (
     match_profile,
     scheme_to_public,
@@ -106,7 +107,9 @@ def register(body: RegisterRequest, request: Request) -> dict:
         user = auth_svc.register(body.email, body.password, body.name)
     except auth_svc.AuthError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    token, expires = auth_svc.create_session(user["id"])
+    token, expires = auth_svc.create_session(
+        user["id"], auth_svc.client_fingerprint(request)
+    )
     return {"token": token, "expires_at": expires.isoformat(timespec="seconds"), "user": user,
             "session_id": None}
 
@@ -121,7 +124,9 @@ def login(body: LoginRequest, request: Request) -> dict:
         user = auth_svc.login(body.email, body.password)
     except auth_svc.AuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
-    token, expires = auth_svc.create_session(user["id"])
+    token, expires = auth_svc.create_session(
+        user["id"], auth_svc.client_fingerprint(request)
+    )
     tracker = _tracker(request)
     session_for_user = getattr(tracker, "session_for_user", None)
     return {"token": token, "expires_at": expires.isoformat(timespec="seconds"), "user": user,
@@ -181,7 +186,9 @@ def _auth_payload(user: dict, request: Request) -> dict:
     """Uniform {token, expires_at, user, session_id} for every sign-in door."""
     from backend.services import auth as auth_svc
 
-    token, expires = auth_svc.create_session(user["id"])
+    token, expires = auth_svc.create_session(
+        user["id"], auth_svc.client_fingerprint(request)
+    )
     tracker = _tracker(request)
     session_for_user = getattr(tracker, "session_for_user", None)
     return {
@@ -259,7 +266,9 @@ def github_callback(request: Request, code: str | None = None, state: str | None
     from backend.services import auth as auth_svc
 
     tracker = _tracker(request)
-    token, _expires = auth_svc.create_session(user["id"])
+    token, _expires = auth_svc.create_session(
+        user["id"], auth_svc.client_fingerprint(request)
+    )
     session_for_user = getattr(tracker, "session_for_user", None)
     sid = session_for_user(user["id"]) if session_for_user else None
     # The token lands in a <script type="application/json"> data block that a
@@ -306,17 +315,35 @@ _HANDOFF_HTML = """<!DOCTYPE html><html><head><meta charset="utf-8" />
 # -- meta -----------------------------------------------------------------------
 @router.get("/health")
 def health(request: Request) -> dict:
+    """Liveness plus the operational facts an operator actually needs to see.
+
+    Notably: whether rate-limit counters are shared (``distributed``) or
+    per-process — the failure mode that used to be invisible until an attacker
+    exploited it.
+    """
+    from backend.services import ratelimit
+
     qa = getattr(request.app.state, "qa", None)
+    boot = getattr(request.app.state, "boot", {}) or {}
     return {
         "status": "ok",
         "service": "feefix-india",
         "schemes_loaded": len(_dataset(request).schemes),
         "ai_backend": qa.backend if qa else "offline",
+        "password_hashing": boot.get("password_hashing", {}).get("algorithm", "unknown"),
+        "rate_limit": ratelimit.status(),
+        "rate_limit_warning": boot.get("rate_limit_warning"),
+        "docs_enabled": getattr(request.app.state, "docs_enabled", True),
     }
 
 
 @router.get("/meta")
 def meta() -> dict:
+    """Public, non-secret description of the API's policy surface.
+
+    Limit tables and security policy are documented *by the service itself*, so
+    clients and auditors do not have to reverse-engineer them.
+    """
     from backend.models.student import (
         Category,
         CourseLevel,
@@ -324,7 +351,14 @@ def meta() -> dict:
         INDIAN_STATES,
         MINORITY_COMMUNITIES,
     )
+    from backend.services import passwords
+    from backend.services import uploads as uploads_svc
+    from backend.services.auth import policy_summary as session_policy
+    from backend.services.limits import describe_limits
     from backend.services.tracker import STATUSES
+
+    uploads_policy = uploads_svc.describe_policy
+    password_policy = passwords.describe
 
     return {
         "states": INDIAN_STATES,
@@ -333,6 +367,10 @@ def meta() -> dict:
         "genders": [g.value for g in Gender],
         "minority_communities": MINORITY_COMMUNITIES,
         "track_statuses": STATUSES,
+        "limits": describe_limits(),
+        "uploads": uploads_policy(),
+        "sessions": session_policy(),
+        "password_hashing": password_policy(),
     }
 
 
@@ -475,6 +513,119 @@ def dispatch_reminders(
         "dispatched": len(items),
         "receipts": receipts,
     }
+
+
+# -- long-form notes (its own, larger body policy) -------------------------------------------
+@router.put("/students/{session_id}/notes")
+def save_notes(session_id: str, body: NotesRequest, request: Request) -> dict:
+    """Store long application notes.
+
+    Bounded by ``MAX_NOTES_LEN`` (20 KB by default) *and* by the endpoint's own
+    body policy — a legitimately long note is accepted instead of being killed
+    by a global one-size-fits-all cap.
+    """
+    _authorize_session(request, session_id)
+    return {"saved": True, **_tracker(request).set_notes(session_id, body.notes)}
+
+
+@router.get("/students/{session_id}/notes")
+def read_notes(session_id: str, request: Request) -> dict:
+    _authorize_session(request, session_id)
+    return _tracker(request).get_notes(session_id)
+
+
+# -- uploads (the hardened gate, finally wired in) --------------------------------------------
+def _upload_rejection(exc: "uploads_svc.UploadRejected") -> HTTPException:
+    return HTTPException(status_code=exc.status, detail=exc.reason)
+
+
+@router.post("/uploads/{session_id}")
+async def upload_document(
+    session_id: str,
+    request: Request,
+    file: UploadFile = File(..., description="PDF/PNG/JPEG, max MAX_UPLOAD_BYTES"),
+) -> dict:
+    """Accept a document (income certificate, marksheet …) for a session.
+
+    The bytes pass through ``services/uploads.py`` → ``services/upload.py``:
+    extension allowlist, magic-byte sniffing, size cap, sanitised name, random
+    storage name under a directory that is **not** web-served. Ownership is
+    enforced before a single byte is written.
+    """
+    from backend.services import uploads as uploads_svc
+
+    _authorize_session(request, session_id)
+    user = _current_user(request)
+    # Read one byte past the cap so an oversized file is detected, not buffered.
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    try:
+        record = uploads_svc.store_upload(
+            session_id,
+            file.filename or "upload",
+            content,
+            content_type=file.content_type,
+            user_id=user["id"] if user else None,
+        )
+    except uploads_svc.UploadRejected as exc:
+        raise _upload_rejection(exc) from exc
+    return {
+        "stored": True,
+        "upload": {
+            **record,
+            "url": f"/api/uploads/{session_id}/{record['id']}/content",
+        },
+    }
+
+
+@router.get("/uploads/{session_id}")
+def list_documents(session_id: str, request: Request) -> dict:
+    from backend.services import uploads as uploads_svc
+
+    _authorize_session(request, session_id)
+    try:
+        items = uploads_svc.list_uploads(session_id)
+    except uploads_svc.UploadRejected as exc:
+        raise _upload_rejection(exc) from exc
+    return {
+        "session_id": session_id,
+        "count": len(items),
+        "items": [
+            {**item, "url": f"/api/uploads/{session_id}/{item['id']}/content"}
+            for item in items
+        ],
+        "policy": uploads_svc.describe_policy(),
+    }
+
+
+@router.get("/uploads/{session_id}/{upload_id}/content")
+def download_document(session_id: str, upload_id: str, request: Request) -> FileResponse:
+    """Serve a stored document as a download — never as sniffable content."""
+    from backend.services import uploads as uploads_svc
+
+    _authorize_session(request, session_id)
+    try:
+        record, path = uploads_svc.load_upload(session_id, upload_id)
+    except uploads_svc.UploadRejected as exc:
+        raise _upload_rejection(exc) from exc
+    return FileResponse(
+        path,
+        media_type="application/octet-stream",
+        filename=record["original_name"],
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.delete("/uploads/{session_id}/{upload_id}")
+def delete_document(session_id: str, upload_id: str, request: Request) -> dict:
+    from backend.services import uploads as uploads_svc
+
+    _authorize_session(request, session_id)
+    user = _current_user(request)
+    try:
+        uploads_svc.delete_upload(session_id, upload_id, user_id=user["id"] if user else None)
+    except uploads_svc.UploadRejected as exc:
+        raise _upload_rejection(exc) from exc
+    return {"deleted": True, "upload_id": upload_id}
 
 
 # -- AI: semantic search & grounded Q&A ------------------------------------------------------

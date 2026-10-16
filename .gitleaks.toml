@@ -1,0 +1,52 @@
+# gitleaks configuration — extends the vendor default, narrows nothing silently.
+#
+# Why this file exists: the FeeFix repository *must* contain secret-shaped
+# strings. `agents/secret_scan.py` is a secret scanner (it contains the provider
+# regexes themselves), its test suite plants fake credentials to prove those
+# detectors fire, and the security docs show example DSNs. An independent
+# scanner such as gitleaks is right to flag all of that, and the wrong response
+# to a red gate is a blanket waiver — so the allowlist below is deliberately
+# file-scoped and justified line by line, while `useDefault = true` keeps every
+# vendor rule active everywhere else.
+#
+# Anything added here needs the same treatment: a path (never a wildcard) plus
+# a reason. tests/test_ci_config.py asserts both, so this file cannot quietly
+# grow into "ignore everything".
+
+[extend]
+useDefault = true
+
+title = "FeeFix gitleaks config"
+
+[allowlist]
+description = """Fixture and detector source files that necessarily contain
+secret-shaped strings. Each entry is a specific path, not a pattern over the tree."""
+
+paths = [
+    # The scanner's own provider regexes (and its redaction helpers) live here.
+    '''(^|/)agents/secret_scan\.py$''',
+    # Tests whose *purpose* is to plant fake credentials and prove detection:
+    # fake GitHub tokens, Stripe keys, base64-wrapped AWS keys, DSNs and
+    # high-entropy token-shaped alphabets used as fuzz data.
+    '''(^|/)tests/test_secret_hygiene\.py$''',
+    '''(^|/)tests/test_fuzz_security\.py$''',
+    # The clipboard module and its test: refusal cases require token-shaped and
+    # OTP-shaped sample values.
+    '''(^|/)tests/js/clipboard\.test\.mjs$''',
+    '''(^|/)web/frontend/secure-clipboard\.js$''',
+    # Example configuration and the security documentation, which show
+    # placeholder credentials on purpose.
+    '''(^|/)\.env\.example$''',
+    '''(^|/)docs/security/REVIEW-RESPONSE\.md$''',
+    '''(^|/)docs/security/HARDENING\.md$''',
+    '''(^|/)docs/security/SECURITY\.md$''',
+]
+
+# Placeholder *values* that appear in documentation and examples. Matching on
+# the value (not the file) keeps real credentials in those same files visible.
+regexes = [
+    '''(?i)postgres(?:ql)?://[^\s:@/]+:(?:password|changeme|passwd|pwd)<??[\w>-]*>?@''',
+    '''(?i)(?:mysql|mongodb(?:\+srv)?|rediss?)://[^\s:@/]+:(?:password|changeme|xxxxxx|\{password\})@''',
+    '''(?i)<your-(?:password|secret|token)>''',
+    '''(?i)\{\{?\s*(?:password|secret|token|api[_-]?key)\s*\}?\}''',
+]

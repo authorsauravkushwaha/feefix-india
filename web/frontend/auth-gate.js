@@ -102,6 +102,7 @@
             <input maxlength="1" inputmode="numeric" /><input maxlength="1" inputmode="numeric" />
           </div>
           <p class="ff-hint" data-msg></p>
+          <p class="ff-hint" data-clip-note>Pasted codes are cleared from the clipboard when the browser allows it — that is convenience, not protection against malware on this device.</p>
           <button class="ff-btn" type="submit" data-act="verify">Verify & enter →</button>
           <p class="ff-hint">Didn't get it?
             <button type="button" class="ff-resend" data-act="resend" disabled>Resend (<span data-cd>40</span>s)</button>
@@ -134,6 +135,7 @@
             <input maxlength="1" inputmode="numeric" /><input maxlength="1" inputmode="numeric" />
           </div>
           <p class="ff-hint" data-msg></p>
+          <p class="ff-hint" data-clip-note>Pasted codes are cleared from the clipboard when the browser allows it — that is convenience, not protection against malware on this device.</p>
           <button class="ff-btn" type="submit" data-act="verify">Verify & enter →</button>
           <p class="ff-hint">Didn't get it?
             <button type="button" class="ff-resend" data-act="resend" disabled>Resend (<span data-cd>40</span>s)</button>
@@ -218,9 +220,18 @@
           const digits = (e.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, 6);
           digits.split("").forEach((d, j) => { if (boxes[j]) boxes[j].value = d; });
           boxes[Math.min(digits.length, 5)].focus();
-          // Clipboard-attack hardening: a pasted one-time code must not linger
-          // in the clipboard for malware or a later stray paste to harvest.
-          window.FeeFixClipboard && window.FeeFixClipboard.clearClipboard();
+          // Clipboard hygiene: clear a pasted one-time code so it does not sit
+          // in the clipboard for a later stray paste. This is a *usability*
+          // measure — it cannot stop malware that already read the value, and
+          // the footer note below says so to the user in plain words.
+          if (window.FeeFixClipboard) {
+            window.FeeFixClipboard.clearClipboard().then((result) => {
+              if (!result.ok && result.reason === "denied-or-unfocused") {
+                const note = row.parentElement.querySelector("[data-clip-note]");
+                if (note) note.textContent = "Clipboard could not be cleared automatically.";
+              }
+            });
+          }
         });
       });
     });

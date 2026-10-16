@@ -11,10 +11,10 @@ Instead of *"Where can I find scholarships?"* — FeeFix answers
 **"Which schemes fit my profile, why do I qualify, and what should I do next?"**
 
 [![CI](https://github.com/authorsauravkushwaha/feefix-india/actions/workflows/ci.yml/badge.svg)](https://github.com/authorsauravkushwaha/feefix-india/actions)
-[![Tests](https://img.shields.io/badge/tests-151%20passing-brightgreen)](#-testing)
+[![Tests](https://img.shields.io/badge/tests-472%20passing-brightgreen)](#-testing)
 [![Schemes](https://img.shields.io/badge/verified%20schemes-71-blue)](#-the-dataset)
 [![Languages](https://img.shields.io/badge/languages-en%20·%20বাংলা%20·%20हिन्दी%20·%20தமிழ்-orange)](#-four-languages-native-script)
-[![Security](https://img.shields.io/badge/security-PBKDF2%20·%20CSP%20·%20rate%20limit-critical)](docs/security/SECURITY.md)
+[![Security](https://img.shields.io/badge/security-Argon2id%20·%20CSP%20·%20shared%20rate%20limit-critical)](docs/security/SECURITY.md)
 [![AI](https://img.shields.io/badge/AI-100%25%20free%20local%20%7C%20zero%20paid%20APIs-8b5cf6)](ai/README.md)
 [![Python](https://img.shields.io/badge/python-3.11+-3776ab?logo=python&logoColor=white)](#)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.1xx-009688?logo=fastapi&logoColor=white)](#)
@@ -62,7 +62,7 @@ Wizard → explainable ranked matches → dashboard (tracker, reminders, sign-in
 | **Ranking** | `backend/matching_engine/ranker.py` | `45·clarity + urgency + benefit + verified`, deadline-aware, badges. |
 | **Free-local AI** | `ai/` | Semantic search + **grounded Q&A with citations** — answers assembled only from verified dataset fields (+ near-miss radar). In-process embeddings (`fastembed`/MiniLM or built-in sublinear-TF n-gram embedder). **No paid APIs, ever.** |
 | **ML outcome ranking (V2)** | `ml/ranking/` · `POST /api/events` · `GET /api/ml/rank` | Tracker buttons (`viewed/applied/approved/…`) stream outcome events with their V1 signal snapshots → tiny logistic model re-ranks matches (**⚡ ML preview** toggle, synthetic bootstrap until ≥25 real events). *Same signals V1 uses — no invented facts.* |
-| **Security & accounts** | `backend/services/auth.py` · `db.py` · `ratelimit.py` · `secure_headers.py` | PBKDF2-SHA256 passwords (600k rounds, per-user salt) · SHA-256-hashed revocable session tokens · sliding-window rate limits · CSP/HSTS/nosniff/no-store headers · CORS closed by default · append-only audit log · uniform login errors · **data export + right-to-erasure**. → [`docs/security/SECURITY.md`](docs/security/SECURITY.md) |
+| **Security & accounts** | `backend/services/` · `agents/secret_scan.py` · `.github/workflows/ci.yml` | **Argon2id** passwords (PBKDF2-600k for legacy rows, re-hashed on login) · SHA-256-hashed revocable session tokens with replay tolerance that can't log you out everywhere · sliding-window rate limits **shared across instances via Redis** · per-endpoint body limits enforced mid-stream · hardened upload gate wired to real routes · boot-time secret hygiene that **refuses to start** on placeholders in production · secret scan + gitleaks + bandit + pip-audit in CI · CSP/HSTS/nosniff/no-store · CORS closed by default · append-only audit log · uniform login errors · **data export + right-to-erasure**. → [`docs/security/SECURITY.md`](docs/security/SECURITY.md) |
 | **Storage** | `backend/services/sqlite_store.py` | **SQLite (WAL mode)** — ACID, crash-safe, indexed, FK-enforced, versioned migrations, legacy JSONL auto-import. Postgres swap = one module (documented). |
 | **Data & verification** | `data/` | 71 curated schemes as structured, validated records + per-record **verification manifest**; `agents/verify_dataset.py` gates CI. |
 | **Reach layer** | `backend/services/chat.py` + `chat_i18n.py` | WhatsApp-style conversational matcher — *State → Course → Income → matches → free-text Q&A* — in **English, বাংলা, हिन्दी & தமிழ்** (native script detection, দেশি digits `২ লাখ`, Tamil `லட்சம்`, NFC-safe matching). |
@@ -165,7 +165,7 @@ cd feefix-india
 ```
 
 ```bash
-./scripts/dev.sh --test                       # 151 tests
+./scripts/dev.sh --test                       # 472 tests
 .venv/bin/python -m agents.verify_dataset     # dataset health audit
 .venv/bin/python -m ml.experiments.simulate_outcomes   # V2 ranker demo
 ```
@@ -186,6 +186,15 @@ Export or erase your data anytime (`docs/api/API.md` → Accounts).
 | `test_dataset` | 71-record integrity + per-state match scenarios |
 | `test_api` · `test_ml_api` | REST contract, events, V2 compare endpoint |
 | `test_auth` | register/login, token revocation, ownership 403s, rate limits, headers, export/erase, **no-plaintext-DB proof** |
+| `test_password_hashing` | Argon2id parameters, fail-closed production boot, PBKDF2→Argon2id migration on login |
+| `test_session_replay_policy` | rotation, overlap tolerance, strike-based revocation — the live session survives |
+| `test_ratelimit_distributed` | two real worker processes, shared Redis counters, XFF spoofing, fail modes |
+| `test_body_limits` | per-endpoint caps, mid-stream abort → 413, env overrides, absolute clamp |
+| `test_uploads` | magic bytes, quotas, traversal, ownership, the wired routes |
+| `test_numerals` · `test_fuzz_security` | table-driven income parsing + property-based/adversarial pass (hypothesis) |
+| `test_secret_hygiene` · `test_schema_migrations` | scanner bypasses, strict boot, concurrent/crashed migrations |
+| `test_clipboard_js` | executes `secure-clipboard.js` in node (18 checks) — and asserts it claims no security control |
+| `test_ci_config` | parses CI + pre-commit, runs their commands, and fails if a gate is mis-wired or demoted to advisory |
 | `test_chat` · `test_i18n_rules` | 4-language parsing + full conversations + localized explanations |
 | `test_ai` · `test_agents` | grounding, search rankings, verifier, scheduler |
 
@@ -212,9 +221,11 @@ feefix-india/
 ├── mobile/android/          # Kotlin scaffold (same API contract)
 ├── ml/                      # V2 outcome ranker + experiments + events-trained service
 ├── language/regional_support/  # en/bn/hi/ta dictionaries + explanation templates
-├── .github/workflows/       # CI: tests + agents + ML sanity (free for public repos)
+├── .github/workflows/       # CI: tests · secret scan + gitleaks · bandit + pip-audit · dataset (free)
+│                            #     gates are themselves tested (tests/test_ci_config.py)
 ├── scripts/dev.sh           # one-command dev bootstrap
-└── tests/                   # 151 tests
+├── scripts/verify.sh        # every CI gate locally, one command
+└── tests/                   # 472 tests (incl. fuzz · distributed · CI-contract)
 ```
 
 ## 🗺 Roadmap
@@ -225,7 +236,8 @@ feefix-india/
 - [x] **Phase 4 — Language depth**: full conversations + localized explanations in Bengali/Hindi ✅
 - [x] **Phase 5 — National footprint**: UP, Maharashtra, Jharkhand, Tamil Nadu, Assam, Karnataka, Kerala + Ishan Uday; Tamil as 4th language ✅
 - [x] **v1.1 — Trust layer**: accounts & sign-in, CIA-mapped hardening, SQLite WAL, export/erasure ✅
-- [ ] **Next** — more states (Gujarat, Rajasthan, MP…) + te/mr templates · deployed public link (see `docs/deploy/`) · college-partner dispatch channels · TOTP second factor
+- [x] **v1.2 — Adversarial hardening**: Argon2id · per-endpoint body limits · Redis-shared rate limiting · replay policy without self-DoS · hardened upload routes · secret-scan/SAST/SBOM CI gates · fuzz + distributed + migration-race suites ✅
+- [ ] **Next** — more states (Gujarat, Rajasthan, MP…) + te/mr templates · deployed public link (see `docs/deploy/`) · college-partner dispatch channels · TOTP second factor · **independent third-party review / pen test** (hand-written tests prove consistency, not security — see `HARDENING.md`)
 
 ## ⚖️ Data disclaimer
 

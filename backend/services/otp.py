@@ -113,6 +113,20 @@ def _ensure_schema() -> None:
         conn.commit()
 
 
+
+def _https_only(url: str) -> str:
+    """Reject anything that is not ``https://`` before we open a connection.
+
+    Outbound calls carry provider credentials (Twilio auth, GitHub OAuth), so the
+    scheme is pinned: no ``file:``, ``ftp:`` or ``http:`` downgrade, and no
+    redirect into a plaintext scheme. ``# nosec B310`` on the call sites below is
+    justified by this check running immediately before them.
+    """
+    parsed = parse.urlparse(url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError(f"refusing to open non-https URL: {parsed.scheme or 'no scheme'}")
+    return url
+
 def _pepper() -> bytes:
     """Server-side pepper so a bare DB dump can't brute force 6-digit codes."""
     env = os.environ.get("FEEFIX_OTP_PEPPER")
@@ -385,7 +399,7 @@ def _deliver_sms(address: str, code: str) -> dict:
         },
     )
     try:
-        with urlreq.urlopen(req, timeout=_HTTP_TIMEOUT_S) as r:
+        with urlreq.urlopen(_https_only(req.full_url), timeout=_HTTP_TIMEOUT_S) as r:  # nosec B310
             r.read()
         return {"via": "twilio"}
     except Exception as exc:
@@ -440,7 +454,7 @@ def _http_json_post(url: str, data: dict) -> dict:
         headers={"Accept": "application/json",
                  "Content-Type": "application/x-www-form-urlencoded"},
     )
-    with urlreq.urlopen(req, timeout=_HTTP_TIMEOUT_S) as r:
+    with urlreq.urlopen(_https_only(req.full_url), timeout=_HTTP_TIMEOUT_S) as r:  # nosec B310
         return json.loads(r.read().decode())
 
 
@@ -450,7 +464,7 @@ def _http_json_get(url: str, gh_token: str):
         "Accept": "application/vnd.github+json",
         "User-Agent": "feefix-india",
     })
-    with urlreq.urlopen(req, timeout=_HTTP_TIMEOUT_S) as r:
+    with urlreq.urlopen(_https_only(req.full_url), timeout=_HTTP_TIMEOUT_S) as r:  # nosec B310
         return json.loads(r.read().decode())
 
 

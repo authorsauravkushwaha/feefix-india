@@ -7,6 +7,56 @@ services:
     branch: main
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
+
+      # -- environment + secret handling ------------------------------------- #
+      # "production" turns on the fail-closed boot guards: a placeholder secret
+      # or a missing Argon2id backend refuses to start (services/secrets.py,
+      # services/passwords.py) rather than serving with a weakened config.
+      - key: FEEFIX_ENV
+        value: production
+      - key: FEEFIX_PASSWORD_ALGO
+        value: argon2id
+      # Set to 1 to run with the *old* advisory-only behaviour. Deliberately an
+      # explicit, auditable opt-out: the default in production is to refuse.
+      - key: FEEFIX_SECRETS_STRICT
+        value: "1"
+
+      # -- shared state: rate limiting across instances ----------------------- #
+      # Without this, each Render instance keeps its own counters and an
+      # attacker simply spreads requests across instances (limit × N).
+      # Wire a Key Value / Redis instance and paste its URL here:
+      #   - key: FEEFIX_REDIS_URL
+      #     fromService:
+      #       type: redis
+      #       name: feefix-redis
+      #       property: connectionString
+      # Auth and expensive endpoints fail *closed* if the store is unreachable
+      # (FEEFIX_RATELIMIT_FAIL_MODE default = "auth").
+      - key: FEEFIX_RATELIMIT_FAIL_MODE
+        value: "auth"
+      # Render terminates TLS in front of the service, so without this every
+      # request would appear to arrive from the proxy and *all* users would
+      # share one per-IP bucket. The forwarded header is read rightmost (the hop
+      # Render saw), so a client-supplied value cannot forge its own identity.
+      - key: FEEFIX_TRUST_PROXY
+        value: "1"
+
+      # -- persistent state --------------------------------------------------- #
+      # Uploads and the SQLite database must live on a disk, or every deploy
+      # (and every instance) starts empty and files vanish. Attach a Render
+      # disk at /var/data and the paths below follow automatically.
+      - key: FEEFIX_DB
+        value: /var/data/feefix.db
+      - key: FEEFIX_UPLOAD_DIR
+        value: /var/data/uploads
+
+      # -- API surface -------------------------------------------------------- #
+      # Interactive docs are ON by default; this documents how to opt out.
+      # Turning them off is *cosmetic* — it hides documentation, never an
+      # endpoint (see docs/security/HARDENING.md).
+      # - key: FEEFIX_DISABLE_DOCS
+      #   value: "1"

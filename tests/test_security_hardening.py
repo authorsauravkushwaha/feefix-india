@@ -10,6 +10,19 @@ Maps 1:1 to the threat list in docs/security/HARDENING.md:
   6 ReDoS                  12 Rate limiting
   13 authentication != authorization
 
+This file is the *map*; the depth lives in the focused suites added after the
+security review, each of which covers one control end to end:
+
+  tests/test_session_replay_policy.py     replay policy without a self-DoS (1)
+  tests/test_clipboard_js.py              clipboard module behaviour (2)
+  tests/test_secret_hygiene.py            strict boot + scanner bypasses (4, 10)
+  tests/test_password_hashing.py          Argon2id + migration (5)
+  tests/test_uploads.py                   the wired upload gate (9)
+  tests/test_body_limits.py               per-endpoint limits, streaming (11)
+  tests/test_ratelimit_distributed.py     rate limiting across instances (12)
+  tests/test_numerals.py                  table-driven income parsing (6)
+  tests/test_fuzz_security.py             property-based/adversarial pass
+
 Run with the rest of the suite (``python -m pytest``).
 """
 
@@ -21,6 +34,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 REPO = Path(__file__).resolve().parents[1]
 PROFILE = {"domicile_state": "West Bengal", "category": "general",
@@ -43,7 +57,15 @@ def _own_session(client, sid):
 
 
 # ===================================================================== 1 REPLAY
-def test_aged_token_rotates_and_stale_replay_revokes_family(client):
+def test_aged_token_rotates_and_a_stale_replay_does_not_kill_the_live_session(client):
+    """Anti-replay without the self-DoS: the stale token dies, the session lives.
+
+    The old behaviour revoked the whole session family on any replayed rotated
+    token, so one stale tab logged the user out everywhere. The policy is now
+    tiered (see ``services/auth.py`` and tests/test_session_replay_policy.py):
+    a stale token beyond the overlap window is refused, while the live token
+    keeps working, and family revocation needs an actual theft signal.
+    """
     token = _register(client).json()["token"]
     from backend.services import auth as auth_svc, db
     conn = db.get_connection()
@@ -60,17 +82,41 @@ def test_aged_token_rotates_and_stale_replay_revokes_family(client):
     assert client.get("/api/auth/me",
                       headers={"Authorization": f"Bearer {new_token}"}).status_code == 200
 
-    # A thief replaying the superseded token after the grace window is detected:
-    # the whole session family is revoked, so neither the stale nor the fresh
-    # token works any more.
+    # A replay of the superseded token, long after the overlap window: refused —
+    # but the session the real user is holding must survive.
     conn.execute("UPDATE auth_sessions SET replaced_at=? WHERE token_hash=?",
-                 ((datetime.now(timezone.utc) - timedelta(seconds=300))
+                 ((datetime.now(timezone.utc) - timedelta(seconds=auth_svc.OVERLAP_S + 600))
                   .isoformat(timespec="seconds"), auth_svc._token_hash(token)))
     conn.commit()
     assert client.get("/api/auth/me",
                       headers={"Authorization": f"Bearer {token}"}).status_code == 401
     assert client.get("/api/auth/me",
-                      headers={"Authorization": f"Bearer {new_token}"}).status_code == 401
+                      headers={"Authorization": f"Bearer {new_token}"}).status_code == 200
+
+
+def test_replay_beyond_overlap_is_audited(client):
+    """A refused replay leaves a trail an operator can act on."""
+    token = _register(client, email="audit-replay@example.com").json()["token"]
+    from backend.services import auth as auth_svc, db
+    conn = db.get_connection()
+    aged = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat(timespec="seconds")
+    conn.execute("UPDATE auth_sessions SET created_at=? WHERE token_hash=?",
+                 (aged, auth_svc._token_hash(token)))
+    conn.commit()
+
+    # Real rotation: the response carries the replacement token.
+    r = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200 and r.headers.get("X-Session-Token")
+
+    # Now push the supersession far outside the overlap window and replay.
+    conn.execute("UPDATE auth_sessions SET replaced_at=? WHERE token_hash=?",
+                 ((datetime.now(timezone.utc) - timedelta(seconds=auth_svc.OVERLAP_S + 600))
+                  .isoformat(timespec="seconds"), auth_svc._token_hash(token)))
+    conn.commit()
+    assert client.get("/api/auth/me",
+                      headers={"Authorization": f"Bearer {token}"}).status_code == 401
+    actions = [row["action"] for row in conn.execute("SELECT action FROM audit_log")]
+    assert "auth.token_replay_rejected" in actions, actions
 
 
 def test_oauth_state_is_single_use(client, monkeypatch):
@@ -85,9 +131,13 @@ def test_oauth_state_is_single_use(client, monkeypatch):
 # ================================================================== 2 CLIPBOARD
 def test_secure_clipboard_never_copies_tokens():
     src = (REPO / "web" / "frontend" / "secure-clipboard.js").read_text()
-    # The helper must refuse credential-shaped values and auto-clear.
-    assert "looksLikeSecret" in src and "clearClipboard" in src
+    # The helper must refuse credential-shaped values and auto-clear…
+    assert "looksLikeSecret" in src and "clearClipboard" in src and "copyWithHygiene" in src
     assert "feefix.token" in src  # explicit guard against copying the token
+    # …and must not pretend to stop clipboard malware (see tests/test_clipboard_js.py,
+    # which executes the module instead of grepping it).
+    assert "cannot stop" in src.lower()
+    assert "securityControl: false" in src
 
 
 def test_auth_token_never_leaked_in_urls_or_bodies(client):
@@ -229,6 +279,32 @@ def test_i18n_path_traversal_blocked(client):
         assert client.get(f"/api/i18n/{evil}").status_code == 404
 
 
+def test_docs_are_enabled_by_default_and_can_be_opted_out(monkeypatch):
+    """Turning docs off removed no endpoint — it only broke tooling.
+
+    So the switch stays available for operators who want it, but the default is
+    ON, and the OpenAPI schema (what generated clients consume) is served.
+    """
+    from backend.main import create_app, docs_enabled
+
+    monkeypatch.delenv("FEEFIX_ENABLE_DOCS", raising=False)
+    monkeypatch.delenv("FEEFIX_DISABLE_DOCS", raising=False)
+    assert docs_enabled() is True
+
+    app = create_app()
+    client_ = TestClient(app)
+    assert client_.get("/openapi.json").status_code == 200
+    assert client_.get("/docs").status_code == 200
+    schema = client_.get("/openapi.json").json()
+    assert "/api/uploads/{session_id}" in schema["paths"]
+
+    # Opting out works for deployments that genuinely want a docs-free surface.
+    monkeypatch.setenv("FEEFIX_DISABLE_DOCS", "1")
+    assert docs_enabled() is False
+    docs_client = TestClient(create_app())
+    assert docs_client.get("/openapi.json").status_code == 404
+
+
 def test_validation_error_has_no_stacktrace(client):
     r = client.post("/api/auth/register", json={"email": "x", "password": "y"})
     assert r.status_code == 422
@@ -236,6 +312,17 @@ def test_validation_error_has_no_stacktrace(client):
 
 
 # ========================================================== 9 FILE UPLOAD
+def test_upload_gate_is_wired_into_a_route():
+    """A control nobody calls protects nothing — the gate now has a caller."""
+    from backend.main import create_app
+
+    # The OpenAPI schema is the canonical view of what the app actually serves
+    # (newer Starlette keeps included routers nested rather than flattened).
+    paths = set(create_app().openapi()["paths"])
+    assert any(p.endswith("/uploads/{session_id}") for p in paths), paths
+    assert any(p.endswith("/uploads/{session_id}/{upload_id}/content") for p in paths), paths
+
+
 def test_upload_rejects_dangerous_and_spoofed_files():
     from backend.services.upload import validate_upload
     assert validate_upload("cv.pdf", b"%PDF-1.7 ok")[0] is True
@@ -326,6 +413,16 @@ def test_rate_limit_tiers_and_retry_after():
     for _ in range(ratelimit.EXPENSIVE_LIMIT[0]):
         assert ratelimit.check_expensive(ip, "ask")
     assert not ratelimit.check_expensive(ip, "ask")
+
+
+def test_rate_limit_has_a_shared_store_option():
+    """In-process counters multiply across workers — Redis is the fix."""
+    from backend.services import ratelimit
+
+    assert hasattr(ratelimit, "RedisBackend")
+    assert ratelimit.status()["distributed"] in (True, False)
+    # The default (no FEEFIX_REDIS_URL) is the in-process store, and it says so.
+    assert ratelimit.configure().name in ("memory", "redis")
 
 
 def test_rate_limit_store_is_bounded():
