@@ -82,6 +82,9 @@ jobs:
           # read-only. (GITLEAKS_LICENSE is only required for organisations;
           # this repository is a user account.)
           GITLEAKS_ENABLE_COMMENTS: "false"
+          # Extends the vendor defaults with a file-scoped, documented allowlist
+          # (see .gitleaks.toml) instead of waiving findings ad hoc.
+          GITLEAKS_CONFIG: .gitleaks.toml
 
   sast-and-dependencies:
     runs-on: ubuntu-latest

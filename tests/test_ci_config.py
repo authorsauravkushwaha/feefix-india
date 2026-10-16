@@ -108,6 +108,46 @@ def test_third_party_scanner_is_independent_and_scans_full_history(ci):
     assert "GITHUB_TOKEN" in gitleaks_step["env"]
 
 
+def test_third_party_scanner_uses_a_versioned_and_scoped_config(ci):
+    """A real config file, extending the vendor rules, with a narrow allowlist.
+
+    The scan went red on our own fixtures (fake tokens, the detector's own
+    regexes, example DSNs in the docs) — the honest fix is a documented,
+    file-scoped allowlist, not a blanket waiver. These assertions are what stop
+    it from quietly becoming one.
+    """
+    import tomllib
+
+    step = next(
+        s
+        for s in ci["jobs"]["secret-scan-third-party"]["steps"]
+        if "gitleaks" in str(s.get("uses", ""))
+    )
+    assert step["env"].get("GITLEAKS_CONFIG") == ".gitleaks.toml"
+
+    config_path = REPO / ".gitleaks.toml"
+    assert config_path.exists(), "the workflow references a config that does not exist"
+    config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+
+    # Vendor rules stay active everywhere: this extends defaults, never replaces.
+    assert config["extend"]["useDefault"] is True
+
+    allow = config["allowlist"]
+    assert allow["description"], "the allowlist must explain itself"
+    for pattern in allow["paths"]:
+        # Path-scoped: anchored to a specific file, never a catch-all.
+        assert not pattern.strip("^$()")  in (".*", ".+", ""), pattern
+        assert ".*" not in pattern, f"path allowlist entry is too broad: {pattern}"
+        assert pattern.endswith("$"), f"path allowlist entry must be anchored: {pattern}"
+
+    # The only files allowed to contain secret-shaped text are the ones whose
+    # job is to test or document it.
+    allowed = " ".join(allow["paths"])
+    for expected in ("agents/secret_scan", "tests/test_secret_hygiene",
+                     "tests/test_fuzz_security", "docs/security"):
+        assert expected in allowed, f"expected an allowlist entry for {expected}"
+
+
 def test_sast_and_dependency_jobs_are_blocking(ci):
     """A scanner that cannot fail the build is not a gate."""
     for job_name in ("test", "secret-scan-third-party", "sast-and-dependencies"):
