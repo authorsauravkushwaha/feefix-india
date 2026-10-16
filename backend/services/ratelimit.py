@@ -46,6 +46,16 @@ import secrets
 import threading
 import time
 
+#: Optional dependency, only imported when a Redis store is actually configured
+#: (see ``RedisStore``). Bound at module level so tests can substitute a fake.
+redis = None
+try:  # pragma: no cover - trivial import guard
+    import redis as _redis_module
+
+    redis = _redis_module
+except Exception:  # pragma: no cover - redis is optional
+    redis = None
+
 log = logging.getLogger("feefix.ratelimit")
 
 DEFAULT_LIMIT = (1000, 60)       # 1000 requests / 60s per IP (app-wide)
@@ -225,8 +235,9 @@ class RedisStore:
     shared = True
 
     def __init__(self, url: str, max_keys: int = _MAX_KEYS) -> None:
-        import redis  # lazy: optional dependency, only needed when configured
-
+        # ``redis`` is the module-level symbol, so tests can substitute a fake
+        # client; in a deployment without Redis configured this class is never
+        # constructed and the package is never required.
         self._client = redis.Redis.from_url(url, socket_timeout=2, socket_connect_timeout=2)
         self._client.ping()
         self.max_keys = max_keys
@@ -273,6 +284,13 @@ def _select_store():
     if choice in ("auto", "") and url:
         choice = "redis"
     if choice == "redis" or (choice == "auto" and url):
+        if redis is None:  # pragma: no cover - depends on installation
+            log.error(
+                "[ratelimit] FEEFIX_REDIS_URL is set but the 'redis' package is not "
+                "installed — falling back to the shared SQLite store. Install redis "
+                "to use it (requirements-redis.txt)."
+            )
+            return SQLiteStore()
         try:
             store = RedisStore(url)
             log.info("[ratelimit] shared Redis store in use (%s)", _REDIS_HOST(url))

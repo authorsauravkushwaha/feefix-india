@@ -1,0 +1,12 @@
+# Optional, for multi-instance deployments only.
+#
+# The default limiter store is the app's SQLite file, which shares counters
+# across every worker process on ONE host. A deployment that runs several
+# instances behind a load balancer needs Redis to keep a single limit — without
+# it, the effective limit is multiplied by the number of replicas (the app logs
+# a loud topology warning at boot, and refuses to start in strict mode).
+#
+#   pip install -r requirements-redis.txt
+#   FEEFIX_REDIS_URL=redis://host:6379/0
+#
+redis>=5.0

@@ -68,7 +68,11 @@ POST /api/auth/logout-all                    (Bearer) → sign out of every sess
 
 Errors: wrong password and unknown email return identical `401` bodies
 (no account enumeration). Auth endpoints are rate-limited
-(10 attempts / 5 min per IP+account → `429`). All `/api/*` responses carry
+(10 attempts / 5 min per IP+account → `429` with `Retry-After` and
+`X-RateLimit-Scope: auth`). If the password-hashing pool is saturated (a bounded
+resource, `FEEFIX_KDF_CONCURRENCY`), auth endpoints answer **`503` +
+`Retry-After: 2`** — a retryable capacity signal, identical for known, unknown
+and wrong-credential requests, and never a fake "invalid password". All `/api/*` responses carry
 CSP/nosniff/no-store security headers. See `docs/security/SECURITY.md`.
 
 ## Documents (uploads)

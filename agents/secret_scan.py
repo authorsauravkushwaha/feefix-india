@@ -130,6 +130,13 @@ _TEST_PATH = re.compile(r"(^|/)(tests?/|test_[^/]*$|.*_test\.py$|conftest\.py$|f
 _ALLOWLIST_PRAGMA = re.compile(
     r"pragma:\s*allowlist\s+secret|secret-scan:\s*allow|nosec:\s*secret", re.I
 )
+#: Captured diffs (``*.patch``/``*.diff``) contain other files' *lines*, so the
+#: context-dependent checks (is this a test fixture? is this a checksum?) cannot
+#: be evaluated correctly inside them — a fixture's fake password looks identical
+#: to a real one once the surrounding file path is gone. Only the self-contained
+#: provider-shape patterns are applied there; that still catches a real token
+#: pasted into a patch, without turning every captured diff into noise.
+_CONTAINER_ARTIFACT = re.compile(r"\.(?:patch|diff)$", re.I)
 
 
 # --------------------------------------------------------------------------- #
@@ -277,6 +284,9 @@ def _scan_line(line: str, rel: str, lineno: int, is_test: bool) -> list[dict]:
             if pattern.search(joined):
                 findings.append({"file": rel, "line": lineno, "type": f"{label}_split",
                                  "snippet": _redact(line)})
+
+    if _CONTAINER_ARTIFACT.search(rel):
+        return findings
 
     candidates: list[tuple[str, str]] = []          # (name, literal)
     for match in _ASSIGN.finditer(line):

@@ -30,6 +30,7 @@ from backend.services.numerals import (
     digit_translation,
     normalize_digits,
     supported_languages,
+    supported_scales,
     validate_lexicon,
 )
 
@@ -188,3 +189,47 @@ def test_patterns_are_compiled_from_the_data():
     assert patterns, "no scale patterns were built"
     for pattern in patterns.values():
         assert pattern.groups <= 2
+
+
+# ------------------------------------------------- validator edge cases & helpers
+def test_validator_reports_structural_defects():
+    broken = json.loads(json.dumps(DATA, ensure_ascii=False))
+    broken["languages"]["xx"] = {"name": "Nowhere", "scripts": [], "words": {"lakh": []}}
+    problems = validate_lexicon(broken)
+    assert any("xx: no scripts declared" in p for p in problems)
+    assert any("xx: no word for scale" in p for p in problems)
+
+    broken2 = json.loads(json.dumps(DATA, ensure_ascii=False))
+    broken2["languages"]["bn"]["words"]["lakh"] = [""]
+    assert any("empty word" in p for p in validate_lexicon(broken2))
+
+    assert validate_lexicon({"scales": {}, "languages": {}}) == ["no scales defined"]
+
+
+def test_script_check_allows_separators_and_latin_abbreviations():
+    from backend.services.numerals import _in_any_script
+
+    assert _in_any_script("lakh(s)", ("Latin",)) is True
+    assert _in_any_script("लाख", ("Devanagari",)) is True
+    assert _in_any_script("লাখ", ("Devanagari",)) is False
+
+
+def test_helper_surfaces_describe_what_is_supported():
+    scales = supported_scales()
+    assert scales == {"crore": 10_000_000, "lakh": 100_000, "thousand": 1_000}
+    languages = supported_languages()
+    assert {"en", "hi", "bn", "ta"} <= set(languages)
+    for name, scale_words in languages.items():
+        assert set(scale_words) == set(scales), f"{name} does not cover every scale"
+
+
+def test_currency_markers_are_stripped_anywhere():
+    for text in ("Rs. 1,50,000", "INR 150000", "रुपये 150000"):
+        assert parse_income(text) == 150_000
+
+
+def test_fold_makes_keyboard_variants_equivalent():
+    from backend.services.numerals import fold
+
+    assert fold("लक्ष\u200d") == fold("लक्ष")
+    assert fold("हज\u093cार") == fold("हजार")

@@ -4,6 +4,10 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+# Coverage artifacts (the suite's coverage run is a local tool, not a deliverable)
+.coverage
+.coverage.*
+htmlcov/
 
 # Runtime stores (local tracker + notification outbox)
 # `runtime/` holds a live database, uploaded student documents, one-time-code

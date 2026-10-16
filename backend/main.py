@@ -44,6 +44,7 @@ from backend.notifications import (
     WhatsAppOutboxNotifier,
 )
 from backend.services import ratelimit
+from backend.services.auth import AuthBusy as _AuthBusy
 from backend.services.body_limit import BodyLimitMiddleware
 from backend.services.dataset import DatasetService
 from backend.services.secure_headers import SecurityHeadersMiddleware
@@ -226,6 +227,15 @@ def create_app() -> FastAPI:
     from ai.qa import QaEngine
 
     app.state.qa = QaEngine(dataset)
+
+    @app.exception_handler(_AuthBusy)
+    async def _busy_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Back-pressure from the bounded KDF pool → retryable 503 (never a 500)."""
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Service is busy — please retry shortly."},
+            headers={"Retry-After": "2"},
+        )
 
     @app.exception_handler(Exception)
     async def unhandled(request: Request, exc: Exception):  # pragma: no cover - safety net

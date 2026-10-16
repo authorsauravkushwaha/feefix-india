@@ -20,3 +20,7 @@ pytest>=8.0
 pytest-asyncio>=0.23
 httpx>=0.27        # TestClient transport
 hypothesis>=6.100  # property-based tests (parsers, upload validation, tokens)
+
+# tests only — a fake Redis server (with server-side Lua) so the multi-instance
+# rate-limit store is covered by the suite instead of by inspection.
+fakeredis[lua]>=2.20

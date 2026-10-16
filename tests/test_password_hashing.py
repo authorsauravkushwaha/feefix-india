@@ -145,6 +145,75 @@ def test_concurrent_kdf_work_is_bounded(monkeypatch):
     holder.join(timeout=5)
 
 
+class TestKdfBackPressure:
+    """A saturated hashing pool is a retryable capacity signal, never "wrong
+    password".
+
+    The bug this pins: ``verify_password`` swallowed every exception, so a busy
+    KDF surfaced as 401 "Invalid email or password" for a *correct* password —
+    misleading to the user and dangerous for clients that count failures and
+    lock accounts or force a password reset.
+    """
+
+    def _saturate(self, monkeypatch):
+        monkeypatch.setattr(auth_svc, "KDF_WAIT_S", 0.01)
+        monkeypatch.setattr(auth_svc, "_KDF_SLOTS", threading.BoundedSemaphore(1))
+        auth_svc._KDF_SLOTS.acquire()
+
+    def test_verify_raises_busy_instead_of_returning_false(self, monkeypatch):
+        stored = auth_svc.hash_password("S3cure!Pass")
+        self._saturate(monkeypatch)
+        with pytest.raises(auth_svc.AuthBusy):
+            auth_svc.verify_password("S3cure!Pass", stored)
+
+    def test_login_answers_503_with_retry_after(self, client, monkeypatch):
+        assert client.post(
+            "/api/auth/register", json={"email": "cap@example.com", "password": "S3cure!Pass"}
+        ).status_code == 200
+        self._saturate(monkeypatch)
+        response = client.post(
+            "/api/auth/login", json={"email": "cap@example.com", "password": "S3cure!Pass"}
+        )
+        assert response.status_code == 503
+        assert response.headers["Retry-After"] == "2"
+        assert "password" not in response.text.lower()
+
+    def test_register_answers_503_not_422(self, client, monkeypatch):
+        self._saturate(monkeypatch)
+        response = client.post(
+            "/api/auth/register", json={"email": "cap2@example.com", "password": "S3cure!Pass"}
+        )
+        assert response.status_code == 503
+        assert response.headers["Retry-After"] == "2"
+
+    def test_known_unknown_and_wrong_password_are_indistinguishable(self, client, monkeypatch):
+        assert client.post(
+            "/api/auth/register", json={"email": "cap3@example.com", "password": "S3cure!Pass"}
+        ).status_code == 200
+        self._saturate(monkeypatch)
+        bodies = [
+            client.post("/api/auth/login", json={"email": "cap3@example.com", "password": "S3cure!Pass"}),
+            client.post("/api/auth/login", json={"email": "nobody@example.com", "password": "whatever1"}),
+            client.post("/api/auth/login", json={"email": "cap3@example.com", "password": "wrongwrong"}),
+        ]
+        assert {r.status_code for r in bodies} == {503}
+        assert len({r.text for r in bodies}) == 1, "back-pressure must not enumerate accounts"
+
+    def test_service_recovers_when_a_slot_frees(self, client, monkeypatch):
+        assert client.post(
+            "/api/auth/register", json={"email": "cap4@example.com", "password": "S3cure!Pass"}
+        ).status_code == 200
+        self._saturate(monkeypatch)
+        assert client.post(
+            "/api/auth/login", json={"email": "cap4@example.com", "password": "S3cure!Pass"}
+        ).status_code == 503
+        auth_svc._KDF_SLOTS.release()
+        monkeypatch.setattr(auth_svc, "KDF_WAIT_S", 5.0)
+        assert client.post(
+            "/api/auth/login", json={"email": "cap4@example.com", "password": "S3cure!Pass"}
+        ).status_code == 200
+
+
 def test_hash_backend_note_is_honest_and_secret_free():
     note = auth_svc.hash_backend_note()
     assert ("argon2id" in note) or ("scrypt" in note and "argon2-cffi" in note)

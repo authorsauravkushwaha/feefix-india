@@ -84,6 +84,29 @@ def _authorize_session(request: Request, session_id: str) -> None:
 
 
 # -- authentication -------------------------------------------------------------
+def _auth_error(exc: Exception) -> HTTPException:
+    """Map a service-layer auth failure to the right HTTP semantics.
+
+    ``AuthBusy`` means the password-hashing slots are saturated (a bounded,
+    deliberate back-pressure control). Reporting that as 401/422 would tell a
+    user with the *correct* password that their credentials are wrong — and would
+    have clients treat a load spike as an account problem. It is a retryable
+    503 with a Retry-After instead, and it never carries internal detail.
+    """
+    from backend.services import auth as auth_svc
+
+    if isinstance(exc, auth_svc.AuthBusy):
+        return HTTPException(
+            status_code=503,
+            detail="Sign-in is temporarily busy — please retry shortly.",
+            headers={"Retry-After": "2"},
+        )
+    # A registration conflict is a 409; anything else is a validation failure.
+    if isinstance(exc, auth_svc.AuthError):
+        return HTTPException(422, detail=str(exc))
+    return HTTPException(400, detail="Request could not be processed.")
+
+
 def _enforce_auth_limit(request: Request, identifier: str) -> None:
     """Auth rate limit with a Retry-After hint (blunts credential brute-force)."""
     from backend.services import ratelimit
@@ -93,7 +116,13 @@ def _enforce_auth_limit(request: Request, identifier: str) -> None:
         raise HTTPException(
             status_code=429,
             detail="Too many attempts — try again later.",
-            headers={"Retry-After": str(ratelimit.retry_after(client, f"auth:{identifier}"))},
+            headers={
+                "Retry-After": str(ratelimit.retry_after(client, f"auth:{identifier}")),
+                # Which limit was hit, so a client (and an operator reading access
+                # logs) can tell an auth throttle from the global or expensive one.
+                # The identifier itself is deliberately not echoed into a header.
+                "X-RateLimit-Scope": "auth",
+            },
         )
 
 
@@ -104,6 +133,8 @@ def register(body: RegisterRequest, request: Request) -> dict:
     _enforce_auth_limit(request, body.email.strip().lower())
     try:
         user = auth_svc.register(body.email, body.password, body.name)
+    except auth_svc.AuthBusy as exc:
+        raise _auth_error(exc) from exc
     except auth_svc.AuthError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     token, expires = auth_svc.create_session(user["id"])
@@ -118,6 +149,8 @@ def login(body: LoginRequest, request: Request) -> dict:
     _enforce_auth_limit(request, body.email.strip().lower())
     try:
         user = auth_svc.login(body.email, body.password)
+    except auth_svc.AuthBusy as exc:
+        raise _auth_error(exc) from exc
     except auth_svc.AuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     token, expires = auth_svc.create_session(user["id"])
@@ -290,6 +323,10 @@ def github_callback(request: Request, code: str | None = None, state: str | None
         return RedirectResponse("/#auth=failed", status_code=302)
     try:
         user = otp_svc.github_finish(code, state)
+    except otp_svc.auth_svc.AuthBusy:
+        # Signed in correctly, but the KDF is saturated: say so instead of
+        # bouncing the user back to a generic failure page.
+        return RedirectResponse("/#auth=busy", status_code=302)
     except otp_svc.auth_svc.AuthError:
         return RedirectResponse("/#auth=failed", status_code=302)
     from backend.services import auth as auth_svc

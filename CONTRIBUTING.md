@@ -46,15 +46,25 @@ ranker, chat and AI pick it up automatically.
 
 1. Fork / branch from `main`.
 2. Keep PRs focused (one state, one feature, one fix).
-3. CI must be green: tests + dataset agent + ML sanity.
-4. Screenshots in the PR for UI changes.
+3. CI must be green: the Python suite (incl. property-based and a multi-process
+   rate-limiter run), the API fuzz job, the dependency audit, the clipboard
+   behaviour tests, the secret scan (working tree **and** history, with a wiring
+   self-check), the dataset agent, ML sanity and the scheduler dry-run.
+4. If your change alters behaviour that a document describes, update that
+   document in the same PR — `tests/test_wiring_and_claims.py` fails when
+   documentation and code drift apart (they have drifted before, which is why
+   the check exists).
+5. Screenshots in the PR for UI changes.
 
 ## Useful commands
 
 ```bash
-./scripts/dev.sh                               # run the app on :8000
-./scripts/dev.sh --test                        # 151 tests
-.venv/bin/python -m agents.verify_dataset      # data audit
+./scripts/dev.sh                                 # run the app on :8000
+./scripts/dev.sh --test                          # the full Python suite
+node --test "web/tests/*.test.mjs"                # frontend behaviour tests
+.venv/bin/python -m scripts.fuzz_api --requests 500 --seed 1   # randomised API probing
+.venv/bin/python -m agents.secret_scan --history --check-ci    # secrets + CI wiring
+.venv/bin/python -m agents.verify_dataset        # data audit
 .venv/bin/python -m agents.reminder_scheduler --dry-run
 .venv/bin/python -m ml.experiments.simulate_outcomes
 ```

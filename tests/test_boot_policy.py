@@ -126,3 +126,86 @@ def test_health_exposes_configuration_without_secrets(client, monkeypatch):
     # Never leak the values themselves.
     body = client.get("/api/health").text
     assert "S3cretTwilioTokenValue123" not in body
+
+# ------------------------------------------------------- secret hygiene detail
+def test_explicitly_required_secrets_are_enforced(monkeypatch):
+    from backend.services import secrets as secrets_svc
+
+    for name in list(secrets_svc._EXPECTED_SECRETS):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("FEEFIX_REQUIRED_SECRETS", "FEEFIX_OTP_PEPPER,SOME_OTHER_TOKEN")
+    findings = secrets_svc.weak_secret_findings()
+    assert any("FEEFIX_OTP_PEPPER" in f for f in findings)
+    assert any("SOME_OTHER_TOKEN" in f for f in findings)
+
+    monkeypatch.setenv("FEEFIX_OTP_PEPPER", "a-long-random-pepper-value-1234")
+    monkeypatch.setenv("SOME_OTHER_TOKEN", "another-value")
+    assert secrets_svc.weak_secret_findings() == []
+
+
+def test_half_configured_integrations_are_reported(monkeypatch):
+    from backend.services import secrets as secrets_svc
+
+    for name in list(secrets_svc._EXPECTED_SECRETS):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("FEEFIX_REQUIRED_SECRETS", raising=False)
+    monkeypatch.setenv("OTP_TWILIO_SID", "ACxxxxxxxx")
+    findings = secrets_svc.weak_secret_findings()
+    assert any("OTP_TWILIO_TOKEN" in f and "OTP_TWILIO_SID" in f for f in findings)
+
+
+def test_secret_status_reports_state_never_values(monkeypatch):
+    from backend.services import secrets as secrets_svc
+
+    # A real random secret (not a repeated character — that is *also* weak).
+    monkeypatch.setenv("GITHUB_CLIENT_SECRET", "f3K9xQ2mZ7pL4vB1nR8tY6wS")
+    monkeypatch.setenv("OTP_SMTP_PASS", "changeme")
+    monkeypatch.setenv("FEEFIX_REQUIRED_SECRETS", "FEEFIX_OTP_PEPPER")
+    status = secrets_svc.secret_status()
+    assert status["secrets"]["GITHUB_CLIENT_SECRET"] == "set"
+    assert status["secrets"]["OTP_SMTP_PASS"] == "weak"
+    assert status["secrets"]["FEEFIX_OTP_PEPPER"] == "required-missing"
+    assert status["findings"] >= 2
+    assert "f3K9xQ2mZ7pL4vB1nR8tY6wS" not in str(status)
+
+
+def test_rotation_id_is_a_stable_fingerprint_not_a_leak(monkeypatch):
+    from backend.services import secrets as secrets_svc
+
+    monkeypatch.setenv("OTP_TWILIO_TOKEN", "value-one-abcdefghijk")
+    first = secrets_svc.rotation_id("OTP_TWILIO_TOKEN")
+    assert first and len(first) == 8
+    assert first == secrets_svc.rotation_id("OTP_TWILIO_TOKEN")
+    monkeypatch.setenv("OTP_TWILIO_TOKEN", "value-two-abcdefghijk")
+    assert secrets_svc.rotation_id("OTP_TWILIO_TOKEN") != first
+    assert secrets_svc.rotation_id("FEEFIX_NOT_SET_ANYWHERE") is None
+    assert "value-one" not in str(first)
+
+
+def test_get_secret_never_invents_a_default(monkeypatch):
+    from backend.services import secrets as secrets_svc
+
+    monkeypatch.delenv("FEEFIX_ABSENT_SECRET", raising=False)
+    assert secrets_svc.get_secret("FEEFIX_ABSENT_SECRET") is None
+    assert secrets_svc.get_secret("FEEFIX_ABSENT_SECRET", default="explicit") == "explicit"
+    with pytest.raises(RuntimeError):
+        secrets_svc.get_secret("FEEFIX_ABSENT_SECRET", required=True)
+    monkeypatch.setenv("FEEFIX_EMPTY_SECRET", "")
+    assert secrets_svc.get_secret("FEEFIX_EMPTY_SECRET") is None
+
+
+def test_production_marker_parsing(monkeypatch):
+    from backend.services import secrets as secrets_svc
+
+    for marker in ("RENDER", "FLY_APP_NAME", "K_SERVICE", "HEROKU_APP_NAME", "FEEFIX_ENV"):
+        monkeypatch.delenv(marker, raising=False)
+    monkeypatch.delenv("FEEFIX_STRICT_SECRETS", raising=False)
+    assert secrets_svc._is_production() is False
+    monkeypatch.setenv("FEEFIX_ENV", "production")
+    assert secrets_svc._is_production() is True
+    monkeypatch.setenv("FEEFIX_ENV", "development")
+    assert secrets_svc._is_production() is False
+    monkeypatch.setenv("FLY_APP_NAME", "false")
+    assert secrets_svc._is_production() is False
+    monkeypatch.setenv("FLY_APP_NAME", "feefix-india")
+    assert secrets_svc._is_production() is True

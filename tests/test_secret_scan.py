@@ -209,3 +209,20 @@ def test_working_artifacts_are_gitignored():
 def test_ignore_file_loads_from_the_repository():
     # The repository may not ship one; loading must still be safe.
     assert isinstance(_load_ignore(REPO), list)
+
+
+def test_captured_diffs_only_get_self_contained_checks():
+    """Inside a ``.patch`` the surrounding file is unknown, so heuristics that
+    depend on context (is this a test fixture? a checksum?) cannot be trusted —
+    but a real provider token pasted into a diff is still caught."""
+    fixture_line = '_register(client, password="TopSecret123")'
+    assert findings(fixture_line, "01a0e447-09e7.patch") == []
+    assert findings('api_key = "8f3aC2b9D4e7F1a6B5c8D2e9F3a7B1c4"', "old.diff") == []
+
+    real = 'TOKEN = "ghp_" + "a1B2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"'
+    assert findings(real, "leak.patch"), "a real token inside a diff must still be reported"
+    assert findings(real, "backend/x.py")
+
+    # The same fixture line in a real test file is exempt; in live code it is not.
+    assert findings(fixture_line, "tests/test_x.py") == []
+    assert findings(fixture_line, "backend/services/x.py") != []

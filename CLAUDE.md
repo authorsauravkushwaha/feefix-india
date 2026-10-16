@@ -12,7 +12,7 @@ under `data/schemes/` (71 records, validated in CI by `agents/verify_dataset.py`
 ```bash
 ./scripts/dev.sh           # create .venv, install deps, serve on :8000
 ./scripts/dev.sh --test    # full suite
-python -m pytest           # ~350 tests, ~40 s
+python -m pytest           # the whole suite (~40 s; no network needed)
 ```
 
 Offline environments: set `FEEFIX_AI_BACKEND=ngram`. The neural embedder's model

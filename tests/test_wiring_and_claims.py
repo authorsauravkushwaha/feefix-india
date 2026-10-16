@@ -227,3 +227,67 @@ def test_pytest_suite_is_discoverable_from_a_clean_checkout():
         ["git", "status", "--porcelain", "runtime/"], cwd=REPO, capture_output=True, text=True
     )
     assert result.returncode == 0
+
+# ------------------------------------------------- every document, every claim
+#: (pattern, why it is stale). Each entry is a sentence this repository actually
+#: shipped at some point and then made untrue — the kind of drift a code review
+#: of a diff does not catch, because the diff touched code, not prose.
+_STALE_CLAIMS = [
+    (r"\b\d{2,4}\s+tests?\b(?!\s+(?:suite|file|directory))",
+     "a hard-coded test count is a claim that rots; describe what is covered"),
+    (r"PBKDF2-HMAC-SHA256, 600,?000",
+     "PBKDF2 is no longer the password scheme (Argon2id is)"),
+    (r"\bpbkdf2\$600000\$",
+     "the legacy stored format is no longer what new passwords use"),
+    (r"docs?\b[^.\n]{0,40}\boff unless",
+     "interactive docs are ON by default now"),
+    (r"stdlib[- ]only",
+     "the hashing dependency is deliberate: argon2-cffi, with scrypt as fallback"),
+    (r"no upload endpoint today|ships no upload",
+     "the upload pipeline is wired into /api/students/{sid}/documents"),
+    (r"in-memory sliding window\b(?!.*opt.in|.*test)",
+     "the limiter's default store is shared (SQLite/Redis)"),
+    (r"clipboard[\w\s-]{0,20}hardening\b(?!.*not a)",
+     "the clipboard helper is UX hygiene, not a control"),
+]
+
+
+def test_no_markdown_repeats_a_stale_claim():
+    """Docs drift silently; this scans *every* markdown file, not just the ones
+    a reviewer happened to open."""
+    offenders: list[str] = []
+    for path in sorted(REPO.rglob("*.md")):
+        if ".venv" in path.parts or "node_modules" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for pattern, reason in _STALE_CLAIMS:
+            for match in re.finditer(pattern, text, re.I):
+                line = text[: match.start()].count("\n") + 1
+                offenders.append(f"{path.relative_to(REPO)}:{line}: {match.group(0)!r} — {reason}")
+    assert not offenders, "stale documentation claims:\n" + "\n".join(offenders)
+
+
+def test_every_document_that_discusses_passwords_names_the_current_scheme():
+    for path in sorted(REPO.rglob("*.md")):
+        if ".venv" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if re.search(r"password hash|password stor|passwords are (?:hashed|stored)", text, re.I):
+            assert "Argon2id" in text, f"{path.relative_to(REPO)} discusses hashing without naming Argon2id"
+
+
+def test_architecture_and_contributing_describe_the_current_controls():
+    """The files a new contributor reads first must match the code."""
+    architecture = _read("docs/architecture/ARCHITECTURE.md")
+    contributing = _read("CONTRIBUTING.md")
+    for document, needle in (
+        (architecture, "Argon2id"),
+        (architecture, "body_limit"),
+        (architecture, "shared store"),
+        (architecture, "documents.py"),
+        (contributing, "secret scan"),
+        (contributing, "fuzz"),
+        (contributing, "test_wiring_and_claims"),
+    ):
+        assert needle in document, f"missing {needle!r}"
+    assert "151 tests" not in contributing

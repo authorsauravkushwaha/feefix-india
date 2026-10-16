@@ -270,6 +270,11 @@ def verify_password(password: str, stored: str) -> bool:
                 _kdf_release()
             return hmac.compare_digest(actual, expected) or hmac.compare_digest(legacy, expected)
         return False
+    except AuthBusy:
+        # Capacity back-pressure is NOT a wrong password. Swallowing it here made
+        # a saturated KDF look like bad credentials (401), which would have
+        # clients treating a load spike as an account problem.
+        raise
     except Exception:
         return False
 
@@ -338,6 +343,8 @@ def login(email: str, password: str) -> dict:
         "SELECT id, email, name, password_hash FROM users WHERE email=?", (email,)
     ).fetchone()
     # Always run the KDF so unknown-email and wrong-password take similar time.
+    # (A saturated pool raises AuthBusy for both cases — uniformly — and the
+    # caller maps it to a retryable 503.)
     stored = row["password_hash"] if row else hash_password("dummy-password")
     if not row or not verify_password(password, stored):
         raise AuthError("Invalid email or password.")
