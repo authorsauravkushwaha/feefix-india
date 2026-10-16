@@ -171,6 +171,35 @@ def test_jobs_have_timeouts(ci):
         assert job.get("timeout-minutes"), f"{name} has no timeout"
 
 
+def test_failing_tests_are_reported_as_annotations(ci):
+    """A red job must say *what* failed where it can be read without the log.
+
+    The failure that prompted this was a test-job failure whose cause was only
+    visible inside the log blob. Emitting pytest failures as check annotations
+    makes any future red run diagnosable from the API, the UI and `gh pr
+    checks` — and the XML is archived for the full detail.
+    """
+    steps = ci["jobs"]["test"]["steps"]
+    report_step = next(
+        (s for s in steps if s.get("name") == "Report test failures as annotations"), None
+    )
+    assert report_step, "no annotation step: a failing run would be undiagnosable"
+    assert report_step.get("if") == "failure()"
+    assert "::error" in report_step["run"]
+    assert "pytest-report.xml" in report_step["run"]
+
+    suite_step = next(s for s in steps if s.get("name") == "Full test suite")
+    assert "--junitxml=pytest-report.xml" in suite_step["run"], (
+        "the annotation step parses the junit report; the suite must write it"
+    )
+    upload = [
+        s for s in steps
+        if str(s.get("uses", "")).startswith("actions/upload-artifact")
+        and s.get("with", {}).get("path") == "pytest-report.xml"
+    ]
+    assert upload and upload[0].get("if") == "always()"
+
+
 def test_ci_runs_both_directions_of_the_secret_scan(ci):
     """Scan the tree *and* emit the machine-readable report CI archives."""
     commands = _run_commands(ci)
@@ -179,8 +208,9 @@ def test_ci_runs_both_directions_of_the_secret_scan(ci):
         s
         for s in ci["jobs"]["test"]["steps"]
         if str(s.get("uses", "")).startswith("actions/upload-artifact")
+        and s.get("with", {}).get("path") == "secret-scan-report.json"
     ]
-    assert upload and upload[0]["with"]["path"] == "secret-scan-report.json"
+    assert upload, "the scan report is not archived"
     assert upload[0].get("if") == "always()", "the report is most useful when the scan fails"
 
 

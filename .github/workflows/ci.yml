@@ -39,7 +39,26 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Full test suite
-        run: python -m pytest
+        run: python -m pytest --junitxml=pytest-report.xml
+
+      # A red job whose reason lives only in the log is a gate people learn to
+      # ignore. Failed test ids are emitted as check annotations (readable via
+      # the API, the UI and `gh pr checks`), and the XML is archived.
+      - name: Report test failures as annotations
+        if: failure()
+        run: >-
+          python -c "import xml.etree.ElementTree as ET, glob;
+          [print(f'::error title=pytest::{tc.get("classname")}::{tc.get("name")}')
+          for f in glob.glob('pytest-report.xml')
+          for tc in ET.parse(f).getroot().iter('testcase') if len(tc)]"
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: pytest-report.xml
+          if-no-files-found: ignore
 
       - name: Secret scan (in-house, no committed credentials)
         run: python -m agents.secret_scan --json secret-scan-report.json
