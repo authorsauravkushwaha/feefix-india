@@ -202,36 +202,64 @@ def _auth_payload(user: dict, request: Request) -> dict:
 
 @router.post("/auth/otp/request")
 def otp_request(body: OtpRequestBody, request: Request) -> dict:
-    """Send a 6-digit code (5-min expiry, 40s resend cooldown, ≤5 codes/hour)."""
+    """Send a 6-digit code to the real mailbox/number (5-min expiry, resend
+    cooldown, ≤5 codes/hour and ≤10/day per destination).
+
+    Status codes are honest about *why*: 422 for a bad address, 429 for a
+    cooldown/cap, 502 when a configured gateway refused the message, 503 when
+    this deployment has no gateway at all (and is not allowed a demo code).
+    """
     from backend.services import otp as otp_svc
     from backend.services import ratelimit
 
-    from backend.services import ratelimit as _rl
-    client = _rl.client_ip(request)
     _enforce_auth_limit(request, "otp-req")
     try:
-        return otp_svc.request_code(body.channel, body.address, client)
-    except otp_svc.auth_svc.AuthError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return otp_svc.request_code(body.channel, body.address,
+                                    ratelimit.client_ip(request))
+    except otp_svc.OtpError as exc:
+        raise _otp_http_error(exc) from exc
 
 
 @router.post("/auth/otp/verify")
 def otp_verify(body: OtpVerifyBody, request: Request) -> dict:
-    """Burn the code → mint a session. Wrong code and unknown account both
-    answer 401 identically (no user-enumeration)."""
-    from backend.services import otp as otp_svc
-    from backend.services import ratelimit
+    """Check the code that was delivered → mint a session.
 
-    from backend.services import ratelimit as _rl
-    client = _rl.client_ip(request)
+    Wrong code and unknown account answer identically (no user-enumeration); an
+    expired challenge (410) and a burned one (429) say so, because the student
+    holding the phone can act on that.
+    """
+    from backend.services import otp as otp_svc
+
     _enforce_auth_limit(request, f"otp-verify:{body.address.strip().lower()}")
     try:
         user = otp_svc.verify_code(body.channel, body.address, body.code, body.name)
-    except otp_svc.auth_svc.AuthError as exc:
-        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except otp_svc.OtpError as exc:
+        raise _otp_http_error(exc) from exc
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid or expired code — request a new one.")
+        raise HTTPException(status_code=401,
+                            detail="Invalid or expired code — request a new one.")
     return _auth_payload(user, request)
+
+
+def _otp_http_error(exc) -> HTTPException:
+    """Map an ``OtpError`` onto an HTTP error, keeping its ``Retry-After``."""
+    headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
+    return HTTPException(status_code=exc.status_code, detail=str(exc), headers=headers)
+
+
+@router.get("/auth/otp/dev-inbox")
+def otp_dev_inbox(request: Request, address: str | None = None,
+                  limit: int = Query(default=10, ge=1, le=50)) -> dict:
+    """Development convenience: codes the console fallback "delivered".
+
+    Exists only where a console fallback exists at all — a production deployment
+    answers 404, because there is no such thing as a console backend there.
+    """
+    from backend.services import otp as otp_svc
+
+    if not otp_svc.dev_inbox_available():
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"demo": True, "entries": otp_svc.dev_inbox(address, limit)}
 
 
 # -- GitHub OAuth ---------------------------------------------------------------
@@ -324,6 +352,8 @@ def health(request: Request) -> dict:
     """
     from backend.services import ratelimit
 
+    from backend.services import otp as otp_svc
+
     qa = getattr(request.app.state, "qa", None)
     boot = getattr(request.app.state, "boot", {}) or {}
     return {
@@ -335,6 +365,9 @@ def health(request: Request) -> dict:
         "rate_limit": ratelimit.status(),
         "rate_limit_warning": boot.get("rate_limit_warning"),
         "docs_enabled": getattr(request.app.state, "docs_enabled", True),
+        # Which sign-in doors can actually deliver a code — the single question
+        # an operator asks when a student says "I never got the SMS".
+        "otp_delivery": otp_svc.delivery_report(),
     }
 
 

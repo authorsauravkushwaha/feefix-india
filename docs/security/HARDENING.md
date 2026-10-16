@@ -43,6 +43,53 @@ pip-audit -r requirements.txt          # dependency CVEs
 
 ---
 
+## OTP delivery: a code the student never receives is not a second factor
+
+`backend/services/otp.py` · `tests/test_otp_delivery.py` · `tests/test_otp_auth.py`
+
+Sign-in codes are only meaningful if the code reaches the device the student
+proved they control. The rules the module now enforces:
+
+* **A configured gateway is the path.** Email: SMTP (Gmail app password and any
+  relay), Brevo, Resend, or your own HTTPS endpoint. SMS: Twilio, MSG91,
+  Fast2SMS, Vonage, or your own endpoint. The response says which one carried
+  the code and whether it was accepted.
+* **No gateway, no pretense.** Outside production the console fallback writes
+  the code to the server log + `runtime/otp_outbox.jsonl` and returns it as a
+  *labelled demo* (`demo: true`, `dev_code`, a DEMO banner in the UI). In
+  production the API answers **503** with the variables to set, the UI hides
+  that door, and the boot log reports it. Production never echoes a code —
+  `FEEFIX_OTP_DEV_ECHO*=1` is refused at boot (`SecretHygieneError`), because a
+  flag that hands a sign-in code back to the caller is a vulnerability, not a
+  setting.
+* **Failures are visible, never silent.** A gateway that refuses answers 502,
+  the provider's own message is written to `audit_log` (`otp.send_failed.<ch>`)
+  and shown to the operator (`GET /api/health` → `otp_delivery`,
+  `scripts/check_otp_delivery.py`). A failed send is *rolled back*: the
+  challenge is deleted and the send does not consume the student's hourly/daily
+  budget, so a relay outage cannot lock anyone out.
+* **The counters that cap spending count real sends.** `otp_sends` (24 h
+  retention) backs the ≤5/hour and ≤10/day per-destination limits. Previously
+  the challenge rows were swept on expiry, which quietly turned "5 per hour"
+  into "5 per five minutes" — irrelevant when nothing was sent, a billing
+  incident once every message costs money (SMS pumping).
+* **Verification stays single-use and constant-time.** The read-modify-write of
+  the attempt counter happens under one lock, so two concurrent guesses cannot
+  both be accepted on the last attempt; the code is compared with
+  `hmac.compare_digest` against a salted HMAC, and the challenge is destroyed on
+  success. Failures are honest about *why* (401 wrong, 410 expired, 429 burned)
+  while keeping the same wording for an address with an account and one without
+  (no enumeration).
+
+**Honest limits.** Delivery still depends on a paid SMS gateway — no free
+gateway exists, and a deployment without one cannot text anybody. Email lands
+in spam folders for unreputed domains (use a real sender + SPF/DKIM, or an
+established relay). Indian SMS requires DLT-registered templates, so the
+message text must match what you registered (`OTP_SMS_TEMPLATE`). The dev
+outbox is a plaintext file by definition and is never written in production.
+
+---
+
 ## Abuse-case table (what happens when it goes wrong)
 
 Design decisions are easier to audit as behaviour than as prose. Each row is
@@ -61,6 +108,11 @@ asserted by a test.
 | Put `"\ud800"` in a chat message | Clean `422` (was: 500 from the renderer) | `tests/test_fuzz_security.py` |
 | Commit a base64 AWS key or a split string token | Scanner finding in CI/pre-commit, exit 1 | `tests/test_secret_hygiene.py` |
 | Boot with `CHANGE_ME` as a secret in production | Refuses to start | `tests/test_secret_hygiene.py` |
+| Boot in production with the OTP demo echo on | Refuses to start (a live code would be returned to the caller) | `tests/test_otp_delivery.py` |
+| Request a code in production with no gateway configured | `503` naming the variables to set — never a fake code | `tests/test_otp_delivery.py` |
+| SMTP/Twilio/MSG91 refuses the message | `502`, provider text in `audit_log`, send **not** counted against the student's budget | `tests/test_otp_delivery.py` |
+| Gateway answers `HTTP 200 {"return": false}` | Treated as a failure, not a delivered code | `tests/test_otp_delivery.py` |
+| Guess codes five times | Attempt counter burns the challenge; both wrong-code paths answer identically with or without an account | `tests/test_otp_auth.py` |
 | Two instances migrating the same SQLite file at once | Serialized; loser waits instead of crashing on duplicate DDL | `tests/test_schema_migrations.py` |
 | Crash mid-migration | Rolls back; a half-applied DB self-heals on next boot | `tests/test_schema_migrations.py` |
 

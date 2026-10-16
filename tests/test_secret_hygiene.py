@@ -54,7 +54,8 @@ def _opaque(seed: int = 0) -> str:
 
 @pytest.fixture()
 def clean_secret_env(monkeypatch):
-    for name in list(sec._EXPECTED_SECRETS) + list(sec._OTP_CHANNEL_HINTS):
+    for name in (list(sec._EXPECTED_SECRETS) + list(sec._OTP_CHANNEL_HINTS)
+                 + list(sec._DEV_ECHO_FLAGS)):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.delenv("FEEFIX_ENV", raising=False)
     monkeypatch.delenv("FEEFIX_SECRETS_STRICT", raising=False)
@@ -398,3 +399,58 @@ def test_cli_flags_used_by_ci_and_pre_commit_are_advertised():
 
     for flag in ("--path", "--json", "--staged", "--history", "--help"):
         assert flag in _USAGE, f"{flag} is used but not documented"
+
+
+# --------------------------------------------------------------------------- #
+# OTP delivery configuration is part of secret hygiene
+# --------------------------------------------------------------------------- #
+def test_production_refuses_a_reply_carrying_a_live_signin_code(clean_secret_env):
+    """A deploy that asks for codes in the response is not a configuration.
+
+    It hands anyone who can call the endpoint a code that signs them in as
+    somebody else, so it is a boot failure rather than a log line.
+    """
+    clean_secret_env.setenv("FEEFIX_ENV", "production")
+    clean_secret_env.setenv("FEEFIX_OTP_DEV_ECHO_PHONE", "1")
+    with pytest.raises(sec.SecretHygieneError):
+        sec.enforce_secret_hygiene()
+
+
+def test_demo_echo_outside_production_is_a_warning_not_a_wall(clean_secret_env):
+    clean_secret_env.setenv("FEEFIX_OTP_DEV_ECHO", "1")
+    findings = sec.enforce_secret_hygiene()          # local development is not obstructed
+    assert any("FEEFIX_OTP_DEV_ECHO" in f for f in findings)
+    assert all(f["level"] == "warning" for f in sec.assess_secrets())
+
+
+def test_production_without_a_gateway_warns_but_still_boots(clean_secret_env):
+    """Password and GitHub sign-in still work — this must not block the boot."""
+    clean_secret_env.setenv("FEEFIX_ENV", "production")
+    findings = sec.assess_secrets()
+    assert any(f["name"] == "OTP delivery" and f["level"] == "warning" for f in findings)
+    assert sec.enforce_secret_hygiene()               # returns instead of raising
+    clean_secret_env.setenv("OTP_SMTP_HOST", "smtp.example.com")
+    assert not any(f["name"] == "OTP delivery" for f in sec.assess_secrets())
+
+
+@pytest.mark.parametrize("flag", [
+    "OTP_MSG91_TEMPLATE_ID", "OTP_FAST2SMS_SENDER_ID", "OTP_VONAGE_API_KEY",
+    "OTP_SMS_WEBHOOK_URL", "OTP_EMAIL_WEBHOOK_URL", "OTP_BREVO_API_KEY",
+])
+def test_every_delivery_channel_requires_the_pinned_pepper(clean_secret_env, flag):
+    """Without FEEFIX_OTP_PEPPER each worker mints its own, and codes stop
+    verifying when a request lands on a different instance."""
+    clean_secret_env.setenv(flag, "configured")     # a channel is switched on…
+    findings = sec.assess_secrets()                 # …while the pepper stays unset
+    assert any("FEEFIX_OTP_PEPPER" in f["message"] for f in findings), flag
+
+
+def test_new_gateway_secrets_are_shape_checked(clean_secret_env):
+    clean_secret_env.setenv("OTP_BREVO_API_KEY", "changeme")
+    clean_secret_env.setenv("OTP_MSG91_AUTH_KEY", "s" * 24)
+    clean_secret_env.setenv("OTP_MSG91_TEMPLATE_ID", "feefix_login")
+    messages = [f["message"] for f in sec.assess_secrets()]
+    assert any("OTP_BREVO_API_KEY" in m for m in messages)
+    clean_secret_env.delenv("OTP_MSG91_AUTH_KEY")   # companion set, secret absent
+    messages = [f["message"] for f in sec.assess_secrets()]
+    assert any("OTP_MSG91_AUTH_KEY is unset" in m for m in messages)

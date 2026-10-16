@@ -34,6 +34,13 @@ _EXPECTED_SECRETS = {
     "GITHUB_CLIENT_SECRET": 20,
     "OTP_SMTP_PASS": 8,
     "OTP_TWILIO_TOKEN": 20,
+    "OTP_MSG91_AUTH_KEY": 16,
+    "OTP_FAST2SMS_KEY": 20,
+    "OTP_VONAGE_API_SECRET": 8,
+    "OTP_BREVO_API_KEY": 20,
+    "OTP_RESEND_API_KEY": 20,
+    "OTP_SMS_WEBHOOK_TOKEN": 16,
+    "OTP_EMAIL_WEBHOOK_TOKEN": 16,
     "FEEFIX_OTP_PEPPER": 16,
 }
 
@@ -49,17 +56,47 @@ _COMPANIONS = {
     "GITHUB_CLIENT_SECRET": "GITHUB_CLIENT_ID",
     "OTP_SMTP_PASS": "OTP_SMTP_USER",
     "OTP_TWILIO_TOKEN": "OTP_TWILIO_SID",
+    "OTP_MSG91_AUTH_KEY": "OTP_MSG91_TEMPLATE_ID",
+    "OTP_FAST2SMS_KEY": "OTP_FAST2SMS_SENDER_ID",
+    "OTP_VONAGE_API_SECRET": "OTP_VONAGE_API_KEY",
+    "OTP_SMS_WEBHOOK_TOKEN": "OTP_SMS_WEBHOOK_URL",
+    "OTP_EMAIL_WEBHOOK_TOKEN": "OTP_EMAIL_WEBHOOK_URL",
 }
 
 #: Secrets whose *absence* blocks a strict boot when their integration is on.
 _DELIVERY_SECRETS = ("OTP_SMTP_PASS", "OTP_TWILIO_TOKEN")
+#: Any of these being set means "this deployment delivers OTPs for real".
 _OTP_CHANNEL_HINTS = (
     "OTP_SMTP_HOST",
     "OTP_SMTP_USER",
+    "OTP_SMTP_FROM",
     "OTP_TWILIO_SID",
     "OTP_TWILIO_FROM",
     "OTP_TWILIO_ACCOUNT_SID",
+    "OTP_TWILIO_MESSAGING_SERVICE_SID",
+    "OTP_MSG91_TEMPLATE_ID",
+    "OTP_MSG91_SENDER_ID",
+    "OTP_FAST2SMS_SENDER_ID",
+    "OTP_FAST2SMS_TEMPLATE_ID",
+    "OTP_VONAGE_API_KEY",
+    "OTP_VONAGE_FROM",
+    "OTP_BREVO_API_KEY",
+    "OTP_BREVO_FROM",
+    "OTP_RESEND_API_KEY",
+    "OTP_RESEND_FROM",
+    "OTP_SMS_WEBHOOK_URL",
+    "OTP_EMAIL_WEBHOOK_URL",
 )
+
+#: Environment switches that hand a live sign-in code to the caller. Fine on a
+#: laptop, never in production: it turns "prove you own this phone/mailbox" into
+#: "read the response".
+_DEV_ECHO_FLAGS = (
+    "FEEFIX_OTP_DEV_ECHO",
+    "FEEFIX_OTP_DEV_ECHO_EMAIL",
+    "FEEFIX_OTP_DEV_ECHO_PHONE",
+)
+_TRUTHY = ("1", "true", "yes", "on")
 
 _LOW_ENTROPY_BITS_PER_CHAR = 2.5
 
@@ -68,8 +105,18 @@ class SecretHygieneError(RuntimeError):
     """Raised at boot when a strict deployment has a placeholder/missing secret."""
 
 
-def _is_production() -> bool:
+def is_production() -> bool:
+    """Whether this process is serving production traffic.
+
+    The single source of truth for every "never do this in production" branch
+    (OTP demo echo, boot guards, password policy), so a deployment cannot end up
+    with two different opinions about what "production" means.
+    """
     return (os.environ.get("FEEFIX_ENV") or "").strip().lower() in ("prod", "production")
+
+
+#: Back-compat alias: this module's own call sites used the private spelling.
+_is_production = is_production
 
 
 def strict_mode() -> bool:
@@ -131,9 +178,55 @@ def _otp_delivery_configured() -> bool:
     return any(os.environ.get(name) for name in _OTP_CHANNEL_HINTS)
 
 
+def _truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in _TRUTHY
+
+
+def _otp_findings() -> list[dict]:
+    """Configuration that would make OTP sign-in a lie (or an unbounded bill)."""
+    findings: list[dict] = []
+    for flag in _DEV_ECHO_FLAGS:
+        if not _truthy(os.environ.get(flag)):
+            continue
+        if is_production():
+            findings.append({
+                "level": "blocking",
+                "name": flag,
+                "message": (
+                    f"{flag} is set while FEEFIX_ENV=production. The demo echo"
+                    " returns live sign-in codes in the API response — it is"
+                    " refused in production, so unset the variable and configure a"
+                    " real gateway (OTP_SMTP_HOST … / OTP_TWILIO_SID …)."
+                ),
+            })
+        else:
+            findings.append({
+                "level": "warning",
+                "name": flag,
+                "message": (
+                    f"{flag} is set: sign-in codes are echoed in API responses"
+                    " instead of being delivered. Fine for development, never for"
+                    " production."
+                ),
+            })
+    if is_production() and not _otp_delivery_configured():
+        findings.append({
+            "level": "warning",
+            "name": "OTP delivery",
+            "message": (
+                "No OTP delivery channel is configured in production: email and"
+                " phone sign-in will answer 503 and the UI hides those doors."
+                " Configure OTP_SMTP_* / OTP_BREVO_API_KEY / OTP_RESEND_API_KEY"
+                " (email) and OTP_TWILIO_* / OTP_MSG91_* / OTP_FAST2SMS_KEY /"
+                " OTP_VONAGE_* (SMS), or leave password + GitHub sign-in only."
+            ),
+        })
+    return findings
+
+
 def assess_secrets() -> list[dict]:
     """Structured findings: ``{level, name, message}`` with level in blocking|warning."""
-    findings: list[dict] = []
+    findings: list[dict] = _otp_findings()
     for name, min_len in _EXPECTED_SECRETS.items():
         value = os.environ.get(name)
         if value is None:

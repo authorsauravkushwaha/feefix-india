@@ -29,6 +29,7 @@ paths = [
     # fake GitHub tokens, Stripe keys, base64-wrapped AWS keys, DSNs and
     # high-entropy token-shaped alphabets used as fuzz data.
     '''(^|/)tests/test_secret_hygiene\.py$''',
+    '''(^|/)tests/test_otp_delivery\.py$''',
     '''(^|/)tests/test_fuzz_security\.py$''',
     # The clipboard module and its test: refusal cases require token-shaped and
     # OTP-shaped sample values.

@@ -8,7 +8,8 @@ giant-payload floods.
 
 from __future__ import annotations
 
-from typing import Annotated
+import re
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, Field
 
@@ -134,13 +135,30 @@ class LinkSessionRequest(BaseModel):
     session_id: str = Field(min_length=4, max_length=MAX_SESSION_ID_LEN)
 
 
+def _code_digits(value: str) -> str:
+    """Keep the digits of a verification code.
+
+    Codes reach this field from SMS autofill, a pasted email body or a human
+    copying ``123 456`` out of a notification. Formatting is not a wrong code —
+    reject only what contains no digits at all.
+    """
+    cleaned = re.sub(r"\D", "", value or "")
+    if not cleaned:
+        raise ValueError("Enter the code from your email or SMS.")
+    return cleaned
+
+
+#: A verification code with its formatting accepted and stripped.
+OtpCode = Annotated[str, AfterValidator(_code_digits)]
+
+
 class OtpRequestBody(BaseModel):
-    channel: str = Field(max_length=8, description="email | phone")
+    channel: Literal["email", "phone"] = Field(description="email | phone")
     address: str = Field(min_length=3, max_length=MAX_ADDRESS_LEN)
 
 
 class OtpVerifyBody(BaseModel):
-    channel: str = Field(max_length=8, description="email | phone")
+    channel: Literal["email", "phone"] = Field(description="email | phone")
     address: str = Field(min_length=3, max_length=MAX_ADDRESS_LEN)
-    code: str = Field(min_length=4, max_length=8)
+    code: OtpCode = Field(min_length=4, max_length=8)
     name: SafeText | None = Field(default=None, max_length=MAX_NAME_LEN)

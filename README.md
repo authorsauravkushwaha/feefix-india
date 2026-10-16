@@ -62,7 +62,7 @@ Wizard → explainable ranked matches → dashboard (tracker, reminders, sign-in
 | **Ranking** | `backend/matching_engine/ranker.py` | `45·clarity + urgency + benefit + verified`, deadline-aware, badges. |
 | **Free-local AI** | `ai/` | Semantic search + **grounded Q&A with citations** — answers assembled only from verified dataset fields (+ near-miss radar). In-process embeddings (`fastembed`/MiniLM or built-in sublinear-TF n-gram embedder). **No paid APIs, ever.** |
 | **ML outcome ranking (V2)** | `ml/ranking/` · `POST /api/events` · `GET /api/ml/rank` | Tracker buttons (`viewed/applied/approved/…`) stream outcome events with their V1 signal snapshots → tiny logistic model re-ranks matches (**⚡ ML preview** toggle, synthetic bootstrap until ≥25 real events). *Same signals V1 uses — no invented facts.* |
-| **Security & accounts** | `backend/services/` · `agents/secret_scan.py` · `.github/workflows/ci.yml` | **Argon2id** passwords (PBKDF2-600k for legacy rows, re-hashed on login) · SHA-256-hashed revocable session tokens with replay tolerance that can't log you out everywhere · sliding-window rate limits **shared across instances via Redis** · per-endpoint body limits enforced mid-stream · hardened upload gate wired to real routes · boot-time secret hygiene that **refuses to start** on placeholders in production · secret scan + gitleaks + bandit + pip-audit in CI · CSP/HSTS/nosniff/no-store · CORS closed by default · append-only audit log · uniform login errors · **data export + right-to-erasure**. → [`docs/security/SECURITY.md`](docs/security/SECURITY.md) |
+| **Security & accounts** | `backend/services/` · `agents/secret_scan.py` · `.github/workflows/ci.yml` | **Argon2id** passwords (PBKDF2-600k for legacy rows, re-hashed on login) · SHA-256-hashed revocable session tokens with replay tolerance that can't log you out everywhere · sliding-window rate limits **shared across instances via Redis** · per-endpoint body limits enforced mid-stream · hardened upload gate wired to real routes · boot-time secret hygiene that **refuses to start** on placeholders in production · **real OTP delivery** (SMTP/Brevo/Resend/Twilio/MSG91/Fast2SMS/Vonage/webhook) with credentials-free audit logging, per-destination hourly/daily caps against SMS-pumping, and a production mode that **never** returns a sign-in code it could not deliver · secret scan + gitleaks + bandit + pip-audit in CI · CSP/HSTS/nosniff/no-store · CORS closed by default · append-only audit log · uniform login errors · **data export + right-to-erasure**. → [`docs/security/SECURITY.md`](docs/security/SECURITY.md) |
 | **Storage** | `backend/services/sqlite_store.py` | **SQLite (WAL mode)** — ACID, crash-safe, indexed, FK-enforced, versioned migrations, legacy JSONL auto-import. Postgres swap = one module (documented). |
 | **Data & verification** | `data/` | 71 curated schemes as structured, validated records + per-record **verification manifest**; `agents/verify_dataset.py` gates CI. |
 | **Reach layer** | `backend/services/chat.py` + `chat_i18n.py` | WhatsApp-style conversational matcher — *State → Course → Income → matches → free-text Q&A* — in **English, বাংলা, हिन्दी & தமிழ்** (native script detection, দেশি digits `২ লাখ`, Tamil `லட்சம்`, NFC-safe matching). |
@@ -177,6 +177,19 @@ anonymous wizard session binds to your account: matches, tracker board and
 reminders follow the login on any device. Log out → fresh anonymous session.
 Export or erase your data anytime (`docs/api/API.md` → Accounts).
 
+Sign-in doors: **password** (Argon2id), **email code**, **phone code** (any
+country, E.164) and **GitHub OAuth**. Codes are really delivered — SMTP (Gmail
+app password, Yahoo, Outlook, SES, …), Brevo/Resend/your own webhook for email,
+Twilio / MSG91 / Fast2SMS / Vonage / your own webhook for SMS — and the response
+tells you which gateway carried the message. With **no gateway configured**:
+outside production the code is a clearly labelled *demo* (server log,
+`runtime/otp_outbox.jsonl`, `GET /api/auth/otp/dev-inbox`), and in production
+code sign-in answers `503` with the variables to set instead of faking one.
+Check a deployment in one command —
+`python scripts/check_otp_delivery.py --email you@gmail.com` — or read
+`GET /api/health` → `otp_delivery`. Setup: `docs/deploy/DEPLOYMENT.md`
+(real OTP delivery).
+
 ## 🧪 Testing
 
 | Suite | Covers |
@@ -193,6 +206,7 @@ Export or erase your data anytime (`docs/api/API.md` → Accounts).
 | `test_uploads` | magic bytes, quotas, traversal, ownership, the wired routes |
 | `test_numerals` · `test_fuzz_security` | table-driven income parsing + property-based/adversarial pass (hypothesis) |
 | `test_secret_hygiene` · `test_schema_migrations` | scanner bypasses, strict boot, concurrent/crashed migrations |
+| `test_otp_auth` · `test_otp_delivery` | normalisation, expiry, attempt burning, per-destination caps + **every delivery path**: SMTP TLS/STARTTLS, retries, Twilio/MSG91/Fast2SMS/Vonage/webhook payloads, provider errors, and the production rule that a code is never echoed |
 | `test_clipboard_js` | executes `secure-clipboard.js` in node (18 checks) — and asserts it claims no security control |
 | `test_ci_config` | parses CI + pre-commit, runs their commands, and fails if a gate is mis-wired or demoted to advisory |
 | `test_chat` · `test_i18n_rules` | 4-language parsing + full conversations + localized explanations |

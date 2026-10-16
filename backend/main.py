@@ -123,7 +123,21 @@ def _boot_guards() -> dict:
     #     earlier choice) and refuse a topology the store cannot actually limit.
     store = ratelimit.configure(force=True)
     warning = ratelimit.warn_if_not_distributed()
-    return {"password_hashing": hashing, "rate_limit": store.status(), "rate_limit_warning": warning}
+
+    # (4) OTP delivery: say out loud which gateway carries sign-in codes, and
+    #     whether this deployment is handing them out as a labelled demo. The
+    #     one outcome that must never be silent is "codes are not really sent".
+    from backend.services import otp as otp_svc
+
+    delivery = otp_svc.delivery_report()
+    log.info("[boot] otp delivery: %s", delivery)
+
+    return {
+        "password_hashing": hashing,
+        "rate_limit": store.status(),
+        "rate_limit_warning": warning,
+        "otp_delivery": delivery,
+    }
 
 
 def create_app() -> FastAPI:
