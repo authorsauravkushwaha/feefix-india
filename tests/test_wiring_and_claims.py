@@ -111,11 +111,13 @@ def test_upload_gate_is_reachable_from_a_route():
     assert "store_document" in routes, "no route calls the upload gate — dead control"
     assert "assert_safe_upload" in _read("backend/services/documents.py")
 
-    # Exactly two modules may write files, each for a stated reason: the upload
-    # store (user bytes, always validated) and the OTP pepper (server-generated
-    # secret, never user data). A new writer appearing here must be justified.
+    # These modules may write files, each for a stated reason: the two upload
+    # stores (user bytes, always validated — one per sanctioned route family)
+    # and the OTP pepper (server-generated secret, never user data). A new
+    # writer appearing here must be justified.
     allowed = {
         "documents.py": "validated user uploads, outside the web root",
+        "uploads.py": "validated session uploads for the /api/uploads gate",
         "otp.py": "server-generated pepper file, not user input",
     }
     pattern = re.compile(r"open\([^)]*['\"]w|O_WRONLY|write_bytes\(")

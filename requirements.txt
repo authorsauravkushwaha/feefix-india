@@ -24,3 +24,9 @@ hypothesis>=6.100  # property-based tests (parsers, upload validation, tokens)
 # tests only — a fake Redis server (with server-side Lua) so the multi-instance
 # rate-limit store is covered by the suite instead of by inspection.
 fakeredis[lua]>=2.20
+
+# Security gates, installed in CI's sast-and-dependencies job and by
+# pre-commit. Declared here too so `pip install -r requirements.txt` reproduces
+# the CI environment exactly — a gate nobody can run locally stops being run.
+bandit>=1.7
+pip-audit>=2.7

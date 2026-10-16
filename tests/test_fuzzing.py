@@ -137,4 +137,11 @@ def test_property_i18n_path_input_never_produces_5xx(client, text):
     from urllib.parse import quote
 
     response = client.get("/api/i18n/" + quote(text, safe=""))
-    assert response.status_code in (404, 422)
+    if response.status_code == 200:
+        # A *supported* language legitimately answers 200 — the property is
+        # "never 5xx", plus "only real languages resolve".
+        from backend.api.routes import SUPPORTED_LANGS
+
+        assert text in SUPPORTED_LANGS, f"unsupported language {text!r} resolved"
+    else:
+        assert response.status_code in (404, 422)

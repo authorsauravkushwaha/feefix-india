@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import sys
+import urllib.parse
 import urllib.request
 from datetime import date, datetime
 from pathlib import Path
@@ -39,9 +40,14 @@ def _age_days(day: date) -> int:
 
 
 def check_url(url: str, timeout: float = 8.0) -> tuple[bool, str]:
+    # Only http(s) official-portal URLs are probed — never file:/ftp:/custom
+    # schemes that a corrupted dataset entry could smuggle in.
+    if urllib.parse.urlparse(url).scheme not in ("http", "https"):
+        return False, "unsupported scheme"
     req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "FeeFix-Agent/1.0"})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as res:
+        # Scheme is pinned to http(s) immediately above, so B310 is justified.
+        with urllib.request.urlopen(req, timeout=timeout) as res:  # nosec B310
             return 200 <= res.status < 400, f"HTTP {res.status}"
     except Exception as exc:
         return False, f"{exc.__class__.__name__}"
@@ -108,6 +114,35 @@ def run(check_urls: bool = False) -> tuple[int, dict]:
     return (1 if errors else 0), report
 
 
+_USAGE = """FeeFix dataset verification agent — integrity gate for data/schemes/.
+
+Usage:
+  python -m agents.verify_dataset [--check-urls]
+
+  (no flags)     offline integrity audit: ids, https sources, manifest coverage
+  --check-urls   also HEAD each official/application URL (scheduled CI only —
+                 portal outages must not fail a normal build)
+  --help         show this message
+
+Exit codes: 0 = healthy, 1 = integrity errors.
+"""
+
+
+def main(argv: list[str]) -> int:
+    # `--help` used to run the whole audit instead of explaining itself, which
+    # makes the flags undiscoverable; unknown flags are now a usage error rather
+    # than being silently ignored (`--check_urls` would have done nothing).
+    if "--help" in argv or "-h" in argv:
+        print(_USAGE, end="")
+        return 0
+    unknown = [a for a in argv if a.startswith("-") and a != "--check-urls"]
+    if unknown:
+        print(f"unknown option(s): {' '.join(unknown)}", file=sys.stderr)
+        print("run with --help for usage", file=sys.stderr)
+        return 2
+    code, _ = run(check_urls="--check-urls" in argv)
+    return code
+
+
 if __name__ == "__main__":
-    code, _ = run(check_urls="--check-urls" in sys.argv)
-    sys.exit(code)
+    sys.exit(main(sys.argv[1:]))

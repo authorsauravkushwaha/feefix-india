@@ -35,7 +35,12 @@ def _aged_session(client, token: str, *, hours: int = 25) -> None:
     conn.commit()
 
 
-def _replay_after_grace(token: str, seconds: int = 300) -> None:
+def _replay_after_grace(token: str, seconds: int | None = None) -> None:
+    # Default: past the overlap window (the unified *heal* window) so these
+    # tests exercise the refusal path — inside the overlap a same-device stale
+    # token is healed instead (see tests/test_session_replay_policy.py).
+    if seconds is None:
+        seconds = auth_svc.OVERLAP_S + 60
     conn = db.get_connection()
     conn.execute(
         "UPDATE auth_sessions SET replaced_at=? WHERE token_hash=?",

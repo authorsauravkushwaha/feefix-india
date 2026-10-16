@@ -1,4 +1,13 @@
 services:
+  # Shared counters. Without this, a second instance (or a second worker that
+  # does not share a disk) multiplies every rate limit by N. The app refuses
+  # to boot in that topology if this URL is missing.
+  - type: keyvalue
+    name: feefix-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []  # private network only — the web service reaches it internally
+
   - type: web
     name: feefix-india
     runtime: python
@@ -7,6 +16,7 @@ services:
     branch: main
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
     disk:
       name: feefix-runtime
       mountPath: /opt/render/project/src/runtime
@@ -14,31 +24,97 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
-      # Render terminates TLS in front of the app, so the real client IP is the
-      # rightmost X-Forwarded-For entry (one trusted proxy). Without this the
-      # limiter would bucket every request under the proxy's address.
+
+      # -- environment + secret handling ------------------------------------- #
+      # "production" turns on the fail-closed boot guards: a placeholder secret
+      # or a missing Argon2id backend refuses to start (services/secrets.py,
+      # services/passwords.py) rather than serving with a weakened config.
+      - key: FEEFIX_ENV
+        value: production
+      - key: FEEFIX_PASSWORD_ALGO
+        value: argon2id
+      # Set to 1 to run with the *old* advisory-only behaviour. Deliberately an
+      # explicit, auditable opt-out: the default in production is to refuse.
+      - key: FEEFIX_SECRETS_STRICT
+        value: "1"
+
+      # -- shared state: rate limiting across instances ----------------------- #
+      # Wired, not commented out. A missing URL in a multi-instance deploy is a
+      # boot failure (services/ratelimit.py), not a log line.
+      - key: FEEFIX_REDIS_URL
+        fromService:
+          type: keyvalue
+          name: feefix-redis
+          property: connectionString
+      - key: FEEFIX_RATELIMIT_BACKEND
+        value: redis
+      - key: FEEFIX_INSTANCES
+        value: "1"
+      # Auth and expensive endpoints fail *closed* if the store is unreachable.
+      - key: FEEFIX_RATELIMIT_FAIL_MODE
+        value: "auth"
+      # Render terminates TLS in front of the service, so without this every
+      # request would appear to arrive from the proxy and *all* users would
+      # share one per-IP bucket. The forwarded header is read rightmost (the hop
+      # Render saw), so a client-supplied value cannot forge its own identity.
+      - key: FEEFIX_TRUST_PROXY
+        value: "1"
+      # Same meaning under the dual-name compatibility layer (services/ratelimit.py).
       - key: FEEFIX_TRUSTED_PROXY_COUNT
         value: "1"
-      # Fail startup on placeholder/half-configured secrets instead of warning.
-      - key: FEEFIX_STRICT_SECRETS
-        value: "1"
-      # Accounts, tracker rows, rate-limit counters and uploaded documents.
+
+      # -- persistent state --------------------------------------------------- #
+      # Uploads and the SQLite database live on the Render disk mounted above, so
+      # every deploy and instance starts from persisted state.
       - key: FEEFIX_DB
         value: /opt/render/project/src/runtime/feefix.db
       - key: FEEFIX_UPLOAD_DIR
         value: /opt/render/project/src/runtime/uploads
-      # No model download on a free instance: the built-in embedder is offline
-      # and instant, and the neural load is bounded anyway (FEEFIX_AI_LOAD_TIMEOUT).
-      - key: FEEFIX_AI_BACKEND
-        value: ngram
-      # Set this only when running more than one instance — the sqlite limiter
-      # already shares counters across worker processes on a single host.
-      # - key: FEEFIX_REDIS_URL
-      #   sync: false
-      # Optional integrations (leave unset to keep those sign-in doors closed).
-      # - key: GITHUB_CLIENT_ID
-      #   sync: false
-      # - key: GITHUB_CLIENT_SECRET
-      #   sync: false
-      # - key: FEEFIX_OTP_PEPPER
-      #   sync: false
+
+      # -- OTP delivery: codes must reach a real inbox / phone ---------------- #
+      # FEEFIX_ENV=production above already means: with no gateway configured,
+      # code sign-in answers 503 and the UI hides it. Nothing is ever faked.
+      # Fill in ONE email row and/or ONE SMS row in the dashboard (`sync: false`
+      # keeps the values out of git), then check /api/health → otp_delivery.
+      # Walkthrough: docs/deploy/DEPLOYMENT.md
+      - key: FEEFIX_OTP_PEPPER
+        generateValue: true          # pins the code pepper across instances/restarts
+      # -- email (Gmail app password, Brevo, Resend, or your own SMTP relay) -- #
+      - key: OTP_SMTP_HOST
+        sync: false                  # e.g. smtp.gmail.com
+      - key: OTP_SMTP_PORT
+        value: "587"                 # 465 = implicit TLS (OTP_SMTP_SECURE=1)
+      - key: OTP_SMTP_USER
+        sync: false
+      - key: OTP_SMTP_PASS
+        sync: false                  # Gmail: a 16-character app password
+      - key: OTP_SMTP_FROM
+        sync: false
+      - key: OTP_BREVO_API_KEY
+        sync: false                  # HTTPS alternative when SMTP ports are blocked
+      - key: OTP_RESEND_API_KEY
+        sync: false
+      # -- SMS (all paid; SMS cannot be free anywhere) ------------------------ #
+      - key: OTP_TWILIO_SID
+        sync: false
+      - key: OTP_TWILIO_TOKEN
+        sync: false
+      - key: OTP_TWILIO_FROM
+        sync: false
+      - key: OTP_MSG91_AUTH_KEY
+        sync: false                  # India (DLT template required)
+      - key: OTP_MSG91_TEMPLATE_ID
+        sync: false
+      - key: OTP_FAST2SMS_KEY
+        sync: false                  # India, cheapest (+91 only)
+      - key: OTP_SMS_WEBHOOK_URL
+        sync: false                  # any other gateway: POST {to, code, text}
+      - key: OTP_SMS_WEBHOOK_TOKEN
+        sync: false
+
+      # -- API surface -------------------------------------------------------- #
+      # Interactive docs are ON by default; this documents how to opt out.
+      # Turning them off is *cosmetic* — it hides documentation, never an
+      # endpoint (see docs/security/HARDENING.md).
+      # - key: FEEFIX_DISABLE_DOCS
+      #   value: "1"

@@ -47,6 +47,43 @@ tab / an offline mobile client into "you are logged out everywhere". Now:
 * an operator who prefers the old aggressive trade-off sets
   ``FEEFIX_SESSION_REUSE_POLICY=revoke_family``; ``observe`` records without
   killing anything.
+
+Design choices (deliberately boring, because boring is secure):
+
+* **Passwords** — Argon2id (memory-hard, parameters in
+  ``services/passwords.py``) with transparent upgrade of legacy PBKDF2 rows on
+  the next successful sign-in. A production deployment configured for Argon2id
+  refuses to start without ``argon2-cffi`` rather than silently downgrading.
+* **Sessions** — opaque 256-bit random bearer tokens (``secrets`` module).
+  Only the **SHA-256 hash** of a token is stored, so a database leak yields
+  nothing usable. 30-day rolling expiry; logout and account deletion revoke.
+* **Timing safety** — verification always runs the KDF, and unknown-account
+  logins burn an equivalent dummy verification; digests are compared with
+  ``hmac.compare_digest``; unknown-email errors are identical to
+  wrong-password errors (no user-enumeration).
+
+Token rotation & replay detection (availability ≠ collateral damage)
+--------------------------------------------------------------------
+Tokens are silently rotated after ``FEEFIX_ROTATE_AFTER_S`` (24 h) and the fresh
+token is returned in ``X-Session-Token``. A *superseded* token presented later is
+a replay signal — but "replayed token" and "stale device/tab that has not caught
+up" look identical from the server, and revoking the whole session family for a
+benign race logs the user out everywhere. So:
+
+* within ``FEEFIX_TOKEN_OVERLAP_S`` (15 min) a superseded token still
+  authenticates, and if it comes from the **same client fingerprint** the server
+  mints a fresh sibling token for that device — the stale client *self-heals*
+  instead of hard-failing;
+* beyond the overlap the stale token is refused (never the live one);
+* the family is **not** revoked because a rotated token was replayed. A mobile
+  client holding the previous token, or a tab that missed the rotation header,
+  must not be able to log the user out of every other device. Strikes are
+  recorded for operators; they do not kill the live session.
+  ``FEEFIX_REPLAY_POLICY=strict`` is the explicit opt-in that restores
+  revoke-the-family. ``lenient`` only logs.
+
+The trade-off is explicit and configurable rather than accidental — see
+``docs/security/SECURITY.md``.
 """
 
 from __future__ import annotations
@@ -61,16 +98,44 @@ import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from backend.services import db
+from backend.services import db, passwords
 from backend.services.limits import MAX_EMAIL_LEN, MAX_PASSWORD_LEN, MIN_PASSWORD_LEN
 
 log = logging.getLogger("feefix.auth")
 
+def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
+    raw = os.environ.get(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+    return value if value >= minimum else default
+
+
 PBKDF2_ITERATIONS = 600_000          # legacy scheme only (verify + rehash)
-SESSION_DAYS = 30
-ROTATE_AFTER_S = 24 * 3600           # rotate a token that has lived a full day
-REUSE_GRACE_S = 60                   # in-flight tolerance before "reuse" = theft
-REUSE_WINDOW_S = 3600                # window for counting replays / escalation
+SESSION_DAYS = _env_int("FEEFIX_SESSION_DAYS", 30)
+# A token in continuous use longer than this is silently rotated.
+ROTATE_AFTER_S = _env_int("FEEFIX_ROTATE_AFTER_S", 24 * 3600)
+# How long a superseded token keeps being *useful*: inside this window a stale
+# token from the same device is healed (fresh sibling) or tolerated; beyond it
+# the stale token is refused. This is the knob that trades replay strictness for
+# availability.
+OVERLAP_S = _env_int("FEEFIX_TOKEN_OVERLAP_S", 15 * 60)
+# Legacy name for the short in-flight window (kept for policy summaries).
+REUSE_GRACE_S = _env_int("FEEFIX_REUSE_GRACE_S", 60)
+# Window for counting replay escalations.
+REUSE_WINDOW_S = 3600
+# balanced (default) | strict | lenient — main's knob. The legacy branch knob
+# FEEFIX_SESSION_REUSE_POLICY (quarantine | revoke_family | observe) is read at
+# call time by _reuse_policy() and wins when explicitly set.
+REPLAY_POLICY = (os.environ.get("FEEFIX_REPLAY_POLICY") or "balanced").strip().lower()
+REPLAY_STRIKES = _env_int("FEEFIX_REPLAY_STRIKES", 5)
+if REPLAY_POLICY not in ("balanced", "strict", "lenient", "quarantine"):  # pragma: no cover - config typo
+    log.warning("[auth] unknown FEEFIX_REPLAY_POLICY=%r — using 'balanced'", REPLAY_POLICY)
+    REPLAY_POLICY = "balanced"
+
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_\-]{32,128}$")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -222,6 +287,9 @@ def verify_password(password: str, stored: str) -> bool:
     if not stored:
         return False
     try:
+        if stored.startswith("argon2id$"):
+            # Main's storage format: ARGON2_PREFIX + PHC-without-leading-$.
+            stored = "$" + stored[len("argon2id$"):]
         if stored.startswith("$argon2"):
             if not _argon2_available():
                 return False
@@ -300,6 +368,12 @@ def needs_rehash(stored: str) -> bool:
                 _kdf_release()
         except Exception:
             return False
+    if stored.startswith("argon2id$"):
+        # Main's storage format ("argon2id$<phc>"): only rewrite when its
+        # parameters no longer match the configured policy.
+        from backend.services import passwords as _passwords
+
+        return _passwords.needs_rehash(stored)
     # scrypt (fallback) and pbkdf2 (legacy) rows: upgrade as soon as we can.
     return True
 
@@ -363,7 +437,7 @@ def _upgrade_hash_if_needed(user_id: str, password: str, stored: str) -> None:
     if not needs_rehash(stored):
         return
     try:
-        fresh = hash_password(password)
+        fresh = passwords.hash_password(password)
         conn = db.get_connection()
         with db._lock:
             conn.execute(
@@ -393,6 +467,55 @@ def _reuse_escalation_threshold() -> int:
         return 3
 
 
+def _effective_replay_policy() -> str:
+    """Resolve the two policy knobs into one behaviour family.
+
+    * ``FEEFIX_SESSION_REUSE_POLICY`` (the branch knob: quarantine | revoke_family
+      | observe) wins whenever it is explicitly set — including invalid values,
+      which fall back to quarantine (:func:`_reuse_policy`).
+    * Otherwise main's ``REPLAY_POLICY`` attr (monkeypatched by its tests, or
+      ``FEEFIX_REPLAY_POLICY`` at import) maps onto the same three behaviours:
+      balanced → quarantine (refuse + strikes + escalate), strict →
+      revoke_family (one strike kills the family), lenient → observe (record,
+      never kill).
+    """
+    env = os.environ.get("FEEFIX_SESSION_REUSE_POLICY")
+    if env is not None and env.strip():
+        return _reuse_policy()
+    policy = REPLAY_POLICY
+    if policy == "strict":
+        return "revoke_family"
+    if policy == "lenient":
+        return "observe"
+    if policy == "balanced":
+        # Main's default spelling for "the careful middle": refusal + strikes,
+        # escalate only when one fingerprint hammers past the threshold.
+        return "quarantine"
+    return policy  # pragma: no cover - quarantine spelling accepted directly
+
+
+def _maybe_escalate(user: dict, family: str, presenter: str | None, policy: str) -> bool:
+    """Family revocation for sustained same-client replay. True = revoked.
+
+    Counted per fingerprint and scoped to the window: three replays from *one*
+    client are no longer a benign race, while three devices each trying once are
+    not a reason to log everybody out everywhere (the availability fix).
+    """
+    if policy not in ("quarantine", "balanced"):
+        return False
+    if _recent_replay_count(family, presenter) < _reuse_escalation_threshold():
+        return False
+    _revoke_family(family)
+    record_security_event(
+        user["id"], family, "session_family_revoked",
+        f"{_recent_replay_count(family, presenter)} replays within {REUSE_WINDOW_S}s "
+        "from one client — all tokens for this sign-in revoked; sign in again",
+        presenter,
+    )
+    db.audit(user["id"], "auth.session_family_revoked", f"policy={policy}")
+    return True
+
+
 def prune_expired_sessions() -> int:
     """Drop sessions past their expiry (tombstones included).
 
@@ -407,9 +530,29 @@ def prune_expired_sessions() -> int:
         conn.commit()
     return cur.rowcount
 
+def client_fingerprint(request) -> str | None:
+    """Stable-ish client identity: hash of User-Agent (+ language/proto hints).
 
-def create_session(user_id: str, client: str | None = None) -> tuple[str, datetime]:
-    prune_expired_sessions()
+    Not a security boundary on its own (a thief controls the header) — it is a
+    *corroborating* signal used to distinguish "same device catching up" from
+    "somebody replaying a stolen token", and it is never stored in the clear.
+    """
+    if request is None:
+        return None
+    parts = [
+        request.headers.get("user-agent", ""),
+        request.headers.get("accept-language", ""),
+        request.headers.get("sec-ch-ua-platform", ""),
+    ]
+    material = "|".join(parts).strip()
+    if not material or material == "||":
+        return None
+    return hashlib.sha256(material.encode("utf-8", "ignore")).hexdigest()[:16]
+
+
+def create_session(
+    user_id: str, client: str | None = None, *, session_key: str | None = None
+) -> tuple[str, datetime]:
     token = secrets.token_urlsafe(32)
     now = _utcnow()
     expires = now + timedelta(days=SESSION_DAYS)
@@ -418,11 +561,11 @@ def create_session(user_id: str, client: str | None = None) -> tuple[str, dateti
         conn.execute(
             "INSERT INTO auth_sessions"
             " (token_hash, user_id, created_at, expires_at, last_seen, client,"
-            "  session_key, replaced_by, replaced_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?)",
+            "  session_key, replaced_by, replaced_at, replay_strikes, fingerprint)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (
                 _token_hash(token), user_id, _iso(now), _iso(expires), _iso(now), client,
-                uuid.uuid4().hex, None, None,
+                session_key or uuid.uuid4().hex, None, None, 0, client,
             ),
         )
         conn.commit()
@@ -457,31 +600,193 @@ def security_events(user_id: str, limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def _recent_replay_count(session_key: str) -> int:
+def _recent_replay_count(session_key: str, client: str | None = None) -> int:
+    """Replay presentations for this family — optionally scoped to one client.
+
+    Escalation counts *per fingerprint*: the same device presenting a rotated
+    token three times inside the window is no longer a benign race, while three
+    different devices each trying once must not trigger a family-wide logout
+    (the availability fix this whole policy exists for).
+    """
     conn = db.get_connection()
     since = _iso(_utcnow() - timedelta(seconds=REUSE_WINDOW_S))
-    row = conn.execute(
+    query = (
         "SELECT COUNT(*) AS n FROM auth_security_events"
-        " WHERE session_key=? AND kind='token_replay' AND occurred_at >= ?",
-        (session_key, since),
-    ).fetchone()
+        " WHERE session_key=? AND kind='token_replay' AND occurred_at >= ?"
+    )
+    params: list = [session_key, since]
+    if client:
+        query += " AND client=?"
+        params.append(client)
+    row = conn.execute(query, params).fetchone()
     return int(row["n"] if row else 0)
 
 
-def _lookup(token: str, client: str | None = None) -> tuple[dict | None, object | None, str | None]:
-    """Resolve a token → ``(user, row, warning)``.
+def _delete_row(token_hash: str) -> None:
+    """Drop exactly one session row — never a family (see availability notes)."""
+    conn = db.get_connection()
+    with db._lock:
+        conn.execute("DELETE FROM auth_sessions WHERE token_hash=?", (token_hash,))
+        conn.commit()
 
-    Anti-replay with an availability floor: a replayed superseded token is
-    *tombstoned* (deleted would hide repeat attempts) and recorded; the live
-    token in the same family keeps working unless the replay pattern escalates
-    or the operator opted into whole-family revocation.
+
+def _strike_family(session_key: str, token_hash: str) -> int:
+    """Count *one* replay observation against a session family; return the total.
+
+    The strike lands on the replayed row and the total is the family maximum, so
+    repeating a replay of the same stale token advances the counter by exactly
+    one observation (incrementing every row would inflate the count by the
+    family size and trip the threshold far too early).
+    """
+    conn = db.get_connection()
+    with db._lock:
+        conn.execute(
+            "UPDATE auth_sessions SET replay_strikes = replay_strikes + 1"
+            " WHERE session_key=? AND token_hash=?",
+            (session_key, token_hash),
+        )
+        row = conn.execute(
+            "SELECT COALESCE(MAX(replay_strikes), 0) AS n FROM auth_sessions WHERE session_key=?",
+            (session_key,),
+        ).fetchone()
+        conn.commit()
+    return int(row["n"]) if row else 0
+
+
+def _user_of(row) -> dict:
+    return {"id": row["uid"], "email": row["email"], "name": row["name"]}
+
+
+def _fingerprint_matches(row, client: str | None) -> bool:
+    """Same device, proven — not merely uncontradicted.
+
+    A missing fingerprint used to count as a match. That let anyone holding a
+    just-rotated token omit ``User-Agent`` and receive a freshly minted
+    long-lived sibling (the heal path). Unknown is not same-device. The caller
+    still must not revoke the family; it only withholds the mint.
+    """
+    recorded = row["fingerprint"] if "fingerprint" in row.keys() else None
+    if not recorded or not client:
+        return False
+    return hmac.compare_digest(str(recorded), str(client))
+
+
+def _handle_superseded(row, client: str | None) -> tuple[dict | None, str | None]:
+    """Decide what a *superseded* (already rotated) token may do.
+
+    Returns ``(user, new_token)``. ``user`` is ``None`` when the token is
+    refused. The live token of the family is never harmed by this path unless
+    the replay pattern escalates under an explicit policy.
+    """
+    user = _user_of(row)
+    replaced_at = (
+        datetime.fromisoformat(row["replaced_at"]) if row["replaced_at"] else _utcnow()
+    )
+    age_s = max(0.0, (_utcnow() - replaced_at).total_seconds())
+    same_device = _fingerprint_matches(row, client)
+    family = row["session_key"] or row["token_hash"]
+
+    if age_s <= OVERLAP_S:
+        if same_device and _claim_heal(row["token_hash"]):
+            # Same device, late request: heal it *once* by minting a fresh
+            # sibling so it stops using the superseded one. A retry loop must
+            # not mint a new live token on every request.
+            db.audit(user["id"], "auth.token_overlap_healed", f"age={int(age_s)}s")
+            return user, _mint_sibling(row, client)
+        if same_device:
+            db.audit(user["id"], "auth.token_overlap_reused", f"age={int(age_s)}s")
+            return user, None
+        # Different or unproven client inside the overlap window: allow the
+        # in-flight request but do not mint a long-lived token, and do not
+        # touch the live session.
+        db.audit(user["id"], "auth.token_overlap_foreign_client", f"age={int(age_s)}s")
+        return user, None
+
+    # Beyond the overlap: the stale token is refused. The live session is kept
+    # unless the operator explicitly opted into family revocation.
+    if REPLAY_POLICY == "strict":
+        _revoke_family(family)
+        db.audit(user["id"], "auth.token_reuse_revoked", f"age={int(age_s)}s policy=strict")
+        return None, None
+
+    strikes = _strike_family(family, row["token_hash"])
+    action = (
+        "auth.token_replay_observed" if REPLAY_POLICY == "lenient" else "auth.token_replay_rejected"
+    )
+    db.audit(
+        user["id"],
+        action,
+        f"strikes={strikes} age={int(age_s)}s live_session_kept=true policy={REPLAY_POLICY}",
+    )
+    return None, None
+
+
+def _claim_heal(token_hash: str) -> bool:
+    """Reserve the one heal this superseded token is allowed to mint.
+
+    Returns True only for the first caller. A stale tab that retries the old
+    token therefore cannot fill ``auth_sessions`` with sibling tokens.
+    """
+    conn = db.get_connection()
+    with db._lock:
+        cur = conn.execute(
+            "UPDATE auth_sessions SET heal_count = heal_count + 1"
+            " WHERE token_hash=? AND heal_count < 1",
+            (token_hash,),
+        )
+        conn.commit()
+    return cur.rowcount == 1
+
+
+def _mint_sibling(row, client: str | None) -> str:
+    """Mint a fresh token in the same family (client self-heal path).
+
+    The fingerprint is inherited when the caller does not know it, so a rotation
+    never *loses* the device identity that replay detection relies on.
+    """
+    if not client:
+        try:
+            client = row["fingerprint"]
+        except (KeyError, IndexError):  # pragma: no cover - row shim
+            client = None
+    new_token = secrets.token_urlsafe(32)
+    now = _utcnow()
+    new_hash = _token_hash(new_token)
+    conn = db.get_connection()
+    with db._lock:
+        conn.execute(
+            "INSERT INTO auth_sessions"
+            " (token_hash, user_id, created_at, expires_at, last_seen, client,"
+            "  session_key, replaced_by, replaced_at, replay_strikes, fingerprint)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                new_hash, row["user_id"], _iso(now), _iso(now + timedelta(days=SESSION_DAYS)),
+                _iso(now), client, row["session_key"], None, None, 0, client,
+            ),
+        )
+        conn.execute(
+            "UPDATE auth_sessions SET replaced_by=?, replaced_at=? WHERE token_hash=?",
+            (new_hash, _iso(now), row["token_hash"]),
+        )
+        conn.commit()
+    return new_token
+
+
+def _lookup(
+    token: str, client: str | None = None, fingerprint: str | None = None
+) -> tuple[dict | None, object | None, str | None]:
+    """Return ``(user, row)`` for a live token, or ``(None, None)``.
+
+    Row is returned only for tokens that are current (not superseded), so callers
+    can safely touch/rotate them.
     """
     if not token or not _TOKEN_RE.match(token):
         return None, None, None
     conn = db.get_connection()
     row = conn.execute(
         "SELECT s.token_hash, s.expires_at, s.session_key, s.replaced_by, s.replaced_at,"
-        " s.replayed_at, u.id AS uid, u.email, u.name"
+        " s.replayed_at, s.replay_strikes, s.fingerprint, s.heal_count, s.user_id,"
+        " u.id AS uid, u.email, u.name"
         " FROM auth_sessions s JOIN users u ON u.id = s.user_id"
         " WHERE s.token_hash=?",
         (_token_hash(token),),
@@ -489,66 +794,92 @@ def _lookup(token: str, client: str | None = None) -> tuple[dict | None, object 
     if not row:
         return None, None, None
     if datetime.fromisoformat(row["expires_at"]) < _utcnow():
-        revoke_token(token)
+        # Expiry kills exactly this token — never its family.
+        _delete_row(row["token_hash"])
         return None, None, None
-    user = {"id": row["uid"], "email": row["email"], "name": row["name"]}
-    if row["replaced_by"] or row["replayed_at"]:
-        replaced_at = (
-            datetime.fromisoformat(row["replaced_at"] or row["replayed_at"])
-            if (row["replaced_at"] or row["replayed_at"])
-            else _utcnow()
-        )
-        if not row["replayed_at"] and (_utcnow() - replaced_at).total_seconds() <= REUSE_GRACE_S:
-            # Within the grace window: a concurrent in-flight request that
-            # started just before rotation — same user, still honoured.
-            return user, row, None
-        return _handle_replay(row, user, client)
-    return user, row, None
-
-
-def _handle_replay(row, user: dict, client: str | None):
-    """Neutralise the replayed token; escalate only when the pattern says 'not a race'.
-
-    The row is *tombstoned* rather than deleted: the token is dead either way
-    (we never authenticate it again), but keeping it means a repeat attempt is
-    still attributable — which is what makes escalation possible at all — and it
-    costs an attacker nothing to try again, so we must be able to count it.
-    """
-    conn = db.get_connection()
-    session_key = row["session_key"] or row["token_hash"]
-    repeat = bool(row["replayed_at"])
-    with db._lock:
-        # Tombstone only — the *live* token of this family is deliberately left
-        # alone (that is the availability fix); escalation below decides whether
-        # the family should go too.
-        conn.execute(
-            "UPDATE auth_sessions SET replayed_at=? WHERE token_hash=?",
-            (_iso(_utcnow()), row["token_hash"]),
-        )
-        conn.commit()
-    record_security_event(
-        user["id"], session_key, "token_replay",
-        "superseded session token replayed outside the grace window"
-        + (" (repeat attempt)" if repeat else ""),
-        client,
+    if not row["replaced_by"]:
+        # Live, current token: normal path (rotation/touch handled by callers).
+        return _user_of(row), row, None
+    user = _user_of(row)
+    replaced_at = (
+        datetime.fromisoformat(row["replaced_at"])
+        if row["replaced_at"]
+        else _utcnow()
     )
-    db.audit(user["id"], "auth.token_replay_detected", f"policy={_reuse_policy()} repeat={repeat}")
+    age_s = max(0.0, (_utcnow() - replaced_at).total_seconds())
+    same_device = _fingerprint_matches(row, fingerprint)
+    presenter = fingerprint or client
+    family = row["session_key"] or row["token_hash"]
 
-    policy = _reuse_policy()
-    replays = _recent_replay_count(session_key)
-    escalate = policy == "revoke_family" or (
-        policy == "quarantine" and replays >= _reuse_escalation_threshold()
-    )
-    if escalate and policy != "observe":
-        _revoke_family(session_key)
+    if age_s <= OVERLAP_S:
+        # Inside the overlap window the stale token is *useful*, not hostile:
+        # heal the same device once, tolerate everyone else without minting.
         record_security_event(
-            user["id"], session_key, "session_family_revoked",
-            f"{replays} replays within {REUSE_WINDOW_S}s — all tokens for this "
-            "sign-in revoked; sign in again",
-            client,
+            user["id"], family, "token_replay",
+            (
+                f"stale token presented {int(age_s)}s after rotation"
+                + (" — healed for the same device" if same_device else " (foreign client, tolerated)")
+            ),
+            presenter,
         )
-        db.audit(user["id"], "auth.session_family_revoked", f"replays={replays}")
+        policy = _effective_replay_policy()
+        if _maybe_escalate(user, family, presenter, policy):
+            return None, None, "stale-token-replayed"
+        if same_device and _claim_heal(row["token_hash"]):
+            db.audit(user["id"], "auth.token_overlap_healed", f"age={int(age_s)}s")
+            return user, _SupersededRow(row, _mint_sibling(row, fingerprint or client)), None
+        if same_device:
+            db.audit(user["id"], "auth.token_overlap_reused", f"age={int(age_s)}s")
+        else:
+            db.audit(user["id"], "auth.token_overlap_foreign_client", f"age={int(age_s)}s")
+        return user, _SupersededRow(row, None), None
+
+    # Beyond the overlap: the stale token is refused. The live session is kept
+    # unless the operator's policy says otherwise or the pattern escalates.
+    record_security_event(
+        user["id"], family, "token_replay",
+        f"stale token replayed {int(age_s)}s after rotation (outside the overlap window)",
+        presenter,
+    )
+    policy = _effective_replay_policy()
+    if policy == "revoke_family":
+        _revoke_family(family)
+        db.audit(user["id"], "auth.token_reuse_revoked", f"age={int(age_s)}s policy=revoke_family")
+        return None, None, "stale-token-replayed"
+    if policy == "observe":
+        db.audit(user["id"], "auth.token_replay_observed", f"age={int(age_s)}s policy=observe")
+        return None, None, "stale-token-replayed"
+    # quarantine (and main's balanced spelling of it): strikes are recorded and
+    # the family is revoked only when ONE fingerprint hammers past the threshold
+    # inside the window — different devices each trying once never escalate.
+    db.audit(user["id"], "auth.token_replay_rejected", f"age={int(age_s)}s policy={policy}")
+    _maybe_escalate(user, family, presenter, policy)
     return None, None, "stale-token-replayed"
+
+
+class _SupersededRow:
+    """Marks a superseded-but-tolerated token so callers don't rotate it again."""
+
+    __slots__ = ("_row", "healed_token")
+
+    def __init__(self, row, healed_token: str | None) -> None:
+        self._row = row
+        self.healed_token = healed_token
+
+    def __getitem__(self, key):  # pragma: no cover - row passthrough
+        return self._row[key]
+
+    def keys(self):  # pragma: no cover
+        return self._row.keys()
+
+    def get(self, key, default=None):  # pragma: no cover - row passthrough
+        try:
+            return self._row[key]
+        except (KeyError, IndexError):
+            return default
+
+    superseded = True
+
 
 
 def _touch(row) -> None:
@@ -563,59 +894,47 @@ def _touch(row) -> None:
         conn.commit()
 
 
-def resolve_token(token: str | None) -> dict | None:
+def resolve_token(token: str | None, client: str | None = None, fingerprint: str | None = None) -> dict | None:
     """Bearer token → user dict (rolling refresh) or None. No rotation here."""
-    user, row, _warning = _lookup(token)
-    if user is None:
+    user, row, warning = _lookup(token, client, fingerprint)
+    if user is None or row is None:
         return None
-    if not row["replaced_by"] and not row["replayed_at"]:
+    if isinstance(row, _SupersededRow):  # tolerated stale token; already refreshed
+        return user
+    if not row["replaced_by"]:
         _touch(row)
+    return user
+
     return user
 
 
 def resolve_and_rotate(
-    token: str | None, client: str | None = None
+    token: str | None, client: str | None = None, fingerprint: str | None = None
 ) -> tuple[dict | None, str | None, str | None]:
     """Resolve a bearer token, rotating it if it has aged past ``ROTATE_AFTER_S``.
 
-    Returns ``(user, new_token, warning)``: ``new_token`` is set only when a
-    rotation happened, and ``warning`` carries a client-visible signal such as
-    ``stale-token-replayed`` so the UI can prompt a re-login after a *detected*
-    replay instead of being silently logged out.
+    Returns ``(user, new_token, warning)``: ``new_token`` is set when a rotation
+    (or a self-heal for a late client) handed the caller a fresher token;
+    ``warning`` carries a client-visible signal such as ``stale-token-replayed``
+    so the UI can prompt a re-login after a *detected* replay instead of being
+    silently logged out.
     """
-    user, row, warning = _lookup(token, client)
-    if user is None or row["replaced_by"] or row["replayed_at"]:
-        return user, None, warning
+    user, row, warning = _lookup(token, client, fingerprint)
+    if user is None:
+        return None, None, warning
+    if isinstance(row, _SupersededRow):
+        return user, row.healed_token, None
+
     conn = db.get_connection()
-    created = datetime.fromisoformat(
-        conn.execute(
-            "SELECT created_at FROM auth_sessions WHERE token_hash=?", (row["token_hash"],)
-        ).fetchone()["created_at"]
-    )
+    created_row = conn.execute(
+        "SELECT created_at FROM auth_sessions WHERE token_hash=?", (row["token_hash"],)
+    ).fetchone()
+    created = datetime.fromisoformat(created_row["created_at"])
     if (_utcnow() - created).total_seconds() < ROTATE_AFTER_S:
         _touch(row)
         return user, None, None
     # Rotate: mint a new token in the same family, mark the old one superseded.
-    new_token = secrets.token_urlsafe(32)
-    now = _utcnow()
-    new_hash = _token_hash(new_token)
-    with db._lock:
-        conn.execute(
-            "INSERT INTO auth_sessions"
-            " (token_hash, user_id, created_at, expires_at, last_seen, client,"
-            "  session_key, replaced_by, replaced_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?)",
-            (
-                new_hash, row["uid"], _iso(now),
-                _iso(now + timedelta(days=SESSION_DAYS)), _iso(now), client,
-                row["session_key"], None, None,
-            ),
-        )
-        conn.execute(
-            "UPDATE auth_sessions SET replaced_by=?, replaced_at=? WHERE token_hash=?",
-            (new_hash, _iso(now), row["token_hash"]),
-        )
-        conn.commit()
+    new_token = _mint_sibling(row, fingerprint or client)
     db.audit(user["id"], "auth.token_rotated", None)
     return user, new_token, None
 
@@ -682,3 +1001,19 @@ def delete_account(user_id: str) -> None:
 
         remove_stored_files(documents)
     db.audit(user_id, "auth.delete_account", f"owned_sessions={len(owned)} documents={len(documents)}")
+
+
+    db.audit(user_id, "auth.delete_account", f"owned_sessions={len(owned)}")
+
+
+def policy_summary() -> dict:
+    """Non-secret summary of rotation/replay policy (docs, `/api/meta`)."""
+    return {
+        "rotate_after_s": ROTATE_AFTER_S,
+        "token_overlap_s": OVERLAP_S,
+        "replay_policy": REPLAY_POLICY,
+        "replay_strikes": REPLAY_STRIKES,
+        "reuse_grace_s": REUSE_GRACE_S,
+        "session_days": SESSION_DAYS,
+    }
+

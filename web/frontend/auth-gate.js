@@ -2,6 +2,15 @@
    FeeFix Auth Gate — blocks the app until sign-in (password · email OTP ·
    phone OTP · GitHub). Fully self-contained: injects its own DOM & CSS so
    no other source file needs to change. Loaded after app.js.
+
+   Code sign-in is honest about delivery: the gate asks
+   `GET /api/auth/methods` which gateways this deployment has, and then
+     * a configured gateway → "we sent it to <masked address>, check your
+       inbox / SMS",
+     * the development console fallback → a loud DEMO banner and the code shown
+       on screen, because nothing was actually sent,
+     * no gateway and no demo (any production deploy) → the door is closed with
+       an explanation instead of pretending to send a code that can never arrive.
    ========================================================================== */
 
 (() => {
@@ -9,6 +18,7 @@
 
   const LS_TOKEN = "feefix.token";
   const LS_USER = "feefix.user";
+  const LS_SID = "feefix.sid";
 
   if (localStorage.getItem(LS_TOKEN)) return;      // already signed in → no gate
 
@@ -16,7 +26,7 @@
   const css = `
   #ffGate{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;
     justify-content:center;background:rgba(6,9,18,.86);backdrop-filter:blur(14px);
-    font-family:Inter,system-ui,sans-serif;padding:16px}
+    font-family:Inter,system-ui,sans-serif;padding:16px;overflow:auto}
   #ffGate *{box-sizing:border-box}
   .ff-card{width:100%;max-width:400px;background:#0d1322;border:1px solid #1e2a45;
     border-radius:22px;padding:30px 26px 24px;box-shadow:0 30px 80px rgba(0,0,0,.55);
@@ -32,6 +42,7 @@
   .ff-tab{flex:1;text-align:center;font-size:.76rem;font-weight:600;color:#8fa0c7;
     padding:8px 4px;border-radius:9px;cursor:pointer;user-select:none;transition:.15s}
   .ff-tab.on{background:#1b2a4d;color:#fff}
+  .ff-tab.off{opacity:.4;cursor:not-allowed}
   .ff-field{margin-bottom:12px}
   .ff-field label{display:block;font-size:.72rem;font-weight:600;color:#7f92bb;margin-bottom:5px}
   .ff-input{width:100%;background:#0a0f1c;border:1px solid #22314f;border-radius:11px;
@@ -62,6 +73,20 @@
   .ff-phone-pre{display:flex;gap:8px}
   .ff-phone-pre select{background:#0a0f1c;border:1px solid #22314f;border-radius:11px;
     color:#e7edfb;padding:11px 8px;font-size:.85rem;max-width:110px}
+  .ff-banner{display:flex;gap:8px;align-items:flex-start;font-size:.74rem;line-height:1.45;
+    border-radius:11px;padding:9px 11px;margin-bottom:14px;text-align:left}
+  .ff-banner.demo{background:rgba(255,176,32,.12);border:1px solid rgba(255,176,32,.45);
+    color:#ffd79a}
+  .ff-banner.info{background:rgba(110,168,255,.1);border:1px solid rgba(110,168,255,.35);
+    color:#bcd4ff}
+  .ff-banner.warn{background:rgba(255,124,124,.1);border:1px solid rgba(255,124,124,.4);
+    color:#ffbdbd}
+  .ff-banner a{color:inherit}
+  .ff-chip{display:inline-block;background:rgba(255,176,32,.18);border:1px solid rgba(255,176,32,.5);
+    color:#ffd79a;font-size:.62rem;font-weight:700;letter-spacing:.8px;border-radius:6px;
+    padding:1px 6px;margin-left:6px;vertical-align:middle}
+  .ff-code{display:block;font-size:1.45rem;font-weight:800;letter-spacing:5px;color:#ffd79a;
+    margin:6px 0 2px}
   body.ff-locked{overflow:hidden}
   .ff-spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.35);
     border-top-color:#fff;border-radius:50%;animation:ffSpin .7s linear infinite;vertical-align:-3px;margin-right:6px}
@@ -77,9 +102,12 @@
       </div>
       <p class="ff-sub">Sign in to discover scholarships made for <b>you</b>🎓</p>
 
+      <div class="ff-banner demo" data-banner="demo" hidden></div>
+      <div class="ff-banner warn" data-banner="notice" hidden></div>
+
       <div class="ff-tabs">
-        <div class="ff-tab on" data-tab="otp">OTP Login</div>
-        <div class="ff-tab" data-tab="phone">Phone OTP</div>
+        <div class="ff-tab on" data-tab="otp">Email code</div>
+        <div class="ff-tab" data-tab="phone">Phone code</div>
         <div class="ff-tab" data-tab="password">Password</div>
       </div>
 
@@ -93,6 +121,7 @@
             <input class="ff-input" id="ffNameE" type="text" placeholder="Your name (optional)" />
           </div>
           <button class="ff-btn" type="submit" data-act="send">Send my code →</button>
+          <p class="ff-hint" data-delivery-note></p>
         </div>
         <div class="ff-field" data-step="code" hidden>
           <label>Enter the 6-digit code sent to <b data-addr></b></label>
@@ -102,9 +131,12 @@
             <input maxlength="1" inputmode="numeric" /><input maxlength="1" inputmode="numeric" />
           </div>
           <p class="ff-hint" data-msg></p>
+          <p class="ff-hint" data-expiry></p>
+          <p class="ff-hint" data-clip-note>FeeFix never copies your session token. Clearing a code after you paste it here is convenience, not protection against malware on this device.</p>
           <button class="ff-btn" type="submit" data-act="verify">Verify & enter →</button>
           <p class="ff-hint">Didn't get it?
-            <button type="button" class="ff-resend" data-act="resend" disabled>Resend (<span data-cd>40</span>s)</button>
+            <button type="button" class="ff-resend" data-act="resend" disabled>Resend code</button>
+            <button type="button" class="ff-resend" data-act="dev-inbox" hidden>dev inbox</button>
           </p>
         </div>
       </form>
@@ -122,21 +154,26 @@
               <option value="+880">🇧🇩 +880</option><option value="+94">🇱🇰 +94</option>
               <option value="+977">🇳🇵 +977</option><option value="">Other…</option>
             </select>
+            <input class="ff-input" id="ffCountryOther" type="tel" placeholder="+254" maxlength="5" style="max-width:78px;display:none" aria-label="Country code" />
             <input class="ff-input" id="ffPhone" type="tel" placeholder="98765 43210" style="flex:1" required />
           </div>
           <button class="ff-btn" type="submit" data-act="send">Text me a code →</button>
+          <p class="ff-hint" data-delivery-note></p>
         </div>
         <div class="ff-field" data-step="code" hidden>
-          <label>Enter the 6-digit SMS code sent to <b data-addr></b></label>
+          <label>Enter the 6-digit code sent to <b data-addr></b></label>
           <div class="ff-otp-row" data-boxes>
             <input maxlength="1" inputmode="numeric" /><input maxlength="1" inputmode="numeric" />
             <input maxlength="1" inputmode="numeric" /><input maxlength="1" inputmode="numeric" />
             <input maxlength="1" inputmode="numeric" /><input maxlength="1" inputmode="numeric" />
           </div>
           <p class="ff-hint" data-msg></p>
+          <p class="ff-hint" data-expiry></p>
+          <p class="ff-hint" data-clip-note>FeeFix never copies your session token. Clearing a code after you paste it here is convenience, not protection against malware on this device.</p>
           <button class="ff-btn" type="submit" data-act="verify">Verify & enter →</button>
           <p class="ff-hint">Didn't get it?
-            <button type="button" class="ff-resend" data-act="resend" disabled>Resend (<span data-cd>40</span>s)</button>
+            <button type="button" class="ff-resend" data-act="resend" disabled>Resend code</button>
+            <button type="button" class="ff-resend" data-act="dev-inbox" hidden>dev inbox</button>
           </p>
         </div>
       </form>
@@ -155,7 +192,7 @@
           <div class="ff-field" style="margin:0"><button class="ff-btn" type="submit" data-act="login">Sign in →</button></div>
           <div class="ff-field" style="margin:0"><button class="ff-btn ff-ghost-btn" style="background:#161d2f" type="submit" data-act="register">Sign up</button></div>
         </div>
-        <p class="ff-hint">🔒 PBKDF2-hashed, never stored in plain text.</p>
+        <p class="ff-hint">🔒 Argon2id-hashed, never stored in plain text.</p>
       </form>
 
       <div class="ff-or">or continue with</div>
@@ -173,37 +210,163 @@
   style.textContent = css;
   document.head.appendChild(style);
 
-  const mount = () => {
+  const mount = async () => {
     const wrap = document.createElement("div");
     wrap.innerHTML = html;
     const gate = wrap.firstElementChild;
     document.body.appendChild(gate);
     document.body.classList.add("ff-locked");
 
-    if (location.hash === "#auth=failed") {
-      gate.querySelector("[data-err]").textContent =
-        "GitHub sign-in didn't complete — try again or use a code instead.";
-      history.replaceState(null, "", "/");
-    }
-
     const q = (sel) => gate.querySelector(sel);
     const errBox = q("[data-err]");
-    const fail = (m) => { errBox.textContent = m; };
+    const fail = (m) => { errBox.textContent = m || ""; };
     const busy = (btn, on, label) => {
+      if (!btn) return;
       btn.disabled = on;
       btn.innerHTML = on ? `<span class="ff-spin"></span>Wait…` : label;
     };
+    const showBanner = (kind, node) => {
+      const box = q(`[data-banner="${kind}"]`);
+      box.hidden = false;
+      box.replaceChildren(...(Array.isArray(node) ? node : [node]));
+    };
 
-    // tabs
-    gate.querySelectorAll(".ff-tab").forEach((t) =>
-      t.addEventListener("click", () => {
-        gate.querySelectorAll(".ff-tab").forEach((x) => x.classList.toggle("on", x === t));
-        gate.querySelectorAll(".ff-pane").forEach((p) => (p.hidden = p.dataset.pane !== t.dataset.tab));
+    if (location.hash === "#auth=failed") {
+      fail("GitHub sign-in didn't complete — try again or use a code instead.");
+      history.replaceState(null, "", "/");
+    }
+
+    /* ------------------------------------------------------ transport -- */
+    const api = async (path, body) => {
+      const r = await fetch(path, {
+        method: body === undefined ? "GET" : "POST",
+        headers: body === undefined ? {} : { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body || {}),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const detail = typeof data.detail === "string" ? data.detail : "";
+        const err = new Error(detail || `Sign-in failed (${r.status}). Please try again.`);
+        err.status = r.status;
+        // The server names the honest wait, so the UI counts down the same
+        // number the backend enforces instead of guessing.
+        err.retryAfter = Number(r.headers.get("Retry-After") || 0) || 0;
+        throw err;
+      }
+      return data;
+    };
+
+    const finish = (data) => {
+      localStorage.setItem(LS_TOKEN, data.token);
+      localStorage.setItem(LS_USER, JSON.stringify(data.user));
+      if (data.session_id) localStorage.setItem(LS_SID, data.session_id);
+      location.reload();
+    };
+
+    /* ------------------------------------------- delivery capabilities -- */
+    let methods = { otp_email: true, otp_phone: true, github: false, delivery: null };
+    let methodsLoaded = false;
+    try {
+      methods = await api("/api/auth/methods");
+      methodsLoaded = true;
+    } catch (_) {
+      // The gate must never be a dead end: if capabilities cannot be read,
+      // behave as before and let the API answer each attempt.
+    }
+    const delivery = methods.delivery || {};
+    const emailInfo = delivery.email || { provider: null, demo: false, usable: true };
+    const phoneInfo = delivery.phone || { provider: null, demo: false, usable: true };
+    const devInboxAvailable = Boolean(delivery.dev_inbox);
+
+    if (delivery.demo_mode) {
+      showBanner("demo", [
+        document.createTextNode(
+          "Demo mode: this server has no email/SMS gateway, so a code appears on " +
+          "this screen instead of being sent. Configure OTP_SMTP_* (email) or a " +
+          "phone gateway to deliver real codes — see docs/deploy/DEPLOYMENT.md."),
+      ]);
+    }
+
+    /* --------------------------------------------------------- tabs ----- */
+    const selectTab = (name) => {
+      gate.querySelectorAll(".ff-tab").forEach((t) =>
+        t.classList.toggle("on", t.dataset.tab === name));
+      gate.querySelectorAll(".ff-pane").forEach((p) => (p.hidden = p.dataset.pane !== name));
+      if (name === "otp") setTimeout(() => q("#ffEmail")?.focus(), 80);
+      if (name === "phone") setTimeout(() => q("#ffPhone")?.focus(), 80);
+      if (name === "password") setTimeout(() => q("#ffPwEmail")?.focus(), 80);
+    };
+
+    gate.querySelectorAll(".ff-tab").forEach((tab) =>
+      tab.addEventListener("click", () => {
+        if (tab.classList.contains("off")) {
+          fail(tab.dataset.offReason || "That sign-in option isn't available here.");
+          return;
+        }
+        fail("");
+        selectTab(tab.dataset.tab);
       })
     );
 
-    // OTP boxes UX: auto-advance + paste-to-fill
-    q("[data-boxes]") && gate.querySelectorAll("[data-boxes]").forEach((row) => {
+    // One door closed and another open → open the one that works, and say why.
+    const closeTab = (name, reason) => {
+      const tab = gate.querySelector(`.ff-tab[data-tab="${name}"]`);
+      tab.classList.add("off");
+      tab.dataset.offReason = reason;
+      tab.title = reason;
+      const pane = gate.querySelector(`.ff-pane[data-pane="${name}"]`);
+      const send = pane.querySelector('[data-act="send"]');
+      if (send) { send.disabled = true; send.textContent = "Not available on this server"; }
+      const note = pane.querySelector("[data-delivery-note]");
+      if (note) note.textContent = reason;
+    };
+
+    if (!methods.otp_email) {
+      closeTab("otp", "Email codes aren't configured on this deployment yet (the operator "
+        + "needs to set OTP_SMTP_HOST/USER/PASS or an email API key). Use your password or GitHub.");
+    }
+    if (!methods.otp_phone) {
+      closeTab("phone", "SMS codes aren't configured on this deployment yet (the operator "
+        + "needs to set OTP_TWILIO_* / OTP_MSG91_* / OTP_FAST2SMS_KEY / OTP_VONAGE_*). "
+        + "Use email, your password or GitHub.");
+    }
+    if (!methods.otp_email && !methods.otp_phone) {
+      fail("Code sign-in isn't configured on this server — sign in with your password or GitHub.");
+      if (methods.password || methods.github) selectTab("password");
+    } else if (!methods.otp_email) {
+      selectTab(methods.otp_phone ? "phone" : "password");
+    }
+
+    const describeDelivery = (channel) => {
+      const info = channel === "email" ? emailInfo : phoneInfo;
+      const what = channel === "email" ? "email" : "SMS";
+      if (info.demo) {
+        return `⚠️ Demo mode — no ${what} gateway configured, so the code will be shown here.`;
+      }
+      if (info.provider) {
+        const label = { smtp: "your email relay", brevo: "Brevo", resend: "Resend",
+                        webhook: "the email webhook", twilio: "Twilio", msg91: "MSG91",
+                        fast2sms: "Fast2SMS", vonage: "Vonage" }[info.provider] || info.provider;
+        return `Codes are sent for real via ${label}.`;
+      }
+      return "";
+    };
+    gate.querySelectorAll(".ff-pane").forEach((pane) => {
+      if (pane.dataset.pane === "password") return;
+      const channel = pane.dataset.pane === "phone" ? "phone" : "email";
+      const note = pane.querySelector("[data-delivery-note]");
+      if (note) note.textContent = describeDelivery(channel);
+      const sendBtn = pane.querySelector('[data-act="send"]');
+      const info = channel === "email" ? emailInfo : phoneInfo;
+      // Say what the button will do. "Text me a code" next to a demo code is a
+      // small lie the student notices only after waiting for an SMS.
+      if (sendBtn && info.demo) {
+        sendBtn.textContent = "Show a demo code →";
+      }
+    });
+
+    /* ----------------------------------------------------- OTP boxes ---- */
+    gate.querySelectorAll("[data-boxes]").forEach((row) => {
       const boxes = [...row.querySelectorAll("input")];
       boxes.forEach((b, i) => {
         b.addEventListener("input", () => {
@@ -218,83 +381,175 @@
           const digits = (e.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, 6);
           digits.split("").forEach((d, j) => { if (boxes[j]) boxes[j].value = d; });
           boxes[Math.min(digits.length, 5)].focus();
-          // Courtesy wipe only: the pasted code must not linger for a later
-          // stray paste. clearClipboard() verifies the clipboard still holds
-          // that exact value before touching it, so a user who copied something
-          // else in the meantime keeps their clipboard intact. This is UX
-          // hygiene, not protection against clipboard-stealing malware.
-          window.FeeFixClipboard &&
-            window.FeeFixClipboard.clearClipboard({ expect: e.clipboardData.getData("text") });
+          // Clipboard hygiene: clear a pasted one-time code so it does not sit
+          // in the clipboard for a later stray paste. This is a *usability*
+          // measure — it cannot stop malware that already read the value, and
+          // the footer note below says so to the user in plain words.
+          if (window.FeeFixClipboard) {
+            window.FeeFixClipboard.clearClipboard().then((result) => {
+              if (!result.ok && result.reason === "denied-or-unfocused") {
+                const note = row.parentElement.querySelector("[data-clip-note]");
+                if (note) note.textContent = "Clipboard could not be cleared automatically.";
+              }
+            });
+          }
         });
       });
     });
     const readCode = (pane) =>
       [...pane.querySelectorAll("[data-boxes] input")].map((b) => b.value).join("");
+    const clearCode = (pane) =>
+      pane.querySelectorAll("[data-boxes] input").forEach((b) => { b.value = ""; });
 
-    // countdown helper
-    const countdown = (btn, span, seconds = 40) => {
-      btn.disabled = true;
-      let left = seconds;
-      span.textContent = left;
+    /* ------------------------------------------------------ countdowns -- */
+    const timers = new WeakMap();
+    const stopTimers = (el) => {
+      const set = timers.get(el);
+      if (set) { set.forEach(clearInterval); timers.delete(el); }
+    };
+    const addTimer = (el, id) => {
+      const set = timers.get(el) || new Set();
+      set.add(id);
+      timers.set(el, set);
+    };
+
+    const startResendCountdown = (pane, seconds) => {
+      const btn = pane.querySelector('[data-act="resend"]');
+      if (!btn) return;
+      // The server owns the cooldown, so the button counts down *its* number:
+      // a hard-coded 40 next to a server-side variable is how users end up
+      // watching a button that refuses to do anything.
+      let left = Math.max(0, Math.round(seconds || 0));
+      const render = () => {
+        btn.textContent = left > 0 ? `Resend in ${left}s` : "Resend code";
+        btn.disabled = left > 0;
+      };
+      render();
+      if (!left) return;
       const tick = setInterval(() => {
         left -= 1;
-        span.textContent = left;
-        if (left <= 0) { clearInterval(tick); btn.disabled = false; btn.textContent = "Resend"; }
+        render();
+        if (left <= 0) clearInterval(tick);
       }, 1000);
+      addTimer(pane, tick);
     };
 
-    const finish = (data) => {
-      localStorage.setItem(LS_TOKEN, data.token);
-      localStorage.setItem(LS_USER, JSON.stringify(data.user));
-      if (data.session_id) localStorage.setItem("feefix.sid", data.session_id);
-      location.reload();
+    const startExpiryCountdown = (pane, seconds) => {
+      const note = pane.querySelector("[data-expiry]");
+      if (!note || !seconds) return;
+      let left = Math.max(0, Math.round(seconds || 0));
+      const render = () => {
+        const m = Math.floor(left / 60), s = String(left % 60).padStart(2, "0");
+        note.textContent = left > 0 ? `⏳ Code expires in ${m}:${s}` : "";
+      };
+      render();
+      const tick = setInterval(() => {
+        left -= 1;
+        render();
+        if (left <= 0) {
+          clearInterval(tick);
+          backToAddress(pane, "That code expired — send yourself a new one.");
+        }
+      }, 1000);
+      addTimer(pane, tick);
     };
 
-    const api = async (path, body) => {
-      const r = await fetch(path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body || {}),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.detail || `Error ${r.status}`);
-      return d;
+    const backToAddress = (pane, message) => {
+      stopTimers(pane);
+      clearCode(pane);
+      pane.querySelector('[data-step="code"]').hidden = true;
+      pane.querySelector('[data-step="to"]').hidden = false;
+      const note = pane.querySelector('[data-msg]');
+      if (note) note.textContent = "";
+      const expiry = pane.querySelector("[data-expiry]");
+      if (expiry) expiry.textContent = "";
+      if (message) fail(message);
     };
 
-    // ---------- OTP flows (email + phone, identical engine) ----------
+    /* ------------------------------------------------------ OTP flows --- */
     gate.querySelectorAll('form[data-pane="otp"], form[data-pane="phone"]').forEach((form) => {
       const channel = form.dataset.pane === "phone" ? "phone" : "email";
       const stepTo = form.querySelector('[data-step="to"]');
       const stepCode = form.querySelector('[data-step="code"]');
+      const info = channel === "email" ? emailInfo : phoneInfo;
+      const sendLabel = info.demo
+        ? "Show a demo code →"
+        : (channel === "phone" ? "Text me a code →" : "Send my code →");
+      let lastAddress = null;
 
       const address = () => {
         if (channel === "email") return stepTo.querySelector("#ffEmail").value.trim().toLowerCase();
-        const country = stepTo.querySelector("#ffCountry").value;
-        const raw = stepTo.querySelector("#ffPhone").value.replace(/\D/g, "");
-        return country ? country + raw.replace(/^0+/, "") : "+" + raw;
+        const country = stepTo.querySelector("#ffCountry").value
+          || stepTo.querySelector("#ffCountryOther").value.trim();
+        const raw = stepTo.querySelector("#ffPhone").value.trim();
+        const digits = raw.replace(/\D/g, "");
+        if (raw.startsWith("+")) return "+" + digits;          // user typed the whole thing
+        const cc = (country || "").replace(/[^\d]/g, "");
+        return cc ? "+" + cc + digits.replace(/^0+/, "") : "+" + digits;
+      };
+
+      stepTo.querySelector("#ffCountry")?.addEventListener("change", (e) => {
+        const other = stepTo.querySelector("#ffCountryOther");
+        other.style.display = e.target.value === "" ? "" : "none";
+        if (e.target.value === "") other.focus();
+      });
+
+      const showDemoCode = (pane, code) => {
+        const msg = pane.querySelector("[data-msg]");
+        msg.replaceChildren();
+        const chip = document.createElement("span");
+        chip.className = "ff-chip";
+        chip.textContent = "DEMO";
+        const line1 = document.createElement("span");
+        line1.append("No gateway is configured, so nothing was sent. Your demo code:",
+                     chip);
+        const line2 = document.createElement("b");
+        line2.className = "ff-code";
+        line2.textContent = code;
+        msg.append(line1, line2);
+      };
+
+      const enterCodeStep = (pane, r) => {
+        lastAddress = address();
+        stopTimers(pane);              // a resend must not stack countdowns
+        stepTo.hidden = true;
+        stepCode.hidden = false;
+        stepCode.querySelector("[data-addr]").textContent = r.address || lastAddress;
+        const msg = stepCode.querySelector("[data-msg]");
+        const inbox = stepCode.querySelector('[data-act="dev-inbox"]');
+        if (r.demo && r.dev_code) {
+          showDemoCode(stepCode, r.dev_code);
+          if (inbox) inbox.hidden = !devInboxAvailable;
+        } else {
+          msg.textContent = channel === "email"
+            ? `📬 Code sent to ${r.address || lastAddress} — check your inbox (and spam).`
+            : `📲 Code sent by SMS to ${r.address || lastAddress}.`;
+          if (inbox) inbox.hidden = true;
+        }
+        startResendCountdown(stepCode, r.resend_in);
+        startExpiryCountdown(stepCode, r.ttl_s);
+        stepCode.querySelector("[data-boxes] input").focus();
       };
 
       const send = async (btn) => {
-        busy(btn, true, "Send my code →");
+        busy(btn, true, sendLabel);
         fail("");
         try {
           const r = await api("/api/auth/otp/request", { channel, address: address() });
-          stepTo.hidden = true;
-          stepCode.hidden = false;
-          stepCode.querySelector("[data-addr]").textContent = r.address;
-          const msg = stepCode.querySelector("[data-msg]");
-          if (r.dev_code) {
-            msg.innerHTML = `⚙️ <b>Demo mode</b> — real delivery isn't configured, so your code is: <b style="font-size:1.1rem">${r.dev_code}</b>`;
+          enterCodeStep(stepCode, r);
+        } catch (e) {
+          if (e.status === 429 && e.retryAfter && /already sent/i.test(e.message)) {
+            // A cooldown is not a wall: the previous code is still valid, so
+            // drop the student on the code screen with the countdown running.
+            enterCodeStep(stepCode, { address: lastAddress || address(),
+                                      resend_in: e.retryAfter, ttl_s: 0 });
+            const msg = stepCode.querySelector("[data-msg]");
+            msg.textContent = e.message;
           } else {
-            msg.textContent = r.channel === "email" ? "📬 Check your inbox (and spam)." : "📲 Check your SMS.";
+            fail(e.message);
           }
-          const rb = stepCode.querySelector('[data-act="resend"]');
-          countdown(rb, stepCode.querySelector("[data-cd]"), r.resend_in);
-          const name = channel === "email" ? stepTo.querySelector("#ffNameE").value.trim() : "";
-          form._ctx = { address: r.dev_code ? address() : address(), name };
-          stepCode.querySelector("[data-boxes] input").focus();
-        } catch (e) { fail(e.message); }
-        busy(btn, false, channel === "phone" ? "Text me a code →" : "Send my code →");
+        }
+        busy(btn, false, sendLabel);
       };
 
       form.addEventListener("submit", async (e) => {
@@ -302,36 +557,61 @@
         fail("");
         const act = e.submitter?.dataset.act;
         if (act === "send") { await send(e.submitter); return; }
-        if (act === "verify") {
-          const btn = e.submitter;
-          busy(btn, true, "Verify & enter →");
+        if (act !== "verify") return;
+        const btn = e.submitter;
+        const code = readCode(stepCode);
+        if (code.length !== 6) { fail("Enter all 6 digits."); return; }
+        busy(btn, true, "Verify & enter →");
+        try {
           const nameEl = stepTo.querySelector("#ffNameE");
-          try {
-            const d = await api("/api/auth/otp/verify", {
-              channel,
-              address: address(),
-              code: readCode(stepCode),
-              name: channel === "email" && !form._done ? (nameEl?.value.trim() || undefined) : (nameEl?.value.trim() || undefined),
-            });
-            form._done = true;
-            finish(d);
-          } catch (err) { fail(err.message); busy(btn, false, "Verify & enter →"); }
+          const d = await api("/api/auth/otp/verify", {
+            channel,
+            address: lastAddress || address(),
+            code,
+            name: (nameEl?.value.trim() || undefined),
+          });
+          finish(d);
+        } catch (err) {
+          fail(err.message);
+          busy(btn, false, "Verify & enter →");
+          clearCode(stepCode);
+          stepCode.querySelector("[data-boxes] input").focus();
+          if (err.status === 410 || err.status === 429) {
+            // Expired, or the attempts/code are burned: the challenge is gone,
+            // so put the student back where a fresh code can be requested.
+            backToAddress(stepCode, err.message);
+          }
         }
       });
 
       stepCode.querySelector('[data-act="resend"]').addEventListener("click", async (ev) => {
-        const btn = ev.target;
+        const btn = ev.currentTarget;
         fail("");
+        busy(btn, true, "");
         try {
-          const r = await api("/api/auth/otp/request", { channel, address: address() });
-          const msg = stepCode.querySelector("[data-msg]");
-          if (r.dev_code) msg.innerHTML = `⚙️ <b>Demo mode</b> — new code: <b style="font-size:1.1rem">${r.dev_code}</b>`;
-          countdown(btn, stepCode.querySelector("[data-cd]"), r.resend_in);
-        } catch (e2) { fail(e2.message); }
+          const r = await api("/api/auth/otp/request", { channel, address: lastAddress || address() });
+          enterCodeStep(stepCode, r);
+        } catch (e) {
+          fail(e.message);
+          if (e.status === 429 && e.retryAfter) startResendCountdown(stepCode, e.retryAfter);
+          else { btn.disabled = false; btn.textContent = "Resend code"; }
+        }
+      });
+
+      stepCode.querySelector('[data-act="dev-inbox"]')?.addEventListener("click", async (ev) => {
+        ev.preventDefault();
+        try {
+          const r = await api(`/api/auth/otp/dev-inbox?address=${encodeURIComponent(lastAddress || "")}`);
+          const entry = (r.entries || [])[0];
+          if (entry) showDemoCode(stepCode, entry.code);
+          else fail("Dev inbox is empty — request a code first.");
+        } catch (e) {
+          fail(e.message);
+        }
       });
     });
 
-    // ---------- password flow ----------
+    /* --------------------------------------------------- password flow -- */
     const pwForm = gate.querySelector('form[data-pane="password"]');
     pwForm.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -348,19 +628,19 @@
       } catch (err) { fail(err.message); busy(btn, false, act === "register" ? "Sign up" : "Sign in →"); }
     });
 
-    // ---------- GitHub ----------
+    /* --------------------------------------------------------- GitHub --- */
     q('[data-act="github"]').addEventListener("click", async (e) => {
       e.preventDefault();
       fail("");
-      try {
-        const m = await (await fetch("/api/auth/methods")).json();
-        if (!m.github) { fail("GitHub sign-in isn't enabled on this deployment yet — use a code."); return; }
-        location.href = "/api/auth/github";
-      } catch (_) { location.href = "/api/auth/github"; }
+      if (methodsLoaded && !methods.github) {
+        fail("GitHub sign-in isn't enabled on this deployment yet — use a code or your password.");
+        return;
+      }
+      location.href = "/api/auth/github";
     });
 
     // focus first input when shown
-    setTimeout(() => q("#ffEmail")?.focus(), 150);
+    setTimeout(() => q("#ffGate .ff-pane:not([hidden]) input")?.focus(), 150);
   };
 
   if (document.body) mount();

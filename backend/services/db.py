@@ -14,28 +14,73 @@ Integrity primitives (the *I* in CIA):
 
 from __future__ import annotations
 
+import logging
 import os
+import re
 import sqlite3
 import threading
+import time
 from pathlib import Path
 
 RUNTIME_DIR = Path(__file__).resolve().parents[2] / "runtime"
 DEFAULT_DB = RUNTIME_DIR / "feefix.db"
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 7
 
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
 
+log = logging.getLogger("feefix.db")
+
+#: Seconds any statement may wait for a lock held by another connection.
+#: Installed *before* the first statement (see ``_connect``).
+BUSY_TIMEOUT_S = float(os.environ.get("FEEFIX_DB_BUSY_TIMEOUT", "30") or 30)
+
+
+def _switch_to_wal(conn: sqlite3.Connection, attempts: int = 6) -> None:
+    """Put the database in WAL mode, waiting out a concurrent opener.
+
+    Found by CI's flake-watch gate (and reproduced locally, ~1 run in 6 with
+    eight concurrent openers): switching the journal mode needs a brief
+    exclusive moment, and a peer that is opening the same **brand-new** file can
+    hold it — raising ``database is locked``. In production that is a
+    crash-looping deploy (two instances starting together against a fresh
+    volume), not a flaky test. The busy handler now covers this call, and the
+    switch additionally retries with a short backoff.
+    """
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            mode = str(conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]).lower()
+            if mode == "wal":
+                return
+            last_error = sqlite3.OperationalError(f"journal_mode is {mode!r}, not 'wal'")
+        except sqlite3.OperationalError as exc:
+            last_error = exc
+            if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+                raise
+        time.sleep(0.05 * (attempt + 1))
+    # Some filesystems (network mounts, for example) cannot do WAL at all. That
+    # is a degraded mode, not a reason to refuse to serve — say so loudly, and
+    # never let the *reporting* of it become a second failure.
+    try:
+        where = conn.execute("PRAGMA database_list").fetchone()[2]
+    except sqlite3.Error:  # pragma: no cover - reporting must not raise
+        where = "<unknown>"
+    log.warning("[db] could not enable WAL on %s: %s", where, last_error)
+
 
 def _connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path), check_same_thread=False)
+    # `timeout` installs SQLite's busy handler *before* any statement runs, so
+    # the very first pragma waits for a concurrent writer instead of failing
+    # instantly with "database is locked".
+    conn = sqlite3.connect(str(path), check_same_thread=False, timeout=BUSY_TIMEOUT_S)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(f"PRAGMA busy_timeout={int(BUSY_TIMEOUT_S * 1000)}")
+    _switch_to_wal(conn)
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -189,20 +234,17 @@ _MIGRATIONS: dict[int, list] = {
         "UPDATE auth_sessions SET session_key = token_hash WHERE session_key IS NULL",
     ],
     4: [
-        # v4 — three additive tables.
-        #
-        # (a) rate_limit_hits: the sliding-window counters used by the *shared*
-        #     limiter. Living in this database is what makes the limit hold
-        #     across worker processes (the in-memory dict could not).
+        # v4 — the two streams that landed independently, unioned:
+        # (a) shared-limiter counters (what makes the limit hold across workers),
+        # (b) document metadata (bytes live outside the web root; this maps them),
+        # (c) user-visible replay events + the replayed-token tombstone column,
+        # (d) fingerprint / replay_strikes for cross-device replay detection.
         """CREATE TABLE IF NOT EXISTS rate_limit_hits (
             key TEXT NOT NULL,
             ts  REAL NOT NULL
         )""",
         "CREATE INDEX IF NOT EXISTS idx_rate_limit_key_ts ON rate_limit_hits(key, ts)",
         "CREATE INDEX IF NOT EXISTS idx_rate_limit_ts ON rate_limit_hits(ts)",
-        # (b) documents: metadata for uploaded documents. The bytes live on disk
-        #     outside the web root under a random name; this row is the only map
-        #     from a user-visible document id to that file.
         """CREATE TABLE IF NOT EXISTS documents (
             id          TEXT PRIMARY KEY,
             session_id  TEXT NOT NULL,
@@ -217,12 +259,106 @@ _MIGRATIONS: dict[int, list] = {
         )""",
         "CREATE INDEX IF NOT EXISTS idx_documents_session ON documents(session_id)",
         "CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id)",
-        # (c) auth_security_events: token-replay/quarantine signals. Kept so the
-        #     *user* can see suspicious session activity and act (sign out
-        #     everywhere) — detection that silently logs users out everywhere is
-        #     a self-inflicted outage, not a control.
-        # Tombstone for a replayed token (idempotent: see _ensure_replayed_at).
-        _ensure_replayed_at,
+        "ALTER TABLE auth_sessions ADD COLUMN replayed_at TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at)",
+        """CREATE TABLE IF NOT EXISTS auth_security_events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     TEXT,
+            session_key TEXT,
+            kind        TEXT NOT NULL,
+            detail      TEXT,
+            client      TEXT,
+            occurred_at TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_secev_user ON auth_security_events(user_id, occurred_at)",
+        "CREATE INDEX IF NOT EXISTS idx_secev_key ON auth_security_events(session_key, kind, occurred_at)",
+        "ALTER TABLE auth_sessions ADD COLUMN fingerprint TEXT",
+        "ALTER TABLE auth_sessions ADD COLUMN replay_strikes INTEGER NOT NULL DEFAULT 0",
+    ],
+    5: [
+        # v5 — wired uploads + long-form notes metadata, plus the repair pass
+        # (a database that applied an earlier revision of v4 was left without
+        # the tombstone column). Every statement is idempotent.
+        "ALTER TABLE auth_sessions ADD COLUMN replayed_at TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at)",
+        """CREATE TABLE IF NOT EXISTS uploads (
+            id            TEXT PRIMARY KEY,
+            session_id    TEXT NOT NULL,
+            user_id       TEXT REFERENCES users(id) ON DELETE SET NULL,
+            original_name TEXT,
+            stored_name   TEXT NOT NULL,
+            content_type  TEXT,
+            kind          TEXT NOT NULL,
+            size_bytes    INTEGER NOT NULL,
+            sha256        TEXT NOT NULL,
+            created_at    TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_uploads_session ON uploads(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_uploads_user ON uploads(user_id)",
+        """CREATE TABLE IF NOT EXISTS session_notes (
+            session_id TEXT PRIMARY KEY,
+            notes      TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )""",
+    ],
+    6: [
+        # v6 — a superseded token may be healed at most once (heal_count), and
+        # the landing spot for any lineage that applied the other side's v4/v5
+        # first: `_apply` checks live columns and CREATE…IF NOT EXISTS never
+        # re-runs, so a pre-union database converges instead of skipping these
+        # statements forever.
+        "ALTER TABLE auth_sessions ADD COLUMN heal_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE auth_sessions ADD COLUMN fingerprint TEXT",
+        "ALTER TABLE auth_sessions ADD COLUMN replay_strikes INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE auth_sessions ADD COLUMN replayed_at TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at)",
+        """CREATE TABLE IF NOT EXISTS uploads (
+            id            TEXT PRIMARY KEY,
+            session_id    TEXT NOT NULL,
+            user_id       TEXT REFERENCES users(id) ON DELETE SET NULL,
+            original_name TEXT,
+            stored_name   TEXT NOT NULL,
+            content_type  TEXT,
+            kind          TEXT NOT NULL,
+            size_bytes    INTEGER NOT NULL,
+            sha256        TEXT NOT NULL,
+            created_at    TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_uploads_session ON uploads(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_uploads_user ON uploads(user_id)",
+        """CREATE TABLE IF NOT EXISTS session_notes (
+            session_id TEXT PRIMARY KEY,
+            notes      TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )""",
+    ],
+    7: [
+        # v7 — cross-lineage repair. A database created by the other
+        # implementation's history (already at its own v4/v5/v6) never ran the
+        # branch-side statements above; this version runs them idempotently so
+        # every lineage converges on the union schema instead of failing at
+        # runtime on a missing table.
+        """CREATE TABLE IF NOT EXISTS rate_limit_hits (
+            key TEXT NOT NULL,
+            ts  REAL NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_rate_limit_key_ts ON rate_limit_hits(key, ts)",
+        "CREATE INDEX IF NOT EXISTS idx_rate_limit_ts ON rate_limit_hits(ts)",
+        """CREATE TABLE IF NOT EXISTS documents (
+            id          TEXT PRIMARY KEY,
+            session_id  TEXT NOT NULL,
+            user_id     TEXT REFERENCES users(id) ON DELETE CASCADE,
+            doc_type    TEXT,
+            filename    TEXT NOT NULL,
+            stored_name TEXT NOT NULL,
+            media_type  TEXT NOT NULL,
+            size_bytes  INTEGER NOT NULL,
+            sha256      TEXT NOT NULL,
+            created_at  TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_documents_session ON documents(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id)",
+        "ALTER TABLE auth_sessions ADD COLUMN replayed_at TEXT",
         "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at)",
         """CREATE TABLE IF NOT EXISTS auth_security_events (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -236,32 +372,64 @@ _MIGRATIONS: dict[int, list] = {
         "CREATE INDEX IF NOT EXISTS idx_secev_user ON auth_security_events(user_id, occurred_at)",
         "CREATE INDEX IF NOT EXISTS idx_secev_key ON auth_security_events(session_key, kind, occurred_at)",
     ],
-    5: [
-        # v5 — repair pass. A database that had already applied an *earlier
-        # revision of v4* was left without the replay tombstone column (schema
-        # drift on an additive migration). These statements are idempotent, so
-        # running them is safe on every path: fresh install, v3 upgrade, and the
-        # patched-in-place case.
-        _ensure_replayed_at,
-        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at)",
-    ],
 }
 
 
+# ``ALTER TABLE <t> ADD COLUMN <c> ...`` — the one DDL form SQLite cannot make
+# conditional, so we check the live schema before running it. Identifiers come
+# from ``_MIGRATIONS`` (module constants), never from a request.
+_ALTER_ADD_COLUMN = re.compile(
+    r"^\s*ALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+ADD\s+COLUMN\s+([A-Za-z_][A-Za-z0-9_]*)",
+    re.IGNORECASE,
+)
+
+
+def _apply(conn: sqlite3.Connection, statement: str) -> None:
+    """Run one migration statement, never failing because it already ran.
+
+    Two situations used to be fatal and both are normal in production:
+
+    * **Two instances booting at once** (Render scales out, or ``--workers 2``
+      starts both at the same time). Without an up-front write lock both read
+      ``user_version`` and race through the same ``ALTER TABLE`` — the loser
+      died with *duplicate column name* and the deploy crash-looped.
+    * **A half-applied migration** from an earlier crash. SQLite's legacy
+      autocommit applied DDL statement-by-statement, so a DB could end up with
+      the column added but ``user_version`` not bumped, poisoning every later
+      boot. Checking the live schema heals that database instead of bricking it.
+    """
+    match = _ALTER_ADD_COLUMN.match(statement)
+    if match:
+        table, column = match.group(1), match.group(2)
+        # `table` is a validated identifier from our own migration table.
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column in existing:
+            return
+    conn.execute(statement)
+
+
 def migrate(conn: sqlite3.Connection | None = None) -> None:
+    """Apply pending migrations atomically and safely under concurrency."""
     conn = conn or get_connection()
     with _lock:
-        current = conn.execute("PRAGMA user_version").fetchone()[0]
-        for version in range(current + 1, SCHEMA_VERSION + 1):
-            for statement in _MIGRATIONS[version]:
-                if callable(statement):     # data/DDL that must be conditional
-                    statement(conn)
-                else:
-                    conn.execute(statement)
-            # `version` is a loop-controlled int; PRAGMA takes no bind param, so
-            # coerce it defensively. This is a schema version, never user data.
-            conn.execute("PRAGMA user_version=" + str(int(version)))
-        conn.commit()
+        # BEGIN IMMEDIATE takes the write lock *before* reading user_version, so
+        # a second process waits here instead of running the same DDL behind us.
+        # SQLite has no advisory locks; this is the equivalent for boot-time DDL.
+        if conn.in_transaction:  # pragma: no cover - defensive
+            conn.commit()
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            current = conn.execute("PRAGMA user_version").fetchone()[0]
+            for version in range(current + 1, SCHEMA_VERSION + 1):
+                for statement in _MIGRATIONS[version]:
+                    _apply(conn, statement)
+                # `version` is a loop-controlled int; PRAGMA takes no bind param,
+                # so coerce it defensively. A schema version, never user data.
+                conn.execute("PRAGMA user_version=" + str(int(version)))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
 
 def audit(actor: str | None, action: str, detail: str | None = None) -> None:

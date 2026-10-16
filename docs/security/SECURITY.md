@@ -13,51 +13,54 @@ This document is the threat model and how the codebase answers it, mapped to the
 > it says so out loud instead of being dressed up as defence.
 >
 > **Attack-by-attack detail:** [`HARDENING.md`](HARDENING.md) maps all 13 named
-> attack classes to the exact file, control and test that covers each one.
+> attack classes (replay, clipboard, SQL/NoSQL injection, secret leaks,
+> long-password DoS, ReDoS, SSTI, info leakage, file upload, secret management,
+> input validation, rate limiting, auth≠authz) to the exact file, control and
+> regression test that defeats each one, plus an abuse-case table.
+>
+> **Read that document's last section first if you are auditing us:** it lists
+> what these controls do *not* prove.
 
 ## Confidentiality — who can see what
 
-| Threat | Control | Evidence |
-|---|---|---|
-| Password theft from the database | **Argon2id** — memory-hard, `t=3`, `m=48 MiB`, `p=1`, 16-byte salt, 32-byte tag (OWASP range; env-tunable). Memory-hardness is the point: PBKDF2-HMAC-SHA256 at 600k iterations was CPU-cheap to parallelise on GPUs/ASICs. Legacy `pbkdf2$` rows still verify and are **re-hashed to Argon2id on the next successful sign-in**, so the weak scheme drains out of a live database with no forced resets. If `argon2-cffi` cannot be installed, the fallback is `hashlib.scrypt` (also memory-hard) and the boot log says so — never a silent downgrade to PBKDF2. | `tests/test_password_hashing.py` |
-| Hash-flooding the CPU with one huge password | Passwords are length-capped **and pre-hashed to 32 bytes** before the KDF, so cost is input-size independent; at most `FEEFIX_KDF_CONCURRENCY` (default 4) hashes run at once, so 48 MiB-per-hash cannot exhaust RAM. When those slots are saturated the API answers **503 + `Retry-After`** — a retryable capacity signal, deliberately not 401/422, because reporting a busy pool as "wrong credentials" would have users and clients treat a load spike as an account problem. Unknown-email, wrong-password and known-user requests answer **identically** under back-pressure, so it leaks nothing either. | `test_password_hashing.py::TestKdfBackPressure` |
-| Session-token theft from the database | Tokens are 256-bit random (`secrets.token_urlsafe`); **only the SHA-256 hash is stored** — a leaked table yields nothing replayable. | `test_auth.py` |
-| User enumeration (does an account exist?) | Register/login return **uniform, identical errors**, and login always runs the KDF (even for unknown emails) so response *time* leaks nothing. | `test_auth.py` |
-| Cross-origin snooping | SPA + API share one origin; **CORS is closed by default** (`FEEFIX_CORS_ORIGINS` opt-in only). | — |
-| Response intermediaries caching data | `Cache-Control: no-store` on every `/api/*` response. | — |
-| Cross-account reads | Account-owned sessions require the owner's bearer token (`_authorize_session`) on profile, tracker, match, ML, reminders and **documents**. Anonymous sessions remain usable by random-URL knowledge only. | `test_uploads_api.py`, `test_security_hardening.py` |
-| Token replay in transit | HSTS when TLS terminates in front (`Strict-Transport-Security` behind `https`/`x-forwarded-proto: https`). | `test_security_hardening.py` |
-| Session-token replay *within* the service | Tokens auto-rotate after 24 h (`X-Session-Token`). A replayed superseded token is **tombstoned at once** and surfaced (`X-Session-Warning`, `GET /api/auth/security-events`) while the live token survives — so a stale tab or an offline app no longer logs the user out everywhere. Escalation to family revocation happens on sustained replay (≥3 in the window) or via `FEEFIX_SESSION_REUSE_POLICY=revoke_family`. | `test_session_reuse_policy.py` |
-| Uploaded documents being readable | Files are stored under `FEEFIX_UPLOAD_DIR` (default `runtime/uploads`) — **outside the web root**, never statically mounted, random 128-bit names, `attachment` + `nosniff` on download, and erased with the account. | `test_uploads_api.py` |
+| Threat | Control |
+|---|---|
+| Password theft from the database | **Argon2id** (`time_cost=2`, `memory_cost=19 MiB`, `parallelism=1` — OWASP parameters) is the production default; `FEEFIX_ENV=production` or `FEEFIX_PASSWORD_ALGO=argon2id` makes a deployment **refuse to boot** without `argon2-cffi` instead of silently serving a weakened hash. Legacy `pbkdf2$…` rows still verify and are **re-hashed to Argon2id on the next successful login**, when the plaintext is actually available. Tests assert the plaintext never appears in the DB bytes. |
+| Session-token theft from the database | Tokens are 256-bit random (`secrets.token_urlsafe`). **Only the SHA-256 hash is stored** — a leaked table yields nothing replayable. |
+| User enumeration (does an account exist?) | Register/login return **uniform, identical errors**; login always runs the KDF even for unknown emails, so response *time* leaks nothing either. |
+| Cross-origin snooping | SPA + API share one origin; **CORS is closed by default** (`FEEFIX_CORS_ORIGINS` opt-in only). |
+| Response intermediaries caching data | `Cache-Control: no-store` on every `/api/*` response. |
+| Cross-account reads | Account-owned sessions require the owner's bearer token — enforced server-side (`_authorize_session`) on profile, tracker, match, ML, upload and dispatch endpoints. Anonymous sessions remain usable by random-URL knowledge only. |
+| Token replay in transit | HSTS when TLS terminates in front (`Strict-Transport-Security` behind `https`/`x-forwarded-proto: https`). |
+| Session-token replay *within* the service | Rotation after 24 h with a 15-minute overlap window, then refusal + audit while the live session survives; family revocation only after repeated refusals from a *different* device fingerprint. One stale tab must never log the user out everywhere (`HARDENING.md` #1). |
+| Secrets in the repository or the environment | Scanning runs in pre-commit, pre-push and CI (first-party scanner + gitleaks); boot-time hygiene checks **refuse to start** in production when a secret is missing, placeholder-shaped, or missing its companion variable. Neither proves a secret was never leaked — rotation is still an operator duty (`HARDENING.md` #4/#10). |
+| Sensitive text on the clipboard | **Not protected.** `secure-clipboard.js` refuses to copy credential-shaped values and clears after a short TTL, but any malware on the machine reads the clipboard immediately — the module itself reports `securityControl: false`. The session token is never copied, never placed in a URL, never logged. |
 
 ## Integrity — who can change what
 
-| Threat | Control | Evidence |
-|---|---|---|
-| XSS injection | Strict **Content-Security-Policy** (`script-src 'self'`), no inline scripts, SPA escapes every interpolated value, `X-Content-Type-Options: nosniff`, `_json_html_safe()` for the one HTML page. | `test_fuzzing.py` |
-| Clickjacking | `frame-ancestors` CSP directive (self + preview hosts only). | — |
-| SQL injection | **Impossible by construction** — parameterized statements everywhere; a test scans the source to keep it that way. | `test_security_hardening.py` |
-| Malicious uploads | Extension allowlist + magic-byte sniffing + size cap + sanitised names; a `shell.php` renamed to `.pdf` is rejected, and the wiring check refuses to let the gate become dead code again. | `test_uploads_api.py`, `test_wiring_and_claims.py` |
-| Unauthorized state changes | Append-only **audit log** (register/login/rotation/replay/erase/document actions); foreign keys engine-enforced. | `test_auth.py` |
-| Schema drift | Additive, versioned migrations via `PRAGMA user_version` (v1 → v4). | — |
-| Shortcut "auth" via JWTs | We don't mint JWTs — **opaque, server-side, revocable** sessions only. | — |
+| Threat | Control |
+|---|---|
+| XSS injection | Strict **Content-Security-Policy** (`script-src 'self'` — no remote code, no inline scripts), the SPA escapes every interpolated value by design, `X-Content-Type-Options: nosniff`. |
+| Clickjacking | `frame-ancestors` CSP directive (self + preview hosts only). |
+| SQL injection | **Impossible by construction** — every statement in the `backend/services/db.py`-backed stores is parameterized; no string-built SQL exists in the codebase. |
+| Malicious uploads | Extension allowlist **and** magic-byte sniffing, byte/file quotas per session, path-traversal-safe random storage names, stored outside the static mount, never executable, ownership-checked on every read/delete. Session identifiers are validated by one rule on every route and the resolved storage path must stay inside the upload root, so a hostile id (`..`, NUL, `/`, 10 KB long) is refused before it can touch the filesystem. |
+| Unauthorized state changes | Append-only **audit log** records register / login / session-bind / rotation / replay refusal / delete; foreign keys are engine-enforced (`PRAGMA foreign_keys=ON`). |
+| Schema drift | Additive, versioned, **transactional** migrations via `PRAGMA user_version`; concurrent boots (multiple instances/workers) serialize on `BEGIN IMMEDIATE` and a half-applied migration self-heals instead of bricking the database. |
+| Tamper-prone roll-your-own tokens | We don't mint JWTs — **opaque, server-side, revocable** sessions only. Logout and account deletion revoke instantly. |
 
 ## Availability — keeping the service up
 
-| Threat | Control | Evidence |
-|---|---|---|
-| Credential brute-force | 10 auth attempts / 5 min per IP+account → 429 with `Retry-After`. | `test_security_hardening.py` |
-| Request floods | 1000 req/min per IP on `/api/*`, counted in a **shared store** so the limit is not multiplied by the number of workers or instances (`FEEFIX_REDIS_URL` for multi-instance; the process-local store is opt-in and warns loudly). Verified by spawning real processes. | `test_rate_limit_shared.py` |
-| Rate-limit bypass across replicas | The default store is the app's SQLite file, updated inside `BEGIN IMMEDIATE`; `/api/health` reports the backend, whether it is shared, and any topology warning. | `test_rate_limit_shared.py` |
-| Limiter state growth | The counter table is bounded and pruned — the DoS shield cannot become the DoS vector. | `test_rate_limit_shared.py` |
-| Password-hashing capacity (a deliberate bound) | `FEEFIX_KDF_CONCURRENCY` (default 4) caps transient hashing memory at roughly 192 MiB. Excess sign-ins get a **503 with `Retry-After: 2`** — never a wrong-credentials error — and the service recovers as slots free. | `test_password_hashing.py` |
-| Limiter store outage | Failures are counted and reported (`rate_limit.degraded_events`); `FEEFIX_RATELIMIT_FAIL_MODE=closed` refuses traffic instead of failing open. | `test_rate_limit_shared.py` |
-| Slow loris / giant payloads | **Per-endpoint** body caps enforced *while the body streams* — chunked requests with no `Content-Length` are bounded too, and the 413 states the limit and scope so real large uploads have a path. | `test_body_limits.py` |
-| ReDoS / pathological input | User text is length-capped before any regex; digit runs bounded; the income lexicon is data-compiled and script-validated; timing tests hold. | `test_numerals_i18n.py` |
-| Info leakage via errors | Opaque 500s with a `request_id`; the fuzzer asserts no traceback, path or internal class name is ever returned. | `test_fuzzing.py` |
-| Model-download hang at boot | The neural embedder's weight download is bounded (`FEEFIX_AI_LOAD_TIMEOUT`, default 20 s) and degrades to the built-in offline embedder. An unbounded download previously hung the process (and the test suite) indefinitely. | `test_wiring_and_claims.py` |
-| Crash consistency | SQLite **WAL mode** + `busy_timeout`. | — |
-| Bad configuration shipping | Placeholder/weak secrets are **fatal in strict mode** (`FEEFIX_STRICT_SECRETS=1` or production markers) instead of a log line; unsafe limiter topology is reported (fatal in strict mode). | `test_boot_policy.py` |
+| Threat | Control |
+|---|---|
+| Credential brute-force | **Sliding-window rate limit**: 10 auth attempts / 5 min per IP+account → HTTP 429, and auth buckets **fail closed** if the shared store is unreachable. |
+| Request floods | Global limit 1000 req/min per IP on `/api/*`, and **shared across instances** when `FEEFIX_REDIS_URL` is set; without a shared store the app warns at boot that the effective limit is `N × instances`. |
+| Rate-limit evasion by header | `X-Forwarded-For` is only honoured with `FEEFIX_TRUST_PROXY=1`, and the **rightmost** hop is used (the leftmost is client-supplied and rotating it bought unlimited buckets before the fix). |
+| Slow loris / giant payloads | Body caps are enforced **per endpoint while the body streams** → `413` without buffering the payload; the blunt 1 MB global cap was replaced by 16 KB–2 MB policies per endpoint class, each env-tunable and clamped to a 16 MB absolute ceiling. Legitimate large inputs (a 20 KB notes field, a 2 MB certificate scan) get the headroom they need (`HARDENING.md` #11). |
+| ReDoS / pathological input | All user text is capped before any regex runs; number parsing is table-driven with bounded quantifiers; property-based tests assert totality, bounded output and idempotence (`HARDENING.md` #6). |
+| Info leakage via errors | The catch-all handler logs the traceback **server-side** and returns an opaque `Internal server error` + `request_id` — never a class, message or stack. Error *responses* are rendered through an encoding-safe class, so hostile input (e.g. a lone surrogate) yields a clean `422` rather than a client-triggered `500`. |
+| Rate-limit state growth | The limiter's hit table is **memory-bounded** (pruned in O(1)) — the DoS shield can't become the DoS vector (`HARDENING.md` #12). |
+| Crash consistency | SQLite **WAL mode** + `busy_timeout` — power loss mid-write cannot corrupt the store. |
+| Misconfiguration at boot | In production, placeholder secrets, an unset companion secret, or a missing Argon2 backend stop the boot (fail closed) rather than serving degraded. |
 
 ## Privacy guarantees
 
@@ -86,6 +89,24 @@ node --test "web/tests/*.test.mjs"                      # clipboard behaviour
 pip-audit -r requirements.txt                           # dependency advisories
 ```
 
+## What green tests do and don't mean
+
+The suite (472 added tests) proves **consistency with the rules we wrote down**. It
+cannot prove the rules are complete, because the tests were written by the same
+authors as the code: assumptions we never questioned are assumptions we never
+tested. Two of the most recent real defects — a lone surrogate turning a request
+into a `500`, and a spoofable `X-Forwarded-For` giving unlimited rate-limit
+buckets — were found by the property-based/adversarial suite, not by review of
+passing tests.
+
+Stronger signals, in increasing order of value: property-based tests over real
+invariants (**present**), parse/encode round-trips and fuzzing (**present**),
+third-party scanners in CI (**present**) — and, so the gates themselves cannot
+rot into decoration, `tests/test_ci_config.py` parses the workflow, runs its
+commands and asserts that demoting or mis-wiring a gate breaks the build — then
+independent human review, and a penetration test against a deployed instance
+(**both still on the roadmap**).
+
 ## Reporting a vulnerability
 
 Open a private security advisory on the repository (or email the maintainer).
@@ -93,8 +114,7 @@ Please do not file public issues for exploitable findings.
 
 ## Hardening roadmap (free, incremental)
 
-1. Optional TOTP second factor.
-2. Redis-backed limiter as the documented default for multi-instance deploys
-   (the store exists; deployments without Redis still share state per host).
-3. An external review or pen test — the one thing this repository cannot
-   self-supply, and the reason the gap above is stated rather than implied away.
+1. Independent third-party review of the auth/session and upload paths.
+2. TOTP second factor + step-up re-auth for destructive actions.
+3. Postgres-backed deployments inherit the same contract (`docs/deploy/DEPLOYMENT.md`).
+4. Fill/embed a real corpus for the local AI layer once a model host is allowlisted.

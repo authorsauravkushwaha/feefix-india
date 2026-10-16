@@ -4,15 +4,128 @@ on:
   push:
     branches: [main, "arena/**"]
   pull_request:
+  workflow_dispatch:        # the security jobs are also runnable on demand
   schedule:
     - cron: "30 18 * * 1"  # weekly dataset health (Tue 00:00 IST)
 
+# Least privilege: every job here only reads the repository. Anything needing
+# more (e.g. PR comments) is explicitly disabled rather than granted a token
+# scope — see the gitleaks job.
 permissions:
   contents: read
+
+# One run per branch/PR: a new push supersedes the old run instead of queueing
+# (free-tier friendly, and the signal is always about the newest commit).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Deterministic, offline-friendly embeddings for CI (no model download).
+      FEEFIX_AI_BACKEND: ngram
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # in-house history scan must see commits, not a shallow tip
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Full test suite
+        run: python -m pytest --junit-xml=pytest-report.xml 2>&1 | tee pytest-output.txt
+
+      # A red job whose reason lives only in a log blob is a gate people learn to
+      # ignore. Failed test ids are surfaced as check annotations (readable via
+      # the API, the UI and `gh pr checks`) and the junit XML is archived.
+      # Deliberately plain: text utilities over a captured file, no parser that
+      # can fail on its own and no YAML folding to mangle quoting.
+      - name: Report test failures as annotations
+        if: failure()
+        run: |
+          set +e
+          hits=$(grep -E "^(FAILED|ERROR)" pytest-output.txt | head -20)
+          if [ -n "$hits" ]; then
+            echo "$hits" | sed -E 's/^(FAILED|ERROR) /::error title=pytest::/'
+          else
+            tail -c 800 pytest-output.txt | sed 's/^/::error title=pytest-output::/'
+          fi
+          # Also into the job summary, which is readable from the API.
+          {
+            echo "### test job failed"
+            echo '```'
+            echo "$hits"
+            tail -60 pytest-output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: |
+            pytest-report.xml
+            pytest-output.txt
+          if-no-files-found: ignore
+
+      # --annotate puts each finding on the check run itself. A red secret scan
+      # whose findings live only in the log blob is a gate people learn to
+      # ignore (and, for one red run, one nobody could even read: the blob was
+      # not reachable from the API). Findings are now readable from
+      # `gh pr checks`, the UI and the check-runs endpoint.
+      - name: Secret scan (in-house, no committed credentials)
+        run: python -m agents.secret_scan --json secret-scan-report.json --annotate
+
+      # Working-tree scan misses a secret that was committed and then deleted.
+      # This is the same detector over git history, so disabling the gitleaks
+      # job (or this one) is not by itself a bypass.
+      - name: Secret scan (in-house, full git history)
+        run: python -m agents.secret_scan --history --json secret-scan-history.json --annotate
+
+      - name: Upload secret-scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: secret-scan-report
+          path: secret-scan-report.json
+          if-no-files-found: ignore
+
+      # The control itself is also under test: a workflow that quietly drops
+      # its scanner must go red, not quiet.
+      - name: Secret-scan wiring self-check (the control must stay wired in)
+        run: python -m agents.secret_scan --check-ci
+
+      - name: Dataset Verification Agent (offline)
+        run: python -m agents.verify_dataset
+
+      - name: ML ranking experiment (sanity)
+        run: python -m ml.experiments.simulate_outcomes
+
+      - name: Agent dry-run (reminder scheduler)
+        run: python -m agents.reminder_scheduler --dry-run
+
+  # --- intermittent-failure watch ------------------------------------------- #
+  # Two CI runs of the *same* test code went red here while passing locally, and
+  # the only record was a log blob. Intermittent failures in the concurrency
+  # (real subprocesses, real ports, real clocks) and property (randomised)
+  # suites are the ones that erode trust in a green badge, so those files are
+  # run repeatedly rather than once. Costs seconds; blocking, because a flake
+  # that CI tolerates is a flake that ships.
+  flake-watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FEEFIX_AI_BACKEND: ngram
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,33 +139,78 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Full test suite (incl. property-based + multi-process limiter tests)
-        run: python -m pytest
+      - name: Repeat the concurrency and property suites
+        run: |
+          for pass in 1 2 3; do
+            echo "=== pass $pass of 3 ==="
+            if python -m pytest tests/test_ratelimit_distributed.py \
+                 tests/test_fuzz_security.py tests/test_schema_migrations.py \
+                 -q -p no:cacheprovider --tb=short > flake-watch.log 2>&1; then
+              tail -3 flake-watch.log
+            else
+              cat flake-watch.log
+              # Annotations are the one channel that is readable through the
+              # API as well as the UI (the log blob and the job summary are
+              # not): failing test ids first, then the assertion context.
+              grep -E "^(FAILED|ERROR) " flake-watch.log | head -30 | \
+                sed -E "s/^(FAILED|ERROR) /::error title=pytest-flake::/"
+              tail -25 flake-watch.log | sed 's/^/::error title=flake-watch-tail::/'
+              exit 1
+            fi
+          done
 
-      - name: Secret scan — working tree (offline heuristics + entropy)
-        run: python -m agents.secret_scan
+      - name: Upload flake-watch output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flake-watch-log
+          path: flake-watch.log
+          if-no-files-found: ignore
 
-      - name: Secret scan — git history (a deleted secret is still a leaked secret)
-        # Scope is this branch's lineage on purpose: a PR gate must not fail
-        # because another in-flight branch contains deliberately fake fixtures.
-        # The whole-repository audit is `--history --all-branches` (operator-run;
-        # it reports scanner test fixtures by design).
-        run: python -m agents.secret_scan --history
+  # --- independent scanners -------------------------------------------------
+  # Separate vendors, separate heuristics: the in-house scanner above is good at
+  # repo-specific shapes, these catch what a single implementation misses. They
+  # also mean the security signal is not produced solely by the author of the
+  # code under review.
+  secret-scan-third-party:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history so historical leaks are caught too
+      - name: gitleaks (independent secret scanner)
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Commenting on PRs would need a write scope; the finding is delivered
+          # as a failing job + SARIF artifact instead, keeping the token
+          # read-only. (GITLEAKS_LICENSE is only required for organisations;
+          # this repository is a user account.)
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          # Extends the vendor defaults with a file-scoped, documented allowlist
+          # (see .gitleaks.toml) instead of waiving findings ad hoc.
+          GITLEAKS_CONFIG: .gitleaks.toml
 
-      - name: Secret-scan wiring self-check (the control must stay wired in)
-        run: python -m agents.secret_scan --check-ci
-
-      - name: Dataset Verification Agent (offline)
-        run: python -m agents.verify_dataset
-
-      - name: ML ranking experiment (sanity)
-        run: python -m ml.experiments.simulate_outcomes
-
-      - name: Agent dry-run (reminder scheduler)
-        run: python -m agents.reminder_scheduler --dry-run
+  sast-and-dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install scanners
+        run: pip install bandit pip-audit
+      - name: Static security analysis (medium+ severity)
+        run: bandit -q -r backend agents ai ml -x tests -ll
+      - name: Dependency vulnerability audit
+        run: pip-audit -r requirements.txt
 
   security-evidence:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -77,6 +235,7 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -89,7 +248,10 @@ jobs:
 
   dataset-liveness:
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
+    timeout-minutes: 15
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # Source portals go down without warning; a red run here is information, not
+    # a broken build — so it must not block anything.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4

@@ -12,8 +12,6 @@ import re
 BN_RE = re.compile(r"[ঀ-৿]")
 HI_RE = re.compile(r"[ऀ-ॿ]")
 TA_RE = re.compile(r"[஀-௿]")
-BN_DIGITS = str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789")
-HI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
 
 
 def detect_lang(text: str) -> str:
@@ -27,7 +25,15 @@ def detect_lang(text: str) -> str:
 
 
 def normalize_digits(text: str) -> str:
-    return text.translate(BN_DIGITS).translate(HI_DIGITS)
+    """Every supported script's digits → ASCII (table-driven).
+
+    The digit sets live in ``language/regional_support/numerals.json``; the
+    earlier two-script ``maketrans`` tables silently ignored Tamil, Gujarati,
+    Kannada, Telugu, Malayalam, Odia, Gurmukhi and Arabic-Indic input.
+    """
+    from backend.services import numerals
+
+    return numerals.normalize_digits(text)
 
 
 STR = {

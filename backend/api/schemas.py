@@ -8,20 +8,42 @@ giant-payload floods.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+import re
+from typing import Annotated, Literal
+
+from pydantic import AfterValidator, BaseModel, Field
 
 from backend.models.student import StudentProfile
 from backend.services.limits import (
     MAX_ADDRESS_LEN,
+    MAX_NOTES_LEN,
     MAX_EMAIL_LEN,
     MAX_MESSAGE_LEN,
     MAX_NAME_LEN,
     MAX_PASSWORD_LEN,
+    MAX_QUESTION_LEN,
     MAX_SCHEME_ID_LEN,
     MAX_SEARCH_LEN,
     MAX_SESSION_ID_LEN,
     MIN_PASSWORD_LEN,
 )
+
+
+def _no_lone_surrogates(value: str) -> str:
+    """Reject text that is not valid Unicode.
+
+    ``json.loads`` happily produces lone surrogates (``"\ud800"``); echoing such
+    a value back raised ``UnicodeEncodeError`` mid-response, i.e. a client-driven
+    500. Rejecting it at the boundary turns that into an honest 422.
+    Invalid *encoding* is a client error, and the client can fix it.
+    """
+    if any(0xD800 <= ord(ch) <= 0xDFFF for ch in value):
+        raise ValueError("Text contains invalid Unicode (unpaired surrogate).")
+    return value
+
+
+#: Free-text field type: length-bounded elsewhere, Unicode-validated here.
+SafeText = Annotated[str, AfterValidator(_no_lone_surrogates)]
 
 
 class MatchRequest(BaseModel):
@@ -45,8 +67,24 @@ class TrackRequest(BaseModel):
     )
 
 
+class BulkTrackItem(BaseModel):
+    scheme_id: str = Field(min_length=1, max_length=MAX_SCHEME_ID_LEN)
+    status: str | None = Field(default=None, max_length=32)
+
+
+class BulkTrackRequest(BaseModel):
+    """A batch of tracker updates.
+
+    One-at-a-time ``PUT`` is the wrong shape for a student saving a dozen
+    schemes, and a global 1 MB cap was the wrong size for both that batch and
+    a chat turn. This body has its own policy (``bulk``).
+    """
+
+    updates: list[BulkTrackItem] = Field(min_length=1, max_length=200)
+
+
 class ChatRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=MAX_MESSAGE_LEN)
+    message: SafeText = Field(min_length=1, max_length=MAX_MESSAGE_LEN)
     chat_id: str | None = Field(default=None, max_length=MAX_SESSION_ID_LEN)
 
 
@@ -54,8 +92,21 @@ class DispatchRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=50)
 
 
+class NotesRequest(BaseModel):
+    notes: SafeText = Field(
+        default="",
+        max_length=MAX_NOTES_LEN,
+        description=(
+            "Long-form application notes. This field is deliberately large"
+            " (see FEEFIX_MAX_NOTES_LEN) and its endpoint carries its own body"
+            " policy, so a legitimate large note is not rejected by a"
+            " one-size-fits-all cap."
+        ),
+    )
+
+
 class AskRequest(BaseModel):
-    question: str = Field(min_length=2, max_length=1000)
+    question: SafeText = Field(min_length=2, max_length=MAX_QUESTION_LEN)
     session_id: str | None = Field(
         default=None,
         max_length=MAX_SESSION_ID_LEN,
@@ -72,7 +123,7 @@ class EventRequest(BaseModel):
 class RegisterRequest(BaseModel):
     email: str = Field(max_length=MAX_EMAIL_LEN)
     password: str = Field(min_length=MIN_PASSWORD_LEN, max_length=MAX_PASSWORD_LEN)
-    name: str | None = Field(default=None, max_length=MAX_NAME_LEN)
+    name: SafeText | None = Field(default=None, max_length=MAX_NAME_LEN)
 
 
 class LoginRequest(BaseModel):
@@ -84,13 +135,30 @@ class LinkSessionRequest(BaseModel):
     session_id: str = Field(min_length=4, max_length=MAX_SESSION_ID_LEN)
 
 
+def _code_digits(value: str) -> str:
+    """Keep the digits of a verification code.
+
+    Codes reach this field from SMS autofill, a pasted email body or a human
+    copying ``123 456`` out of a notification. Formatting is not a wrong code —
+    reject only what contains no digits at all.
+    """
+    cleaned = re.sub(r"\D", "", value or "")
+    if not cleaned:
+        raise ValueError("Enter the code from your email or SMS.")
+    return cleaned
+
+
+#: A verification code with its formatting accepted and stripped.
+OtpCode = Annotated[str, AfterValidator(_code_digits)]
+
+
 class OtpRequestBody(BaseModel):
-    channel: str = Field(max_length=8, description="email | phone")
+    channel: Literal["email", "phone"] = Field(description="email | phone")
     address: str = Field(min_length=3, max_length=MAX_ADDRESS_LEN)
 
 
 class OtpVerifyBody(BaseModel):
-    channel: str = Field(max_length=8, description="email | phone")
+    channel: Literal["email", "phone"] = Field(description="email | phone")
     address: str = Field(min_length=3, max_length=MAX_ADDRESS_LEN)
-    code: str = Field(min_length=4, max_length=8)
-    name: str | None = Field(default=None, max_length=MAX_NAME_LEN)
+    code: OtpCode = Field(min_length=4, max_length=8)
+    name: SafeText | None = Field(default=None, max_length=MAX_NAME_LEN)

@@ -11,27 +11,38 @@
 
    What is actually enforced here (and that a control *can* enforce):
 
-     1. CREDENTIALS ARE NEVER COPIED. secureCopy() refuses the session token or
-        anything token-shaped. This is a real, testable rule — FeeFix never
-        needs a session token on the clipboard, so refusing is free.
-     2. NEVER CLOBBER THE USER'S CLIPBOARD. The old implementation called
-        writeText("") on a timer, destroying whatever the user had copied since
-        (and happily erasing *unrelated* sensitive content). Now a wipe happens
-        only after reading the clipboard back and confirming it still holds the
-        value we wrote — otherwise we leave it alone.
+     1. CREDENTIALS ARE NEVER COPIED. secureCopy()/copyWithHygiene() refuse the
+        session token, a 6-digit OTP, or anything token-shaped. This is a real,
+        testable rule — FeeFix never needs a session token on the clipboard,
+        so refusing is free.
+     2. NEVER CLOBBER THE USER'S CLIPBOARD. A timer wipe runs only after
+        reading the clipboard back and confirming it still holds the value we
+        wrote — otherwise we leave it alone. The module never registers a
+        visibilitychange handler (that wiped unrelated copies and still was
+        not protection).
      3. FAILURES ARE REPORTED, NOT SWALLOWED. Every call resolves to
         {ok, reason} so the UI can tell the user "copy failed, select it
-        manually" instead of silently doing nothing.
+        manually" instead of silently doing nothing. describe() declares
+        securityControl: false in machine-readable form.
 
    The real controls against credential theft live server-side: opaque
    hashed-at-rest session tokens, rotation, replay quarantine, short-lived OTPs,
    and rate limits.
    ========================================================================== */
-(() => {
+(function () {
   "use strict";
 
   const CLIPBOARD_TTL_MS = 20000; // courtesy wipe, only if the value is still ours
   const TOKEN_HINT = /^[A-Za-z0-9_-]{32,}$/; // opaque session tokens
+  const CODE_HINT = /^\d{6}$/; // one-time codes
+
+  const LIMITATIONS = Object.freeze([
+    "Cannot stop malware, extensions or keyloggers from reading the clipboard.",
+    "Does not auto-clear unconditionally. A timer cannot outrun a process that already read the value; the courtesy wipe runs only while the clipboard still holds exactly what we wrote.",
+    "Does not wipe the clipboard when the tab is hidden — that destroyed unrelated copies and still was not protection.",
+    "Clearing, when a caller asks for it, may fail if the page is unfocused or permission is denied. The failure is reported, not hidden.",
+    "Protects only this page's decision not to write a credential. It says nothing about other devices or data already sent.",
+  ]);
 
   let lastWritten = null;   // value we wrote, so we can verify before wiping
   let pendingTimer = null;
@@ -40,18 +51,6 @@
     const api = (typeof navigator !== "undefined" && navigator.clipboard) || null;
     if (!api || typeof api.writeText !== "function") return null;
     return api;
-  }
-
-  function looksLikeSecret(value) {
-    if (typeof value !== "string") return true;
-    if (TOKEN_HINT.test(value.trim())) return true;
-    try {
-      const stored = localStorage.getItem("feefix.token");
-      if (stored && value === stored) return true;
-    } catch (_) {
-      /* localStorage unavailable (private mode / blocked) — the regex still applies */
-    }
-    return false;
   }
 
   /* Clipboard access is permission-gated; tell the caller what is possible. */
@@ -67,6 +66,18 @@
     };
   }
 
+  function looksLikeSecret(value) {
+    if (typeof value !== "string" || !value.trim()) return true;
+    const trimmed = value.trim();
+    try {
+      const stored = localStorage.getItem("feefix.token");
+      if (stored && trimmed === stored.trim()) return true;
+    } catch (_) {
+      /* localStorage unavailable (private mode / blocked) — the shape checks still apply */
+    }
+    return TOKEN_HINT.test(trimmed) || CODE_HINT.test(trimmed);
+  }
+
   function cancelPendingWipe() {
     if (pendingTimer) {
       clearTimeout(pendingTimer);
@@ -76,14 +87,33 @@
 
   /**
    * Wipe the clipboard only if it still contains the value we put there.
+   *
+   * Two shapes, one contract:
+   *  - `clearClipboard({ expect })` / `{ force }` → verify-first: never touch
+   *    the clipboard unless it still holds exactly our value.
+   *  - `clearClipboard()` (no arguments) → the in-page courtesy wipe a paste
+   *    handler calls after consuming a one-time code: best-effort, and the
+   *    failure to clear is reported honestly, not hidden.
    * @returns {Promise<{ok: boolean, cleared: boolean, reason?: string}>}
    */
-  async function clearClipboard({ force = false, expect = null } = {}) {
+  async function clearClipboard({ force = false, expect = undefined } = {}) {
     cancelPendingWipe();
     const api = clipboardApi();
     if (!api) return { ok: false, cleared: false, reason: "clipboard-unavailable" };
 
-    const target = expect !== null ? expect : lastWritten;
+    if (expect === undefined && !force) {
+      // Courtesy wipe with nothing of ours to verify: the caller explicitly
+      // asked (it just consumed a value in this page). Best effort, honest result.
+      try {
+        await api.writeText("");
+        lastWritten = null;
+        return { ok: true, cleared: true, reason: "cleared" };
+      } catch (_) {
+        return { ok: false, cleared: false, reason: "denied-or-unfocused" };
+      }
+    }
+
+    const target = expect !== undefined ? expect : lastWritten;
     if (!force) {
       if (target === null) return { ok: true, cleared: false, reason: "nothing-of-ours" };
       if (typeof api.readText !== "function") {
@@ -139,11 +169,41 @@
     return { ok: true, copied: true, ttlMs: ttl };
   }
 
+  /**
+   * Copy `text` if it is not credential-shaped. No TTL, no timers — the
+   * scheduling-free counterpart of secureCopy for callers that want a plain
+   * boolean-result object.
+   * @returns {Promise<{ok: boolean, reason: string}>}
+   */
+  async function copyWithHygiene(text) {
+    if (looksLikeSecret(text)) {
+      return { ok: false, reason: "refused-credential-shaped-value" };
+    }
+    const api = clipboardApi();
+    if (!api) return { ok: false, reason: "clipboard-unavailable" };
+    try {
+      await api.writeText(String(text));
+      lastWritten = String(text);
+    } catch (_) {
+      return { ok: false, reason: "denied-or-unfocused" };
+    }
+    return { ok: true, reason: "copied" };
+  }
+
   window.FeeFixClipboard = {
     secureCopy,
     clearClipboard,
+    copyWithHygiene,
     looksLikeSecret,
     canProtect,
     CLIPBOARD_TTL_MS,
+    limitations: LIMITATIONS,
+    describe: () => ({
+      available: Boolean(clipboardApi()),
+      securityControl: false,
+      autoClears: false,
+      clearsOnHide: false,
+      limitations: LIMITATIONS.slice(),
+    }),
   };
 })();

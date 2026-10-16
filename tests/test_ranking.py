@@ -12,7 +12,33 @@ from backend.models.student import (
     StudentProfile,
 )
 
+#: The dataset's own calendar, not the machine's. Date-dependent assertions were
+#: previously anchored to ``date.today()``, which turned every scheme deadline
+#: into a **scheduled test failure**: on 2026-10-16 the `today + 10 days` window
+#: swallowed the 2026-10-25 NSP deadline and `test_expired_pushed_to_bottom`
+#: started failing with no code change at all. Anchoring to the fixture data
+#: (and asserting the resulting invariants) makes the suite date-independent
+#: while still testing real deadlines (see `test_expiry_ordering_holds_on_every_day`).
 TODAY = date.today()
+
+
+def _matched(dataset, today=TODAY):
+    engine = EligibilityEngine(dataset.schemes)
+    return engine.match(_profile()).matches
+
+
+def _fixed_deadlines(matches) -> list[date]:
+    """Deadlines of the matched schemes that are not rolling intake."""
+    return sorted(
+        m.scheme.deadline.date
+        for m in matches
+        if m.scheme.deadline.date and not m.scheme.deadline.rolling
+    )
+
+
+def _anchor_before(matches, days: int) -> date:
+    """A `today` that puts the earliest matched deadline ``days`` days away."""
+    return _fixed_deadlines(matches)[0] - timedelta(days=days)
 
 
 def _profile() -> StudentProfile:
@@ -35,7 +61,23 @@ def _rank(dataset, today=TODAY):
 
 
 def test_urgent_deadline_beats_deadline_far_away(dataset):
-    ranked = _rank(dataset)
+    matches = _matched(dataset)
+    deadlines = _fixed_deadlines(matches)
+    assert len(deadlines) >= 2, "ranking fixture needs at least two dated schemes"
+    # Anchor `before` days ahead of the earliest matched deadline. The urgent
+    # window (<= 34 days) then contains that deadline, and the far window
+    # (>= 60 days) contains the latest one as long as the span is wide enough —
+    # derived rather than hard-coded, so this fails with an explicit message if
+    # the fixture stops covering the required range instead of on a random day.
+    before = 20
+    span = (deadlines[-1] - deadlines[0]).days
+    assert before + span >= 60, (
+        f"matched deadlines span {span} days: with a {before}-day lead-in the "
+        "latest deadline is only {before + span} days out, so the 'far' window "
+        "(>= 60 days) would be empty. Widen the matched fixture in data/schemes/."
+    )
+
+    ranked = _rank(dataset, today=_anchor_before(matches, before))
     urgent = [r for r in ranked if r.days_left is not None and 0 <= r.days_left <= 34]
     far = [r for r in ranked if r.days_left is not None and r.days_left >= 60]
     assert urgent and far
@@ -61,27 +103,65 @@ def test_rolling_schemes_have_no_days_left(dataset):
         assert ranker.days_until(evaluation) is None
 
 
-def test_expired_pushed_to_bottom(dataset):
-    # Derive the "everything still open" reference date from the dataset instead
-    # of assuming TODAY+10 precedes every deadline: that assumption silently
-    # rots as the calendar advances past a scheme deadline (it already did).
-    dated = sorted(
-        s.deadline.date
-        for s in dataset.schemes
-        if s.deadline.date and not s.deadline.rolling
-    )
-    assert dated, "dataset must contain at least one dated deadline"
-    future = min(dated)  # on the earliest deadline day, nothing has expired yet
-    ranked = _rank(dataset, today=future)
-    assert all(not r.expired for r in ranked)
+def test_nothing_is_expired_before_the_first_deadline(dataset):
+    """One day before the earliest matched deadline, every match is still open."""
+    matches = _matched(dataset)
+    ranked = _rank(dataset, today=_anchor_before(matches, 1))
+    assert all(not r.expired for r in ranked), [
+        (r.scheme.id, r.days_left) for r in ranked if r.expired
+    ]
 
-    far_future = max(dated) + timedelta(days=1)  # the day after the last deadline
-    ranked_late = _rank(dataset, today=far_future)
+
+def test_expired_pushed_to_bottom(dataset):
+    matches = _matched(dataset)
+    # Just after the last matched deadline: the dated matches are expired, and
+    # any rolling-intake match must still sort above them.
+    ranked_late = _rank(dataset, today=_fixed_deadlines(matches)[-1] + timedelta(days=1))
     expired = [r for r in ranked_late if r.expired]
     open_ones = [r for r in ranked_late if not r.expired]
     assert expired
     if open_ones:
         assert ranked_late[: len(open_ones)] == open_ones  # all open first
+
+
+def test_expiry_ordering_holds_on_every_day(dataset):
+    """Sweep every day across the dataset's calendar, not just today.
+
+    This is the guard against the class of bug this file just had: an assertion
+    that is only true on some calendar days. The ranker's contract is invariant
+    on *any* `today`, so it is asserted on all of them.
+    """
+    matches = _matched(dataset)
+    deadlines = _fixed_deadlines(matches)
+    start, end = deadlines[0] - timedelta(days=2), deadlines[-1] + timedelta(days=2)
+    engine = RankingEngine(today=start)
+
+    day, checked = start, 0
+    while day <= end:
+        ranked = RankingEngine(today=day).rank(matches)
+        # (a) expired matches sort after open ones,
+        assert [r.expired for r in ranked] == sorted(r.expired for r in ranked), day
+        # (b) scores descend within each partition,
+        for partition in (
+            [r for r in ranked if not r.expired],
+            [r for r in ranked if r.expired],
+        ):
+            scores = [r.score for r in partition]
+            assert scores == sorted(scores, reverse=True), (day, scores)
+        # (c) the expired flag is exactly "deadline has passed",
+        for r in ranked:
+            deadline = r.scheme.deadline
+            if deadline.rolling or not deadline.date:
+                assert not r.expired and r.days_left is None, (day, r.scheme.id)
+            else:
+                expected_days = (deadline.date - day).days
+                assert r.days_left == expected_days, (day, r.scheme.id, r.days_left)
+                assert r.expired == (expected_days < 0), (day, r.scheme.id)
+        checked += 1
+        day += timedelta(days=1)
+
+    assert checked == (end - start).days + 1
+    assert engine is not None
 
 
 def test_top_pick_badge(dataset):
