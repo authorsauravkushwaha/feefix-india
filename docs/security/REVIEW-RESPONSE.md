@@ -8,13 +8,14 @@ test that fails if the finding comes back.
 Verification commands:
 
 ```bash
-python -m pytest                                    # 435 passed
+python -m pytest                                    # 455 passed
 bandit -q -r backend agents ai ml -x tests -ll       # exit 0, 0 medium+
 pip-audit -r requirements.txt                        # no known vulnerabilities
 python -m agents.secret_scan                         # 0 findings on this repo
+pre-commit run --all-files                           # the developer-loop gates
 ```
 
-Test count went from **217 → 435**. The additions are the point of the exercise:
+Test count went from **217 → 455**. The additions are the point of the exercise:
 the old suite proved consistency, the new one probes the assumptions.
 
 | Test file | What it adds |
@@ -29,6 +30,7 @@ the old suite proved consistency, the new one probes the assumptions.
 | `test_schema_migrations.py` | concurrent boots, crashed migrations, rollback |
 | `test_clipboard_js.py` + `tests/js/clipboard.test.mjs` | the module *executed*, not grepped |
 | `test_fuzz_security.py` (hypothesis) | property-based/invariant pass over parsers, sanitisers, middleware |
+| `test_ci_config.py` | the CI/pre-commit gates parsed, resolved and executed — so they cannot rot into decoration |
 
 ---
 
@@ -286,3 +288,91 @@ These are not fixed, and claiming otherwise would repeat the original mistake:
 3. **Step-up authentication** for destructive actions (TOTP is on the roadmap).
 4. **Bot/abuse protection beyond rate limits** (no CAPTCHA, no device
    reputation) — relevant once the OTP endpoints face real traffic.
+
+
+---
+
+# Second pass: verifying the verification
+
+A security review's sharpest point is usually the meta one — *"who checks the
+checkers?"* The response above added four gates and claimed they work. That
+claim was itself unverified, so the second pass tested it, and found three more
+issues (one in a gate, one test defect, one production rule).
+
+## A. The gates were configuration, not code — now they are executed
+
+`ci.yml` and `.pre-commit-config.yaml` had never been run. Both were validated
+for real:
+
+| Check | Result |
+|---|---|
+| `pre-commit validate-config` | valid |
+| `pre-commit run --all-files` | secret scan, security suites, bandit — all pass |
+| `pre-commit run --all-hooks --hook-stage pre-push` | full suite runs before a push |
+| The hook actually **fails** on a staged leak | planted a Stripe-shaped key → hook exit 1, finding named with file:line |
+| Every command in `ci.yml` run locally | `secret_scan --json` (clean + report written), `verify_dataset` (71 schemes, 0 findings), `ml.experiments.simulate_outcomes`, `agents.reminder_scheduler --dry-run` — all exit 0 |
+
+New: **`tests/test_ci_config.py` (14 tests)** parses both files as data and
+asserts that the gates exist, cover the branch this work happens on, run with
+least privilege, are *blocking* (not `continue-on-error`), have timeouts, pin a
+third-party scanner that is not ours, scan full history, and that every module
+and path they name still resolves — plus it runs the cheap commands for real.
+Mutation-tested: reintroducing a stale module name, demoting the SAST job to
+advisory, or downgrading the scanner to a shallow v2 clone each **fails the
+build**.
+
+Two real fixes came out of this:
+
+* **`bandit`/`pip-audit` were not in `requirements.txt`** — the CI job installed
+  them ad hoc, so a fresh clone could not reproduce the gate locally, and the
+  new test caught it. Now declared.
+* **gitleaks pinned at `@v2` (retired Node 20 runtime)** and would have tried to
+  comment on PRs with a read-only token. Now `@v3` with comments off and a
+  documented reason, plus `workflow_dispatch` and `concurrency` cancellation.
+
+## B. A test that went red because the calendar moved
+
+`tests/test_ranking.py::test_expired_pushed_to_bottom` asserted "nothing has
+expired yet" at `date.today() + 10 days`. On 2026-10-16 the 2026-10-25 NSP
+deadline fell inside that window, so **the suite started failing with no code
+change at all** — the worst kind of flake, because the natural response is to
+loosen the assertion.
+
+Fixed properly: the tests are now anchored to the **dataset's own calendar**
+(earliest matched deadline ± a day), the windows are derived rather than
+hard-coded (with an explicit message naming the arithmetical precondition if a
+curator ever narrows the fixture), and a new
+`test_expiry_ordering_holds_on_every_day` sweeps **every day in the dataset's
+range**, asserting the ranker's invariants — expired-last ordering, descending
+scores per partition, and `expired == (days_left < 0)` — on all of them. The
+suite was then run under three `PYTHONHASHSEED` values to rule out ordering
+flakes: 455 passed each time.
+
+## C. Session identifiers: one rule, enforced on every path
+
+Driving the live deployment (not just the test client) surfaced a real
+inconsistency: `POST /api/uploads/<id>` validated the session id (`422` over the
+limit) while `GET /api/uploads/<id>` did not — a 10 KB identifier was refused on
+upload but **echoed back** in the listing response, and ids containing NUL or
+`/` reached the storage layer, creating directories that only survived because
+the sanitiser happened to rewrite them. Worse, in the service the rule was
+`len(session_id) > 64` written inline, and `..` — a legal string that resolves
+to the upload root's *parent* — passed it. The routing layer happened to reject
+`..` first, which is not somewhere a filesystem guarantee should live.
+
+Now: `ensure_session_id()` is the single rule for all four uploads routes
+(short, printable, separator-free, not dot-only) and `_session_dir()` verifies
+the **resolved** path stays inside the upload root, so a future refactor of the
+sanitiser cannot silently reintroduce traversal. Verified live against the
+running deployment: `..`, NUL, newline, 10 KB ids → `422` on upload, list,
+download and delete, with **nothing written to disk**; legitimate ids still
+work; and a cross-session read of a hostile id's upload → `404`.
+
+## What the second pass says about the first
+
+Both new findings were in places the first pass had *claimed* coverage: "the
+gates are in CI" (they were never run) and "session ids are sanitised" (they
+were sanitised in one path only). That is the same lesson as finding #10 one
+level up — a claim about a control is not the control, and a check that has
+never been seen to fail is not evidence. Hence the mutation tests above: each
+new assertion was verified to fail when the thing it protects is broken.

@@ -35,7 +35,7 @@ the **CIA triad** (Confidentiality · Integrity · Availability).
 | XSS injection | Strict **Content-Security-Policy** (`script-src 'self'` — no remote code, no inline scripts), the SPA escapes every interpolated value by design, `X-Content-Type-Options: nosniff`. |
 | Clickjacking | `frame-ancestors` CSP directive (self + preview hosts only). |
 | SQL injection | **Impossible by construction** — every statement in the `backend/services/db.py`-backed stores is parameterized; no string-built SQL exists in the codebase. |
-| Malicious uploads | Extension allowlist **and** magic-byte sniffing, byte/file quotas per session, path-traversal-safe random storage names, stored outside the static mount, never executable, ownership-checked on every read/delete. |
+| Malicious uploads | Extension allowlist **and** magic-byte sniffing, byte/file quotas per session, path-traversal-safe random storage names, stored outside the static mount, never executable, ownership-checked on every read/delete. Session identifiers are validated by one rule on every route and the resolved storage path must stay inside the upload root, so a hostile id (`..`, NUL, `/`, 10 KB long) is refused before it can touch the filesystem. |
 | Unauthorized state changes | Append-only **audit log** records register / login / session-bind / rotation / replay refusal / delete; foreign keys are engine-enforced (`PRAGMA foreign_keys=ON`). |
 | Schema drift | Additive, versioned, **transactional** migrations via `PRAGMA user_version`; concurrent boots (multiple instances/workers) serialize on `BEGIN IMMEDIATE` and a half-applied migration self-heals instead of bricking the database. |
 | Tamper-prone roll-your-own tokens | We don't mint JWTs — **opaque, server-side, revocable** sessions only. Logout and account deletion revoke instantly. |
@@ -64,7 +64,7 @@ the **CIA triad** (Confidentiality · Integrity · Availability).
 
 ## What green tests do and don't mean
 
-The suite (400+ tests) proves **consistency with the rules we wrote down**. It
+The suite (455 tests) proves **consistency with the rules we wrote down**. It
 cannot prove the rules are complete, because the tests were written by the same
 authors as the code: assumptions we never questioned are assumptions we never
 tested. Two of the most recent real defects — a lone surrogate turning a request
@@ -74,8 +74,11 @@ passing tests.
 
 Stronger signals, in increasing order of value: property-based tests over real
 invariants (**present**), parse/encode round-trips and fuzzing (**present**),
-third-party scanners in CI (**present**), independent human review, and a
-penetration test against a deployed instance (**both still on the roadmap**).
+third-party scanners in CI (**present**) — and, so the gates themselves cannot
+rot into decoration, `tests/test_ci_config.py` parses the workflow, runs its
+commands and asserts that demoting or mis-wiring a gate breaks the build — then
+independent human review, and a penetration test against a deployed instance
+(**both still on the roadmap**).
 
 ## Reporting a vulnerability
 

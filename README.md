@@ -11,7 +11,7 @@ Instead of *"Where can I find scholarships?"* — FeeFix answers
 **"Which schemes fit my profile, why do I qualify, and what should I do next?"**
 
 [![CI](https://github.com/authorsauravkushwaha/feefix-india/actions/workflows/ci.yml/badge.svg)](https://github.com/authorsauravkushwaha/feefix-india/actions)
-[![Tests](https://img.shields.io/badge/tests-429%20passing-brightgreen)](#-testing)
+[![Tests](https://img.shields.io/badge/tests-455%20passing-brightgreen)](#-testing)
 [![Schemes](https://img.shields.io/badge/verified%20schemes-71-blue)](#-the-dataset)
 [![Languages](https://img.shields.io/badge/languages-en%20·%20বাংলা%20·%20हिन्दी%20·%20தமிழ்-orange)](#-four-languages-native-script)
 [![Security](https://img.shields.io/badge/security-Argon2id%20·%20CSP%20·%20shared%20rate%20limit-critical)](docs/security/SECURITY.md)
@@ -165,7 +165,7 @@ cd feefix-india
 ```
 
 ```bash
-./scripts/dev.sh --test                       # 429 tests
+./scripts/dev.sh --test                       # 455 tests
 .venv/bin/python -m agents.verify_dataset     # dataset health audit
 .venv/bin/python -m ml.experiments.simulate_outcomes   # V2 ranker demo
 ```
@@ -194,6 +194,7 @@ Export or erase your data anytime (`docs/api/API.md` → Accounts).
 | `test_numerals` · `test_fuzz_security` | table-driven income parsing + property-based/adversarial pass (hypothesis) |
 | `test_secret_hygiene` · `test_schema_migrations` | scanner bypasses, strict boot, concurrent/crashed migrations |
 | `test_clipboard_js` | executes `secure-clipboard.js` in node (18 checks) — and asserts it claims no security control |
+| `test_ci_config` | parses CI + pre-commit, runs their commands, and fails if a gate is mis-wired or demoted to advisory |
 | `test_chat` · `test_i18n_rules` | 4-language parsing + full conversations + localized explanations |
 | `test_ai` · `test_agents` | grounding, search rankings, verifier, scheduler |
 
@@ -221,8 +222,9 @@ feefix-india/
 ├── ml/                      # V2 outcome ranker + experiments + events-trained service
 ├── language/regional_support/  # en/bn/hi/ta dictionaries + explanation templates
 ├── .github/workflows/       # CI: tests · secret scan + gitleaks · bandit + pip-audit · dataset (free)
+│                            #     gates are themselves tested (tests/test_ci_config.py)
 ├── scripts/dev.sh           # one-command dev bootstrap
-└── tests/                   # 429 tests (incl. fuzz · distributed · clipboard)
+└── tests/                   # 455 tests (incl. fuzz · distributed · CI-contract)
 ```
 
 ## 🗺 Roadmap

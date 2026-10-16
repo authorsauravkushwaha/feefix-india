@@ -4,15 +4,26 @@ on:
   push:
     branches: [main, "arena/**"]
   pull_request:
+  workflow_dispatch:        # the security jobs are also runnable on demand
   schedule:
     - cron: "30 18 * * 1"  # weekly dataset health (Tue 00:00 IST)
 
+# Least privilege: every job here only reads the repository. Anything needing
+# more (e.g. PR comments) is explicitly disabled rather than granted a token
+# scope — see the gitleaks job.
 permissions:
   contents: read
+
+# One run per branch/PR: a new push supersedes the old run instead of queueing
+# (free-tier friendly, and the signal is always about the newest commit).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       # Deterministic, offline-friendly embeddings for CI (no model download).
       FEEFIX_AI_BACKEND: ngram
@@ -57,17 +68,24 @@ jobs:
   # code under review.
   secret-scan-third-party:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # full history so historical leaks are caught too
       - name: gitleaks (independent secret scanner)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Commenting on PRs would need a write scope; the finding is delivered
+          # as a failing job + SARIF artifact instead, keeping the token
+          # read-only. (GITLEAKS_LICENSE is only required for organisations;
+          # this repository is a user account.)
+          GITLEAKS_ENABLE_COMMENTS: "false"
 
   sast-and-dependencies:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -83,7 +101,10 @@ jobs:
 
   dataset-liveness:
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
+    timeout-minutes: 15
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # Source portals go down without warning; a red run here is information, not
+    # a broken build — so it must not block anything.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4

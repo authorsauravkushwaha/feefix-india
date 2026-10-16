@@ -30,8 +30,11 @@ import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
+import re
+
 from backend.services import db
 from backend.services.limits import (
+    MAX_SESSION_ID_LEN,
     MAX_UPLOAD_BYTES,
     MAX_UPLOAD_FILES_PER_SESSION,
     MAX_UPLOAD_TOTAL_BYTES_PER_SESSION,
@@ -53,18 +56,61 @@ class UploadRejected(Exception):
         self.status = status
 
 
+#: Characters that never belong in a session identifier: control characters
+#: (a NUL used to reach the filesystem layer, where it was silently rewritten
+#: into a directory name) and path separators (a `%2f` in the URL decodes to
+#: `/`). Everything else is allowed so existing ids keep working.
+_BAD_SESSION_CHARS = re.compile(r"[\x00-\x1f\x7f/\\]")
+
+
+def ensure_session_id(session_id: str) -> str:
+    """Validate a session identifier. One rule, used by *every* uploads path.
+
+    The store path validated this and the read paths did not, so a 10 KB
+    session id was refused on upload but **echoed back** by the listing
+    endpoint, and ids containing NUL or `/` produced filesystem directories
+    that only survived because the storage layer happened to sanitise them.
+    Validation at the service boundary means the routes cannot drift apart.
+
+    Dot-only ids are refused too: ``..`` is a legal *string* but it resolves to
+    the parent of the upload root, i.e. a one-character traversal primitive. The
+    routing layer happens to reject it today; relying on that would put a
+    filesystem guarantee in the hands of a URL parser.
+    """
+    if (
+        not session_id
+        or len(session_id) > MAX_SESSION_ID_LEN
+        or _BAD_SESSION_CHARS.search(session_id)
+        or not session_id.strip(".")
+    ):
+        raise UploadRejected("Invalid session id.", status=422)
+    return session_id
+
+
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _session_dir(session_id: str) -> Path:
-    """Directory for a session — sanitised, so ``../`` cannot escape the root."""
+    """Directory for a session — sanitised *and* verified to stay under the root.
+
+    Two independent layers, because the check is cheap and the failure mode is
+    writing user-supplied paths anywhere on the filesystem: the name is
+    sanitised first, then the resolved path is required to be inside
+    ``UPLOAD_ROOT``. A future refactor of the sanitiser therefore cannot
+    silently reintroduce traversal.
+    """
     safe = sanitize_filename(session_id) or "session"
-    return UPLOAD_ROOT / safe
+    root = UPLOAD_ROOT.resolve()
+    target = (root / safe).resolve()
+    if target != root and root not in target.parents:
+        raise UploadRejected("Invalid session id.", status=422)
+    return target
 
 
 def usage(session_id: str) -> tuple[int, int]:
     """``(files, total_bytes)`` currently stored for a session."""
+    ensure_session_id(session_id)
     conn = db.get_connection()
     row = conn.execute(
         "SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS total"
@@ -88,8 +134,7 @@ def store_upload(
     Raises :class:`UploadRejected` (with the right HTTP status) on refusal — the
     caller maps it straight to a response.
     """
-    if not session_id or len(session_id) > 64:
-        raise UploadRejected("Invalid session id.")
+    ensure_session_id(session_id)
 
     files, total = usage(session_id)
     if files >= MAX_UPLOAD_FILES_PER_SESSION:
@@ -166,6 +211,7 @@ def _storage_name(safe_name: str) -> str:
 
 
 def list_uploads(session_id: str) -> list[dict]:
+    ensure_session_id(session_id)
     conn = db.get_connection()
     rows = conn.execute(
         "SELECT id, original_name, kind, size_bytes, sha256, created_at"
@@ -187,6 +233,7 @@ def list_uploads(session_id: str) -> list[dict]:
 
 def load_upload(session_id: str, upload_id: str) -> tuple[dict, Path]:
     """Fetch one record + its path, scoped to the owning session."""
+    ensure_session_id(session_id)
     conn = db.get_connection()
     row = conn.execute(
         "SELECT * FROM uploads WHERE id=? AND session_id=?", (upload_id, session_id)

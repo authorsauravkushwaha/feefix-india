@@ -273,3 +273,110 @@ def test_storage_root_defaults_to_runtime_not_the_repo_root():
     source = (REPO / "backend" / "services" / "uploads.py").read_text(encoding="utf-8")
     assert re.search(r'RUNTIME_DIR / "uploads"', source)
     assert "FEEFIX_UPLOAD_DIR" in source, "operators must be able to relocate storage"
+
+
+# --------------------------------------------------------------------------- #
+# session identifiers: one rule, enforced on every path
+# --------------------------------------------------------------------------- #
+def _upload(client, session_id: str, filename: str = "doc.pdf", content: bytes = b"%PDF-1.4\nok\n"):
+    return client.post(
+        f"/api/uploads/{session_id}",
+        files={"file": (filename, content, "application/pdf")},
+    )
+
+
+#: Hostile ids that *do* reach the handler (httpx normalises the URL, so control
+#: characters are sent percent-encoded — exactly what an attacker sends).
+#: Everything here must be a clean 422, never a 200 and never a 500.
+_REACHES_HANDLER = [
+    "s" * 65,
+    "s" * 10_000,
+    "%00",          # NUL — used to be rewritten into a directory name
+    "%0a",          # newline
+    "%7f",          # DEL
+]
+
+#: Traversal-shaped ids are normalised or rejected by the routing layer before
+#: they reach us (405) — also a refusal, just a different layer. Asserted only
+#: as "not accepted", because pinning the exact framework status would be
+#: testing Starlette rather than our contract. The service-level rule still
+#: refuses `..` if it ever does arrive (asserted below).
+_UNROUTABLE = ["%2e%2e%2f%2e%2e%2fetc", "a%2fb", ".."]
+
+
+def test_hostile_session_ids_are_refused_by_every_route(client):
+    """The store path validated these; the listing path echoed them back.
+
+    A 10 KB session id was refused on upload but reflected by `GET
+    /api/uploads/<id>`, and ids containing NUL or `/` produced filesystem
+    directories that only survived because the storage layer happened to
+    sanitise them. Every route must now agree on what a session id is.
+    """
+    from backend.services import uploads as uploads_svc
+
+    for session_id in _REACHES_HANDLER:
+        assert _upload(client, session_id).status_code == 422, repr(session_id)
+        assert client.get(f"/api/uploads/{session_id}").status_code == 422, repr(session_id)
+        assert (
+            client.delete(f"/api/uploads/{session_id}/deadbeef").status_code == 422
+        ), repr(session_id)
+        assert (
+            client.get(f"/api/uploads/{session_id}/deadbeef/content").status_code == 422
+        ), repr(session_id)
+
+    for session_id in _UNROUTABLE:
+        assert _upload(client, session_id).status_code >= 400, repr(session_id)
+        assert client.get(f"/api/uploads/{session_id}").status_code >= 400, repr(session_id)
+
+    # And the service refuses empty and separator-bearing identifiers directly,
+    # so the guarantee does not depend on routing behaviour.
+    for value in ("", "a/b", "a\\b", ".."):
+        with pytest.raises(uploads_svc.UploadRejected):
+            uploads_svc.ensure_session_id(value)
+
+
+def test_hostile_session_ids_create_nothing_on_disk(client):
+    """A refused identifier must not reach the filesystem at all."""
+    from backend.services import uploads as uploads_svc
+
+    root = uploads_svc.UPLOAD_ROOT
+    before = sorted(p.name for p in root.iterdir()) if root.exists() else []
+
+    for session_id in _REACHES_HANDLER + ["x" * 200, "%2f%5c"]:
+        _upload(client, session_id)
+        client.get(f"/api/uploads/{session_id}")
+
+    after = sorted(p.name for p in root.iterdir()) if root.exists() else []
+    assert after == before, f"hostile ids created directories: {set(after) - set(before)}"
+
+
+def test_legitimate_session_id_shapes_still_work(client):
+    """The rule must not break ids the app actually generates."""
+    for session_id in ("sess-1", "6f1c0a3b9d4e5f60a1b2c3d4e5f60123", "s_1729000000_ab12cd"):
+        assert _upload(client, session_id).status_code == 200, session_id
+        assert client.get(f"/api/uploads/{session_id}").status_code == 200
+
+
+def test_session_directory_can_never_escape_the_upload_root():
+    """Defence in depth: the storage layer itself refuses to leave its root.
+
+    `..` is a valid string that resolves to the upload root's *parent* — the
+    route layer rejects it today, but a filesystem guarantee should not depend
+    on a URL parser, so the resolved path is checked too.
+    """
+    import os
+
+    from backend.services import uploads as uploads_svc
+
+    root = uploads_svc.UPLOAD_ROOT.resolve()
+    for hostile in ("..", "../..", "a/../../b", "..\\\\..", "%2e%2e", "...."):
+        try:
+            target = uploads_svc._session_dir(hostile).resolve()
+        except uploads_svc.UploadRejected:
+            continue  # refused outright, which is also fine
+        assert target == root or root in target.parents, f"{hostile!r} escaped to {target}"
+
+    # A normal id lands exactly one level below the root.
+    normal = uploads_svc._session_dir("sess-1").resolve()
+    assert normal.parent == root
+    assert os.path.commonpath([str(normal), str(root)]) == str(root)

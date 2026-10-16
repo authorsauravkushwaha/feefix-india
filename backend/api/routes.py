@@ -582,7 +582,10 @@ def list_documents(session_id: str, request: Request) -> dict:
     from backend.services import uploads as uploads_svc
 
     _authorize_session(request, session_id)
-    items = uploads_svc.list_uploads(session_id)
+    try:
+        items = uploads_svc.list_uploads(session_id)
+    except uploads_svc.UploadRejected as exc:
+        raise _upload_rejection(exc) from exc
     return {
         "session_id": session_id,
         "count": len(items),

@@ -35,7 +35,7 @@ pip-audit -r requirements.txt          # dependency CVEs
 | 6 | **ReDoS in parsing** | `backend/services/numerals.py`, `tests/test_numerals.py`, `tests/test_fuzz_security.py` | Income/number parsing is **table-driven** (`i18n` rules + digit-translation maps) instead of per-script `\uXXXX` regexes; every user string is length-capped before any regex runs and quantifiers are bounded. A generated corpus + fuzz suite asserts totality (never raises), bounded output (`0 ≤ n ≤ 10¹³`) and idempotence. The old hand-maintained escape tables conflated Devanagari AA (अा) with Bengali AA (আ) — the bug class this replaced. |
 | 7 | **Server-side template injection** | `backend/api/routes.py`, `web/frontend/app.js` | The API returns JSON only; there is no server-side template engine. The one HTML the server emits (OAuth handoff) passes through `_json_html_safe()`, which neutralises `</script>`, attribute and entity breakouts. The SPA escapes every interpolated value (`esc()`/`safeUrl()`). |
 | 8 | **Error handling & info leakage** | `backend/main.py`, `backend/api/responses.py` | The catch-all handler logs the traceback server-side and returns an opaque `{"detail":"Internal server error.","request_id":…}`. Validation errors are rendered through `SafeJSONResponse`, which can always encode: a lone surrogate (`"\ud800"`, valid JSON that Python happily parses) used to reach the response renderer and turn a client typo into a 500 — the fuzz suite found it, schema validation now rejects lone surrogates with a clean 422, and the response class is the backstop. **Docs note:** `/docs`, `/redoc` and `/openapi.json` are **on by default**. Gating them removes no endpoint and no attack surface — the API answers identically without them — so the toggle exists only for operators who want a documentation-free surface, and the docs say so instead of implying a control. |
-| 9 | **File upload** | `backend/services/upload.py`, `backend/services/uploads.py`, `backend/api/routes.py` | A single hardened gate: extension allowlist, magic-byte sniffing (renamed `shell.php` → `.pdf` is rejected), per-file and per-session byte quotas, file-count quota, path-traversal-safe names, random storage names, never executable, and stored **outside** the static mount (`FEEFIX_UPLOAD_DIR`). It is **wired into real routes** (`POST/GET/DELETE /api/uploads/{session_id}…`), not just a library: a test asserts the routes exist and another asserts the gate is the only writer, so a future endpoint cannot bypass it without deleting an assertion. |
+| 9 | **File upload** | `backend/services/upload.py`, `backend/services/uploads.py`, `backend/api/routes.py` | A single hardened gate: extension allowlist, magic-byte sniffing (renamed `shell.php` → `.pdf` is rejected), per-file and per-session byte quotas, file-count quota, path-traversal-safe names, random storage names, never executable, and stored **outside** the static mount (`FEEFIX_UPLOAD_DIR`). It is **wired into real routes** (`POST/GET/DELETE /api/uploads/{session_id}…`), not just a library: a test asserts the routes exist and another asserts the gate is the only writer, so a future endpoint cannot bypass it without deleting an assertion. Session identifiers follow **one rule on every route** (short, printable, separator-free, not dot-only) and the resolved storage path must stay inside the upload root — checked in the service so it cannot depend on a URL parser (`ensure_session_id`, `_session_dir`). |
 | 10 | **Secret management** | `backend/services/secrets.py`, `tests/test_secret_hygiene.py` | Secrets come from the environment only. At boot `enforce_secret_hygiene()` **refuses to start** in production (or `FEEFIX_SECRETS_STRICT=1`) when a secret is missing, still a placeholder (`CHANGE_ME`, `changeme`, `test`, `xxx`…), too short, or paired with an unset companion variable (`OTP_SMTP_PASS` without `OTP_SMTP_USER`, a Stripe key without its publishable counterpart). `FEEFIX_SECRETS_STRICT=0` is an explicit, auditable downgrade to a warning. **Limit:** this checks *shape and presence*, not whether the value is real or already leaked — rotation policy is still an operator responsibility. |
 | 11 | **Input validation & body limits** | `backend/services/limits.py`, `backend/services/request_limits.py`, `tests/test_body_limits.py` | Limits are **per endpoint**, not one blunt 1 MB cap: 64 KB for a chat turn, 32 KB for events, 16 KB for auth, 256 KB for a profile, ~28 KB for long-form notes, 2 MB + multipart overhead for uploads — each tunable via `FEEFIX_MAX_BODY_*` without a code change, each clamped to `ABSOLUTE_MAX_BODY_BYTES` (16 MB) so a config mistake cannot remove the outer bound. Enforcement happens **while the body streams in**, not by trusting `Content-Length`; a body that overruns its policy is aborted mid-stream and answered with `413`. Field caps are env-tunable with the same clamp logic. Oversized input is refused before parsing, never processed. |
 | 12 | **Rate limiting** | `backend/services/ratelimit.py`, `tests/test_ratelimit_distributed.py` | Sliding-window limits with per-endpoint tiers (tight on CPU-heavy AI endpoints), a memory-bounded hit table, `Retry-After` on 429, and **a shared store across workers/instances**: set `FEEFIX_REDIS_URL` (or `FEEFIX_RATELIMIT_BACKEND=redis`) and all workers share one counter set. Without it the app says so loudly at boot (`status()["distributed"] is False` plus a warning): with N instances the effective limit is N× and an attacker just spreads requests. Fail mode is per-bucket (`auth`/expensive endpoints fail **closed**, cheap ones stay open, `FEEFIX_RATELIMIT_FAIL_MODE`). Proxy awareness: `X-Forwarded-For` is honoured **only** with `FEEFIX_TRUST_PROXY=1`, and then the **rightmost** hop is used — the leftmost value is client-supplied, so trusting it let anyone rotate a header for unlimited buckets (a fuzz-suite finding, regression-tested). |
@@ -82,25 +82,30 @@ WAL + foreign keys + race-safe versioned migrations · non-root container.
 | SAST | `ci.yml` job `sast-and-dependencies` | `bandit -ll` — medium+ findings fail the build |
 | Dependency CVEs | same job | `pip-audit -r requirements.txt` |
 | Dataset liveness | scheduled `dataset-liveness` job | Dead source URLs and schema drift in `data/` |
+| The gates themselves | `tests/test_ci_config.py` | Silent rot: a gate that references a renamed module, a dropped test file, a demoted job (`continue-on-error`), a shallow clone that cannot see history, or an action still on a retired runtime. The workflow is parsed as data, its commands are run for real where they are cheap, and the mutations above are asserted to fail the build. |
 
 ## Verifying it yourself
 
 ```bash
-python -m pytest                                   # full suite
+python -m pytest                                   # full suite (455 tests)
 python -m pytest tests/test_fuzz_security.py        # property-based/adversarial
+python -m pytest tests/test_ci_config.py            # the gates themselves
 bandit -q -r backend agents ai ml -x tests -ll
 pip-audit -r requirements.txt
 python -m agents.secret_scan                        # repo scan (exit 1 on findings)
 python -m agents.secret_scan --staged               # pre-commit mode
 python -m agents.verify_dataset                     # + --check-urls for liveness
+pre-commit run --all-files                          # what a developer's loop runs
 ```
 
 ## What this document does **not** claim
 
 Hand-written tests by the same author as the code prove *consistency*, not
 security. Same-author suites systematically miss the assumptions the author
-never questioned (this map's two most recent findings — the surrogate 500 and
-the XFF bucket bypass — came from the fuzz suite, not from review). The
+never questioned (this map's most recent findings — the surrogate 500, the XFF
+bucket bypass, the session-id rule, and a calendar-day-dependent assertion that
+went red with no code change — came from the fuzz/CI-contract suites and a live
+server probe, not from review of the passing tests). The
 controls above reduce the cost and blast radius of the mistakes we know about;
 they are not a substitute for independent review, a real penetration test
 against a deployed instance, or a bug-bounty. Those are on the roadmap below,
