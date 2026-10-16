@@ -69,15 +69,29 @@ def docs_enabled() -> bool:
     operators who genuinely want a documentation-free surface, and it is honest
     about being cosmetic.
 
-    * ``FEEFIX_ENABLE_DOCS=0`` (or any falsy value) → off
-    * ``FEEFIX_DISABLE_DOCS=1`` → off (alias)
+    * ``FEEFIX_ENABLE_DOCS=0`` (or any falsy value) → interactive docs off
+    * ``FEEFIX_DISABLE_DOCS=1`` → interactive docs off (alias)
     * anything else, or unset → on
+
+    ``/openapi.json`` is not part of this switch. Hiding the schema breaks
+    generated clients and removes no route. See :func:`openapi_enabled`.
     """
     explicit = os.environ.get("FEEFIX_ENABLE_DOCS")
     if explicit is not None:
         return explicit.strip().lower() not in ("0", "false", "no", "off", "")
     if os.environ.get("FEEFIX_DISABLE_DOCS", "").strip().lower() in ("1", "true", "yes", "on"):
         return False
+    return True
+
+
+def openapi_enabled() -> bool:
+    """The machine-readable schema is always served.
+
+    Turning ``/openapi.json`` off was grouped with ``/docs`` and sold as
+    hardening. It is not: every route still answers, and generated clients,
+    contract tests and QA lose the only description of those routes. There is
+    no switch. Interactive docs remain optional; the schema does not.
+    """
     return True
 
 
@@ -105,8 +119,9 @@ def _boot_guards() -> dict:
     for finding in findings:
         log.warning("[secrets] %s", finding)
 
-    # (3) Rate limiting: pick the store and be explicit about scaling reality.
-    store = ratelimit.configure()
+    # (3) Rate limiting: pick the store from the environment (not a stale
+    #     earlier choice) and refuse a topology the store cannot actually limit.
+    store = ratelimit.configure(force=True)
     warning = ratelimit.warn_if_not_distributed()
     return {"password_hashing": hashing, "rate_limit": store.status(), "rate_limit_warning": warning}
 
@@ -126,7 +141,8 @@ def create_app() -> FastAPI:
         ),
         docs_url="/docs" if enable_docs else None,
         redoc_url="/redoc" if enable_docs else None,
-        openapi_url="/openapi.json" if enable_docs else None,
+        # Always. Hiding this does not remove an endpoint.
+        openapi_url="/openapi.json",
     )
     app.state.boot = boot
     app.state.docs_enabled = enable_docs
@@ -193,6 +209,13 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(api_router)
+
+    # The upload gate is not a library sitting unused: if the routes are gone,
+    # the process does not start. A test that greps source can be deleted; this
+    # cannot be skipped without deleting the boot check.
+    from backend.services.uploads import assert_routes_wired
+
+    assert_routes_wired(app.openapi()["paths"])
 
     if WEB_DIR.exists():
         app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")

@@ -219,8 +219,18 @@ class MemoryBackend:
         with self._lock:
             self.hits.clear()
 
+    @property
+    def multi_instance(self) -> bool:
+        return False
+
     def status(self) -> dict:
-        return {"backend": self.name, "distributed": False, "tracked_keys": len(self.hits)}
+        return {
+            "backend": self.name,
+            "distributed": False,
+            "scope": "process",
+            "multi_instance": False,
+            "tracked_keys": len(self.hits),
+        }
 
 
 class RedisBackend:
@@ -277,7 +287,11 @@ class RedisBackend:
             # Over the limit: take our probe hit back out so denied attempts do
             # not artificially extend the window for everyone else.
             self._client.zrem(key, member)
-            return False, self._oldest_age(key, now_ms, window_ms)
+            # Remaining time until the oldest hit leaves the window — not the
+            # age of that hit. Returning the age told clients to retry in a
+            # second when they actually had to wait out the rest of the window.
+            age_s = self._oldest_age(key, now_ms, window_ms)
+            return False, max(0.0, window_s - age_s)
         except Exception as exc:  # noqa: BLE001 - any store failure is handled the same way
             return self._on_store_failure(bucket, exc)
 
@@ -325,8 +339,18 @@ class RedisBackend:
         except Exception as exc:  # noqa: BLE001
             log.warning("[ratelimit] reset failed: %s", exc)
 
+    @property
+    def multi_instance(self) -> bool:
+        return True
+
     def status(self) -> dict:
-        return {"backend": self.name, "distributed": True, "url": _redact(self.url)}
+        return {
+            "backend": self.name,
+            "distributed": True,
+            "scope": "cluster",
+            "multi_instance": True,
+            "url": _redact(self.url),
+        }
 
 
 def _redact(url: str | None) -> str | None:
@@ -337,6 +361,161 @@ def _redact(url: str | None) -> str | None:
         scheme, _, host = url.partition("://")
         return f"{scheme or 'redis'}://***@{host.split('@', 1)[1]}"
     return url
+
+
+class SqliteBackend:
+    """Sliding window in a SQLite file every worker on this host can open.
+
+    Render/gunicorn ``--workers N`` share a filesystem. A per-process dict does
+    not: each worker hands out a full quota and the effective limit is ``N ×``.
+    This store is the shared counter for that topology. It is **not** shared
+    across machines — multi-instance deployments still need Redis
+    (``multi_instance`` is false here on purpose, so boot can refuse to pretend
+    otherwise).
+    """
+
+    name = "sqlite"
+    distributed = True
+    multi_instance = False
+
+    def __init__(self, path: str | os.PathLike[str]) -> None:
+        import sqlite3
+
+        self.path = str(path)
+        parent = os.path.dirname(self.path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        self._sqlite3 = sqlite3
+        self._local = threading.local()
+        self._init()
+
+    def _conn(self):
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = self._sqlite3.connect(self.path, timeout=30, isolation_level=None)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=30000")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            self._local.conn = conn
+        return conn
+
+    def _init(self) -> None:
+        conn = self._conn()
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS hits ("
+            " bucket TEXT NOT NULL, ident TEXT NOT NULL, at_ms INTEGER NOT NULL)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hits_lookup ON hits(bucket, ident, at_ms)"
+        )
+
+    def allow(self, bucket: str, ident: str, limit: int, window_s: int) -> tuple[bool, float]:
+        now_ms = int(time.time() * 1000)
+        window_ms = window_s * 1000
+        cutoff = now_ms - window_ms
+        try:
+            conn = self._conn()
+            conn.execute("BEGIN IMMEDIATE")
+        except Exception as exc:  # noqa: BLE001
+            return _on_store_failure(bucket, exc)
+        try:
+            conn.execute(
+                "DELETE FROM hits WHERE bucket=? AND ident=? AND at_ms < ?",
+                (bucket, ident, cutoff),
+            )
+            # Bound the table so the limiter cannot become the DoS vector.
+            conn.execute("DELETE FROM hits WHERE at_ms < ?", (now_ms - 3_600_000,))
+            row = conn.execute(
+                "SELECT COUNT(*), MIN(at_ms) FROM hits WHERE bucket=? AND ident=?",
+                (bucket, ident),
+            ).fetchone()
+            count = int(row[0] or 0)
+            oldest = row[1]
+            if count >= limit:
+                conn.execute("COMMIT")
+                if oldest is None:
+                    return False, float(window_s)
+                remaining = max(0.0, (int(oldest) + window_ms - now_ms) / 1000.0)
+                return False, remaining
+            conn.execute(
+                "INSERT INTO hits (bucket, ident, at_ms) VALUES (?,?,?)",
+                (bucket, ident, now_ms),
+            )
+            conn.execute("COMMIT")
+            return True, 0.0
+        except Exception as exc:  # noqa: BLE001
+            try:
+                conn.execute("ROLLBACK")
+            except Exception:  # noqa: BLE001
+                self._local.conn = None
+            return _on_store_failure(bucket, exc)
+
+    def retry_after(self, bucket: str, ident: str) -> int:
+        try:
+            conn = self._conn()
+            oldest = conn.execute(
+                "SELECT MIN(at_ms) FROM hits WHERE bucket=? AND ident=?",
+                (bucket, ident),
+            ).fetchone()[0]
+        except Exception:  # noqa: BLE001
+            return _retry_after_for(bucket, 0.0)
+        if oldest is None:
+            return 1
+        age_s = max(0.0, (int(time.time() * 1000) - int(oldest)) / 1000.0)
+        return _retry_after_for(bucket, age_s)
+
+    def reset(self) -> None:
+        try:
+            conn = self._conn()
+            conn.execute("DELETE FROM hits")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("[ratelimit] sqlite reset failed: %s", exc)
+
+    def status(self) -> dict:
+        return {
+            "backend": self.name,
+            "distributed": True,
+            "scope": "host",
+            "multi_instance": False,
+            "path": "configured",
+        }
+
+
+def _on_store_failure(bucket: str, exc: Exception) -> tuple[bool, float]:
+    closed = _fail_closed_for(bucket)
+    log.error(
+        "[ratelimit] shared store unavailable (%s: %s) — failing %s for bucket %r",
+        type(exc).__name__,
+        exc,
+        "CLOSED" if closed else "OPEN",
+        bucket,
+    )
+    return (not closed), (60.0 if closed else 0.0)
+
+
+def _fail_closed_for(bucket: str) -> bool:
+    if FAIL_MODE == "closed":
+        return True
+    if FAIL_MODE == "open":
+        return False
+    return any(bucket.startswith(b) for b in FAIL_CLOSED_BUCKETS)
+
+
+def _is_production() -> bool:
+    return (os.environ.get("FEEFIX_ENV") or "").strip().lower() in ("prod", "production")
+
+
+def _sqlite_path():
+    from pathlib import Path
+
+    explicit = os.environ.get("FEEFIX_RATELIMIT_DB")
+    if explicit and explicit.strip():
+        return Path(explicit.strip())
+    db_path = os.environ.get("FEEFIX_DB")
+    if db_path and db_path.strip():
+        base = Path(db_path.strip())
+        return base.with_name(base.stem + ".ratelimit.db")
+    return Path(__file__).resolve().parents[2] / "runtime" / "ratelimit.db"
 
 
 # -- backend selection ------------------------------------------------------------ #
@@ -390,21 +569,53 @@ def configure(backend: RateLimitStore | None = None, *, force: bool = False) -> 
         url = _redis_url()
 
         if requested == "memory":
+            if _is_production() or _worker_hint() > 1 or _instance_hint() > 1:
+                raise RuntimeError(
+                    "Refusing the in-process rate limiter: it multiplies the limit by the "
+                    "number of workers/instances. Set FEEFIX_REDIS_URL for more than one "
+                    "machine, or FEEFIX_RATELIMIT_BACKEND=sqlite to share a file on one host. "
+                    "FEEFIX_RATELIMIT_BACKEND=memory is only valid for a single local process."
+                )
             _BACKEND = _MEMORY
         elif requested == "redis":
             if not url:
                 raise RuntimeError("FEEFIX_RATELIMIT_BACKEND=redis requires FEEFIX_REDIS_URL.")
-            _BACKEND = RedisBackend(_make_redis_client(url), url)
+            client = _make_redis_client(url)
+            store = RedisBackend(client, url)
+            if _is_production() and not store.available():
+                raise RuntimeError(
+                    "FEEFIX_REDIS_URL is set but Redis did not answer. Refusing to serve "
+                    "production on per-process counters."
+                )
+            _BACKEND = store
+        elif requested == "sqlite":
+            _BACKEND = SqliteBackend(_sqlite_path())
         elif url:
             try:
                 client = _make_redis_client(url)
-                _BACKEND = RedisBackend(client, url)
+                store = RedisBackend(client, url)
+                if not store.available() and _is_production():
+                    raise RuntimeError(
+                        "FEEFIX_REDIS_URL is set but Redis did not answer. Refusing to serve "
+                        "production on per-process counters."
+                    )
+                _BACKEND = store
             except RuntimeError as exc:
-                log.error("[ratelimit] %s — falling back to the in-process store.", exc)
-                _BACKEND = _MEMORY
+                if _is_production():
+                    raise
+                log.error("[ratelimit] %s — falling back to the host-shared store.", exc)
+                _BACKEND = SqliteBackend(_sqlite_path())
+        elif _is_production() or _worker_hint() > 1:
+            # One host, many workers: a shared file is a real counter, not a warning.
+            _BACKEND = SqliteBackend(_sqlite_path())
         else:
             _BACKEND = _MEMORY
-        log.info("[ratelimit] backend=%s distributed=%s", _BACKEND.name, _BACKEND.distributed)
+        log.info(
+            "[ratelimit] backend=%s distributed=%s multi_instance=%s",
+            _BACKEND.name,
+            _BACKEND.distributed,
+            getattr(_BACKEND, "multi_instance", False),
+        )
         return _BACKEND
 
 
@@ -460,39 +671,74 @@ def status() -> dict:
     store = backend()
     info = store.status()
     workers = _worker_hint()
+    instances = _instance_hint()
     info["workers"] = workers
-    info["recommendation"] = (
-        None
-        if store.distributed or workers <= 1
-        else "Multiple workers/instances share no counter state — set FEEFIX_REDIS_URL."
-    )
+    info["instances"] = instances
+    if not store.distributed and (workers > 1 or instances > 1):
+        info["recommendation"] = (
+            "Multiple workers/instances share no counter state — set FEEFIX_REDIS_URL."
+        )
+    elif store.name == "sqlite":
+        info["recommendation"] = (
+            "Counters are shared on this host only. Set FEEFIX_REDIS_URL before "
+            "raising FEEFIX_INSTANCES above 1."
+        )
+    else:
+        info["recommendation"] = None
     return info
 
 
 def _worker_hint() -> int:
-    for name in ("WEB_CONCURRENCY", "UVICORN_WORKERS", "GUNICORN_WORKERS", "FEEFIX_INSTANCES"):
+    for name in ("WEB_CONCURRENCY", "UVICORN_WORKERS", "GUNICORN_WORKERS"):
         raw = os.environ.get(name)
         if raw and str(raw).strip().isdigit():
             return max(1, int(str(raw).strip()))
     return 1
 
 
+def _instance_hint() -> int:
+    """How many machines this deploy claims to be.
+
+    ``WEB_CONCURRENCY`` is workers on *one* host and must not be read as an
+    instance count — that confusion used to demand Redis for a single box that
+    a shared file already covers, and to ignore a real second instance.
+    """
+    raw = os.environ.get("FEEFIX_INSTANCES")
+    if raw and str(raw).strip().isdigit():
+        return max(1, int(str(raw).strip()))
+    return 1
+
+
 def warn_if_not_distributed() -> str | None:
-    """Boot-time reality check for scaled-out deployments (returns the warning)."""
+    """Boot-time topology check. Raises when the configured store cannot hold.
+
+    A log line is not a rate limit. Scaled-out memory counters used to warn and
+    keep serving, which is the bypass (limit × N). This refuses that boot.
+    """
     store = backend()
-    if store.distributed:
-        return None
     workers = _worker_hint()
-    if workers <= 1:
-        return None
-    warning = (
-        f"Rate limiting is running on the in-process store with {workers} workers/instances: "
-        "each process keeps its own counters, so effective limits are multiplied by "
-        f"{workers} and an attacker can spread requests across them. Set FEEFIX_REDIS_URL "
-        "(or FEEFIX_RATELIMIT_BACKEND=redis) so all workers share one counter set."
-    )
-    log.error("[ratelimit] %s", warning)
-    return warning
+    instances = _instance_hint()
+    multi = bool(getattr(store, "multi_instance", False))
+    if store.name == "memory" and (workers > 1 or instances > 1 or _is_production()):
+        raise RuntimeError(
+            "Refusing to serve with per-process rate limits "
+            f"(backend=memory, workers={workers}, instances={instances}). "
+            "Set FEEFIX_REDIS_URL for more than one machine, or leave the backend on "
+            "auto/sqlite so workers on one host share a file."
+        )
+    if instances > 1 and not multi:
+        raise RuntimeError(
+            f"FEEFIX_INSTANCES={instances} but the rate-limit backend is {store.name!r}, "
+            "which cannot share counters across hosts. Set FEEFIX_REDIS_URL. "
+            "A warning here used to keep serving; that multiplied the limit by N."
+        )
+    if store.name == "sqlite":
+        return (
+            "Rate limits are shared by every worker on this host (SQLite). "
+            "They are not shared across machines — set FEEFIX_REDIS_URL before "
+            "raising FEEFIX_INSTANCES above 1."
+        )
+    return None
 
 
 def reset() -> None:

@@ -50,7 +50,10 @@ _SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", ".pytest_c
               ".hypothesis", "uploads"}
 _MAX_BYTES = 1_000_000
 _IGNORE_FILE = ".secretscanignore"
-_INLINE_ALLOW = re.compile(r"secret-scan:\s*allow|nosec:\s*secret-scan|noqa:\s*secret-scan", re.I)
+# A waiver without a reason is how a scanner gets silenced. The reason has to
+# be long enough that `# secret-scan: allow x` is not a bypass.
+_INLINE_ALLOW = re.compile(r"secret-scan:\s*allow\s+\S.{7,}", re.I)
+_OVERBROAD_GLOBS = {"*", "**", "**/*", "/*", "./**", "**/**", "*.*"}
 
 # High-signal provider token prefixes / private-key markers.
 _PATTERNS: list[tuple[str, re.Pattern]] = [
@@ -122,16 +125,34 @@ _SPLIT_ENTROPY_FLOOR = 4.6
 _UNQUOTED_ENTROPY_FLOOR = 0.85
 
 
-def _load_ignore_globs(root: Path) -> list[str]:
+def _is_overbroad_glob(entry: str) -> bool:
+    """True when a glob would hide a secret in an arbitrary path."""
+    if entry in _OVERBROAD_GLOBS:
+        return True
+    probes = (
+        "backend/services/secrets.py",
+        "README.md",
+        "web/frontend/app.js",
+        "docs/security/SECURITY.md",
+    )
+    return all(fnmatch.fnmatch(probe, entry) or fnmatch.fnmatch(probe, f"*/{entry}") for probe in probes)
+
+
+def _load_ignore_globs(root: Path) -> tuple[list[str], list[str]]:
     path = root / _IGNORE_FILE
     if not path.exists():
-        return []
+        return [], []
     globs: list[str] = []
+    rejected: list[str] = []
     for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
         entry = line.strip()
-        if entry and not entry.startswith("#"):
-            globs.append(entry)
-    return globs
+        if not entry or entry.startswith("#"):
+            continue
+        if _is_overbroad_glob(entry):
+            rejected.append(entry)
+            continue
+        globs.append(entry)
+    return globs, rejected
 
 
 def _ignored(rel: str, globs: list[str]) -> bool:
@@ -262,6 +283,33 @@ def _dsn_password_is_placeholder(text: str) -> bool:
     return all(_DSN_PLACEHOLDER_HINT.match(pw.strip()) for pw in found)
 
 
+def _obfuscated_forms(line: str) -> list[str]:
+    """Hex, unicode-escape and hex-blob forms of a line — the bypasses a regex misses."""
+    forms: list[str] = []
+    unescaped = re.sub(
+        r"\\x([0-9a-fA-F]{2})",
+        lambda match: chr(int(match.group(1), 16)),
+        line,
+    )
+    unescaped = re.sub(
+        r"\\u([0-9a-fA-F]{4})",
+        lambda match: chr(int(match.group(1), 16)),
+        unescaped,
+    )
+    if unescaped != line:
+        forms.append(unescaped)
+    for blob in re.findall(r"\b[0-9a-fA-F]{16,}\b", line):
+        if len(blob) % 2:
+            continue
+        try:
+            text = bytes.fromhex(blob).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if text and text.isprintable() and text != line:
+            forms.append(text)
+    return forms
+
+
 def _provider_hits(text: str) -> list[str]:
     hits = [label for label, pattern in _PATTERNS if pattern.search(text)]
     if "dsn_with_password" in hits and _dsn_password_is_placeholder(text):
@@ -277,15 +325,23 @@ def _redact(line: str) -> str:
 def _scan_text(rel_str: str, text: str) -> list[dict]:
     """All detectors for one file's text (shared by path and staged scans)."""
     findings: list[dict] = []
-    is_test = bool(_TEST_PATH.search(rel_str))
+    logical = rel_str[8:] if rel_str.startswith("history:") else rel_str
+    is_test = bool(_TEST_PATH.search(logical))
     for lineno, line in enumerate(text.splitlines(), 1):
         if _INLINE_ALLOW.search(line):
             continue
 
-        # 1) provider shapes anywhere (even in tests — a real token is real)
-        for label in _provider_hits(line):
-            findings.append({"file": rel_str, "line": lineno, "type": label,
-                             "snippet": _redact(line)})
+        # 1) provider shapes anywhere (even in tests — a real token is real),
+        #    including hex / unicode-escaped forms of the same line.
+        seen_labels: set[str] = set()
+        for variant in (line, *_obfuscated_forms(line)):
+            for label in _provider_hits(variant):
+                kind = label if variant is line else f"obfuscated_{label}"
+                if kind in seen_labels:
+                    continue
+                seen_labels.add(kind)
+                findings.append({"file": rel_str, "line": lineno, "type": kind,
+                                 "snippet": _redact(line)})
 
         # 2) encoded payloads that decode to a provider token or to
         #    something high-entropy under a credential-ish context
@@ -304,7 +360,7 @@ def _scan_text(rel_str: str, text: str) -> list[dict]:
             continue  # sample credentials in tests are expected
 
         strong = bool(_STRONG_NAMES.search(line)) and not _SAFE_NAME_CONTEXT.search(line)
-        config_like = _is_config_like(rel_str)
+        config_like = _is_config_like(logical)
 
         # 3) credential-named assignments to a non-placeholder literal
         if strong:
@@ -359,14 +415,44 @@ def _dedupe(findings: list[dict]) -> list[dict]:
     return out
 
 
+def _scan_split_across_lines(rel_str: str, text: str) -> list[dict]:
+    """``\"abc\" +\\n \"def\"`` is the split-literal bypass that a per-line scan misses."""
+    logical = rel_str[8:] if rel_str.startswith("history:") else rel_str
+    if _TEST_PATH.search(logical):
+        return []  # fixtures split tokens on purpose; production code is not a fixture
+    findings: list[dict] = []
+    lines = text.splitlines()
+    for index in range(len(lines) - 1):
+        window = lines[index] + " " + lines[index + 1]
+        if _INLINE_ALLOW.search(lines[index]) and _INLINE_ALLOW.search(lines[index + 1]):
+            continue
+        joined = _join_adjacent_literals(window)
+        if joined and _provider_hits(joined):
+            findings.append({
+                "file": rel_str,
+                "line": index + 1,
+                "type": "split_secret",
+                "snippet": _redact(window),
+            })
+    return findings
+
+
 def scan(root: Path) -> list[dict]:
     findings: list[dict] = []
-    globs = _load_ignore_globs(root)
+    globs, rejected = _load_ignore_globs(root)
+    for entry in rejected:
+        findings.append({
+            "file": _IGNORE_FILE,
+            "line": 1,
+            "type": "overbroad_ignore",
+            "snippet": entry,
+        })
     for path, text in _iter_files(root):
         rel_str = str(path.relative_to(root))
         if _ignored(rel_str, globs):
             continue
         findings.extend(_scan_text(rel_str, text))
+        findings.extend(_scan_split_across_lines(rel_str, text))
     return _dedupe(findings)
 
 
@@ -382,10 +468,67 @@ def _staged_files(root: Path) -> list[Path]:
     return [root / line.strip() for line in out.splitlines() if line.strip()]
 
 
+def scan_history(root: Path) -> list[dict]:
+    """Scan added lines in every commit, not only the working tree.
+
+    Deleting a file after it was committed used to clear the in-house scanner
+    while the secret stayed in git history. gitleaks covers that independently;
+    this is the same check in the scanner we ship, so disabling one job is not
+    enough.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "log", "-p", "--all", "-U0", "--no-color"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return [{
+            "file": "(git)",
+            "line": 0,
+            "type": "history_unscanned",
+            "snippet": "git is not available; history was not scanned",
+        }]
+    if proc.returncode != 0:
+        return [{
+            "file": "(git)",
+            "line": 0,
+            "type": "history_unscanned",
+            "snippet": (proc.stderr or "git log failed")[:120],
+        }]
+    findings: list[dict] = []
+    current = "(commit)"
+    lineno = 0
+    for raw in proc.stdout.splitlines():
+        if raw.startswith("diff --git "):
+            parts = raw.split(" b/", 1)
+            current = parts[1] if len(parts) == 2 else raw
+            continue
+        if raw.startswith("@@"):
+            match = re.search(r"\+(\d+)", raw)
+            lineno = int(match.group(1)) if match else 0
+            continue
+        if not raw.startswith("+") or raw.startswith("+++"):
+            continue
+        line = raw[1:]
+        findings.extend(_scan_text(f"history:{current}", line))
+        lineno += 1
+    return _dedupe(findings)
+
+
 def scan_paths(paths: list[Path]) -> list[dict]:
     """Scan an explicit list of files (used by ``--staged``)."""
     findings: list[dict] = []
-    globs = _load_ignore_globs(REPO)
+    globs, rejected = _load_ignore_globs(REPO)
+    for entry in rejected:
+        findings.append({
+            "file": _IGNORE_FILE,
+            "line": 1,
+            "type": "overbroad_ignore",
+            "snippet": entry,
+        })
     for path in paths:
         if not path.is_file() or any(part in _SKIP_DIRS for part in path.parts):
             continue
@@ -408,11 +551,12 @@ def scan_paths(paths: list[Path]) -> list[dict]:
 _USAGE = """FeeFix secret scanner — commit-time and CI gate for leaked credentials.
 
 Usage:
-  python -m agents.secret_scan [--path DIR] [--json FILE] [--staged]
+  python -m agents.secret_scan [--path DIR] [--json FILE] [--staged] [--history]
 
   --path DIR   scan a directory tree (default: this repository)
   --json FILE  also write a machine-readable report (CI artifact)
   --staged     scan only git-staged files (pre-commit mode)
+  --history    scan added lines in every commit, not only the working tree
   --help       show this message
 
 Exit codes: 0 = clean, 1 = findings (fails the build on purpose).
@@ -429,7 +573,7 @@ def main(argv: list[str]) -> int:
         print(_USAGE, end="")
         return 0
 
-    known = {"--path", "--json", "--staged"}
+    known = {"--path", "--json", "--staged", "--history"}
     unknown = [
         a for i, a in enumerate(argv)
         if a.startswith("-") and a not in known
@@ -443,9 +587,15 @@ def main(argv: list[str]) -> int:
     if "--path" in argv:
         root = Path(argv[argv.index("--path") + 1]).resolve()
 
+    if "--staged" in argv and "--history" in argv:
+        print("--staged and --history cannot be combined", file=sys.stderr)
+        return 2
     if "--staged" in argv:
         findings = scan_paths(_staged_files(root))
         scope = "staged files"
+    elif "--history" in argv:
+        findings = scan_history(root)
+        scope = f"git history of {root}"
     else:
         findings = scan(root)
         scope = str(root)

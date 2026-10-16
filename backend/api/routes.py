@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from backend.api.schemas import (
     AskRequest,
+    BulkTrackRequest,
     ChatRequest,
     DispatchRequest,
     EventRequest,
@@ -457,6 +458,31 @@ def set_track_status(
         "session_id": session_id,
         "board": TrackerStore.scheme_entries(board),
     }
+
+
+@router.post("/tracker/{session_id}/bulk")
+def bulk_track_status(session_id: str, body: BulkTrackRequest, request: Request) -> dict:
+    """Apply many tracker updates in one request.
+
+    Validated entirely before any write, so a bad id does not leave a partial
+    board. The body cap is the ``bulk`` policy (512 KB), not the 16 KB
+    single-status cap and not the 1 MB catch-all.
+    """
+    _authorize_session(request, session_id)
+    dataset = _dataset(request)
+    unknown = [item.scheme_id for item in body.updates if dataset.get(item.scheme_id) is None]
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown scheme(s): {', '.join(unknown[:8])}")
+    tracker = _tracker(request)
+    try:
+        for item in body.updates:
+            tracker.set_status(session_id, item.scheme_id, item.status)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    from backend.services.tracker import TrackerStore
+
+    board = TrackerStore.scheme_entries(tracker.board(session_id))
+    return {"session_id": session_id, "applied": len(body.updates), "board": board}
 
 
 @router.get("/tracker/{session_id}")

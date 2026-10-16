@@ -79,7 +79,7 @@ MAX_ADDRESS_LEN = _env_int("FEEFIX_MAX_ADDRESS_LEN", 320, minimum=32, maximum=10
 MAX_MESSAGE_LEN = _env_int("FEEFIX_MAX_MESSAGE_LEN", 2000, minimum=200, maximum=20_000)
 MAX_QUESTION_LEN = _env_int("FEEFIX_MAX_QUESTION_LEN", 1000, minimum=100, maximum=10_000)
 MAX_SEARCH_LEN = _env_int("FEEFIX_MAX_SEARCH_LEN", 200, minimum=32, maximum=2_000)
-MAX_NOTES_LEN = _env_int("FEEFIX_MAX_NOTES_LEN", 20_000, minimum=500, maximum=200_000)
+MAX_NOTES_LEN = _env_int("FEEFIX_MAX_NOTES_LEN", 64_000, minimum=500, maximum=200_000)
 
 # -- identifiers ------------------------------------------------------------- #
 MAX_SESSION_ID_LEN = _env_int("FEEFIX_MAX_SESSION_ID_LEN", 64, minimum=16, maximum=256)
@@ -87,10 +87,12 @@ MAX_SCHEME_ID_LEN = _env_int("FEEFIX_MAX_SCHEME_ID_LEN", 64, minimum=16, maximum
 MAX_LANG_LEN = _env_int("FEEFIX_MAX_LANG_LEN", 8, minimum=2, maximum=32)
 
 # -- uploads (see services/upload.py and services/uploads.py) ---------------- #
-MAX_UPLOAD_BYTES = _env_int("FEEFIX_MAX_UPLOAD_BYTES", 2_000_000, minimum=1024)
+# A phone photo of a marksheet or income certificate is commonly 4–8 MB.
+# 2 MB rejected real documents; 8 MB fits under the 16 MB absolute ceiling.
+MAX_UPLOAD_BYTES = _env_int("FEEFIX_MAX_UPLOAD_BYTES", 8_000_000, minimum=1024)
 MAX_UPLOAD_FILES_PER_SESSION = _env_int("FEEFIX_MAX_UPLOAD_FILES", 20, minimum=1, maximum=500)
 MAX_UPLOAD_TOTAL_BYTES_PER_SESSION = _env_int(
-    "FEEFIX_MAX_UPLOAD_TOTAL_BYTES", 20_000_000, minimum=1024
+    "FEEFIX_MAX_UPLOAD_TOTAL_BYTES", 40_000_000, minimum=1024
 )
 UPLOAD_ALLOWED_EXTS = frozenset({".pdf", ".png", ".jpg", ".jpeg"})
 
@@ -145,6 +147,27 @@ BODY_POLICIES: tuple[BodyPolicy, ...] = (
         MAX_NOTES_LEN + 8_000,
         "FEEFIX_MAX_BODY_NOTES_BYTES",
         "long-form notes field plus JSON envelope",
+    ),
+    _policy(
+        "bulk",
+        r"^/api/tracker/[^/]+/bulk$",
+        512_000,
+        "FEEFIX_MAX_BODY_BULK_BYTES",
+        "a batch of tracker updates — not held to a single-status cap, not a document",
+    ),
+    _policy(
+        "tracker",
+        r"^/api/tracker/",
+        16_000,
+        "FEEFIX_MAX_BODY_TRACKER_BYTES",
+        "one status update is a few hundred bytes",
+    ),
+    _policy(
+        "dispatch",
+        r"^/api/students/[^/]+/reminders/dispatch$",
+        8_000,
+        "FEEFIX_MAX_BODY_DISPATCH_BYTES",
+        "a small dispatch request",
     ),
     _policy(
         "conversation",

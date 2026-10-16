@@ -29,6 +29,8 @@ jobs:
       FEEFIX_AI_BACKEND: ngram
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # in-house history scan must see commits, not a shallow tip
 
       - uses: actions/setup-python@v5
         with:
@@ -78,6 +80,12 @@ jobs:
 
       - name: Secret scan (in-house, no committed credentials)
         run: python -m agents.secret_scan --json secret-scan-report.json
+
+      # Working-tree scan misses a secret that was committed and then deleted.
+      # This is the same detector over git history, so disabling the gitleaks
+      # job (or this one) is not by itself a bypass.
+      - name: Secret scan (in-house, full git history)
+        run: python -m agents.secret_scan --history --json secret-scan-history.json
 
       - name: Upload secret-scan report
         if: always()

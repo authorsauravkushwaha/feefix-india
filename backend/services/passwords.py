@@ -100,10 +100,20 @@ def argon2_available() -> bool:
     return _hasher() is not None
 
 
+def _is_production() -> bool:
+    return (os.environ.get("FEEFIX_ENV") or "").strip().lower() in ("prod", "production")
+
+
 def active_algorithm() -> str:
     """The algorithm new passwords are hashed with right now."""
     policy = _policy()
     if policy == "pbkdf2":
+        if _is_production():
+            raise RuntimeError(
+                "FEEFIX_ENV=production cannot hash passwords with PBKDF2. "
+                "Set FEEFIX_PASSWORD_ALGO=argon2id and install argon2-cffi. "
+                "A CPU-cheap KDF is not an acceptable production default."
+            )
         return "pbkdf2"
     if _hasher() is not None:
         return "argon2id"
@@ -253,10 +263,18 @@ _DUMMY_HASH: str | None = None
 
 
 def dummy_verify(password: str) -> bool:
-    """Burn one KDF verification for unknown accounts. Always returns False."""
+    """Burn one KDF verification for unknown accounts. Always returns False.
+
+    The dummy row uses the *active* algorithm. A PBKDF2 dummy next to an
+    Argon2id real hash is a timing oracle: unknown emails finish on a different
+    curve than known ones, which is user enumeration by response time.
+    """
     global _DUMMY_HASH
-    if _DUMMY_HASH is None:
-        _DUMMY_HASH = _hash_pbkdf2(hashlib.sha256(b"feefix-dummy").digest())
+    algo = active_algorithm()
+    prefix = ARGON2_PREFIX if algo == "argon2id" else PBKDF2_PREFIX
+    if _DUMMY_HASH is None or not _DUMMY_HASH.startswith(prefix):
+        preimage = hashlib.sha256(b"feefix-dummy").digest()
+        _DUMMY_HASH = _hash_argon2id(preimage) if algo == "argon2id" else _hash_pbkdf2(preimage)
     verify(password, _DUMMY_HASH)
     return False
 

@@ -24,7 +24,8 @@ ENV FEEFIX_ENV=production \
 # State lives on a volume, not in the image: the SQLite database and uploaded
 # documents must survive a container restart, and `runtime/` is git-ignored.
 ENV FEEFIX_DB=/data/feefix.db \
-    FEEFIX_UPLOAD_DIR=/data/uploads
+    FEEFIX_UPLOAD_DIR=/data/uploads \
+    FEEFIX_RATELIMIT_DB=/data/ratelimit.db
 RUN mkdir -p /data
 
 # Run as a non-root user that owns the state volume — a compromised process

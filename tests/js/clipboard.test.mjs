@@ -1,14 +1,7 @@
-/* ==========================================================================
+/* =========================================================================
    Tests for web/frontend/secure-clipboard.js
 
    Run with:  node tests/js/clipboard.test.mjs
-   (pytest invokes this from tests/test_clipboard_js.py so it runs with the
-   normal suite; no npm dependency is required.)
-
-   The module is loaded with stub DOM/Clipboard globals so we can assert on the
-   one thing that is objectively testable — that it refuses credential-shaped
-   values, reports failures instead of swallowing them, and does not claim to be
-   a security control it cannot be.
    ========================================================================== */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -30,8 +23,7 @@ const check = (name, condition, detail = "") => {
   }
 };
 
-/** Build a fresh module instance with captured globals. */
-function load({ clipboard = true, writeText, storage = {}, hidden = false } = {}) {
+function load({ clipboard = true, writeText, storage = {} } = {}) {
   const written = [];
   const listeners = {};
   const navigator = clipboard
@@ -49,35 +41,39 @@ function load({ clipboard = true, writeText, storage = {}, hidden = false } = {}
     getItem: (key) => (key in storage ? storage[key] : null),
   };
   const document = {
-    visibilityState: hidden ? "hidden" : "visible",
+    visibilityState: "visible",
     addEventListener: (event, handler) => {
       (listeners[event] ||= []).push(handler);
     },
   };
   const window = {};
-  // The module is an IIFE that reads these as free variables: pass them in.
+  const setTimeoutCalls = [];
   const factory = new Function(
     "window",
     "navigator",
     "localStorage",
     "document",
+    "setTimeout",
     `${source}\nreturn window.FeeFixClipboard;`
   );
-  const api = factory(window, navigator, localStorage, document);
-  return { api, written, listeners, document };
+  const api = factory(window, navigator, localStorage, document, (...args) => {
+    setTimeoutCalls.push(args);
+    return 0;
+  });
+  return { api, written, listeners, setTimeoutCalls };
 }
 
 console.log("FeeFix clipboard hygiene:");
 
-// 1) ordinary values are copied
 {
-  const { api, written } = load();
+  const { api, written, setTimeoutCalls } = load();
   const result = await api.copyWithHygiene("Application reference 12345");
   check("copies ordinary text", result.ok === true && result.reason === "copied");
   check("wrote the value through", written[0] === "Application reference 12345");
+  check("does not schedule a clear", setTimeoutCalls.length === 0);
+  check("does not claim a ttl", result.ttlMs === undefined);
 }
 
-// 2) credential-shaped values are refused *before* touching the clipboard
 {
   const { api, written } = load();
   const cases = [
@@ -90,13 +86,15 @@ console.log("FeeFix clipboard hygiene:");
   for (const [label, value] of cases) {
     const target = label === "the stored auth token" ? withStorage.api : api;
     const result = await target.copyWithHygiene(value);
-    check(`refuses ${label}`, result.ok === false && result.reason === "refused-credential-shaped-value");
+    check(
+      `refuses ${label}`,
+      result.ok === false && result.reason === "refused-credential-shaped-value"
+    );
   }
   check("nothing credential-shaped reached the clipboard", written.length === 0);
   check("empty values are refused too", (await api.copyWithHygiene("")).ok === false);
 }
 
-// 3) failures are reported, never swallowed
 {
   const unavailable = load({ clipboard: false });
   const r1 = await unavailable.api.copyWithHygiene("hello");
@@ -121,28 +119,23 @@ console.log("FeeFix clipboard hygiene:");
   );
 }
 
-// 4) the TTL clear actually fires
 {
-  const { api, written } = load();
-  await api.copyWithHygiene("temporary value", { ttl: 5 });
-  await new Promise((r) => setTimeout(r, 30));
-  check("clears the clipboard after the TTL", written.includes(""));
+  const { api, listeners } = load();
+  check("does not register visibilitychange", !(listeners.visibilitychange || []).length);
+  check("source does not call addEventListener", !source.includes("addEventListener"));
+  check("source does not schedule setTimeout", !source.includes("setTimeout"));
 }
 
-// 5) clearing on page hide
-{
-  const { api, written, listeners } = load({ hidden: true });
-  check("registers a visibilitychange listener", (listeners.visibilitychange || []).length === 1);
-  await listeners.visibilitychange[0]();
-  check("clears the clipboard when the page is hidden", written.includes(""));
-}
-
-// 6) honesty: the module must not claim to be a security control
 {
   const { api } = load();
   const described = api.describe();
   check("declares itself non-security", described.securityControl === false);
-  check("lists its limitations", Array.isArray(described.limitations) && described.limitations.length >= 4);
+  check("declares it does not auto-clear", described.autoClears === false);
+  check("declares it does not clear on hide", described.clearsOnHide === false);
+  check(
+    "lists its limitations",
+    Array.isArray(described.limitations) && described.limitations.length >= 4
+  );
   check(
     "limitations mention malware/keyloggers",
     described.limitations.join(" ").toLowerCase().includes("malware")

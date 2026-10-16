@@ -4,10 +4,10 @@
     "Income/amount vocabulary for the reach layer, as DATA rather than hand-written",
     "regex escapes in Python source. Adding a language (or a new way of writing",
     "lakh/crore/thousand) is a JSON edit here plus a test run — no raw \\uXXXX",
-    "sequences to mistype, and tests/test_i18n_rules.py::test_numeral_table_covers_locales",
-    "fails if a supported language is missing an entry.",
-    "Words are matched longest-first with Unicode word boundaries, so plural and",
-    "oblique forms (लाखों, হাজারের) work without special cases."
+    "sequences to mistype. tests/test_numerals.py fails if a supported language is",
+    "missing a multiplier, and if a glyph is in the wrong Unicode block (the class",
+    "of bug that once put a Devanagari letter in the Bengali table).",
+    "Words are matched longest-first with Unicode word boundaries."
   ],
   "digit_sets": {
     "hi": "०१२३४५६७८९",
@@ -26,38 +26,192 @@
     "ar": "٠١٢٣٤٥٦٧٨٩"
   },
   "currency_tokens": [
-    "₹", "৳", "ரூ", "रु", "रु.", "টাকা", "টাকায়", "रुपये", "रुपया", "रुपए",
-    "ரூபாய்", "rs.", "rs", "inr", "rupees", "rupee"
+    "₹",
+    "৳",
+    "ரூ",
+    "रु",
+    "रु.",
+    "টাকা",
+    "টাকায়",
+    "रुपये",
+    "रुपया",
+    "रुपए",
+    "ரூபாய்",
+    "rs.",
+    "rs",
+    "inr",
+    "rupees",
+    "rupee"
   ],
   "multipliers": [
     {
       "value": 10000000,
       "label": "crore",
       "words": {
-        "en": ["crores", "crore", "cr"],
-        "hi": ["करोड़ों", "करोड़", "करोड", "करोड़ो"],
-        "bn": ["কোটির", "কোটি", "কোটিতে", "কোট"],
-        "ta": ["கோடி", "கோடியே", "கோடிக்கு"]
+        "en": [
+          "crores",
+          "crore",
+          "cr"
+        ],
+        "hi": [
+          "करोड़ों",
+          "करोड़",
+          "करोड",
+          "करोड़ो"
+        ],
+        "bn": [
+          "কোটির",
+          "কোটি",
+          "কোটিতে",
+          "কোট"
+        ],
+        "ta": [
+          "கோடி",
+          "கோடியே",
+          "கோடிக்கு"
+        ],
+        "gu": [
+          "કરોડો",
+          "કરોડ"
+        ],
+        "kn": [
+          "ಕೋಟಿ"
+        ],
+        "te": [
+          "కోటి"
+        ],
+        "ml": [
+          "കോടി"
+        ],
+        "or": [
+          "କୋଟି"
+        ],
+        "pa": [
+          "ਕਰੋੜ"
+        ],
+        "mr": [
+          "कोटी"
+        ],
+        "as": [
+          "কোটি"
+        ],
+        "ur": [
+          "کروڑ"
+        ]
       }
     },
     {
       "value": 100000,
       "label": "lakh",
       "words": {
-        "en": ["lakhs", "lakh", "lacs", "lac", "l"],
-        "hi": ["लाखों", "लाख", "लख"],
-        "bn": ["লক্ষ", "লাখ", "লক্ষে", "লাখো"],
-        "ta": ["இலட்சம்", "லட்சம்", "லட்ச", "இலட்ச"]
+        "en": [
+          "lakhs",
+          "lakh",
+          "lacs",
+          "lac",
+          "l"
+        ],
+        "hi": [
+          "लाखों",
+          "लाख",
+          "लख"
+        ],
+        "bn": [
+          "লক্ষ",
+          "লাখ",
+          "লক্ষে",
+          "লাখো"
+        ],
+        "ta": [
+          "இலட்சம்",
+          "லட்சம்",
+          "லட்ச",
+          "இலட்ச"
+        ],
+        "gu": [
+          "લાખો",
+          "લાખ"
+        ],
+        "kn": [
+          "ಲಕ್ಷ"
+        ],
+        "te": [
+          "లక్ష"
+        ],
+        "ml": [
+          "ലക്ഷം"
+        ],
+        "or": [
+          "ଲକ୍ଷ"
+        ],
+        "pa": [
+          "ਲੱਖ"
+        ],
+        "mr": [
+          "लाख"
+        ],
+        "as": [
+          "লাখ"
+        ],
+        "ur": [
+          "لاکھ"
+        ]
       }
     },
     {
       "value": 1000,
       "label": "thousand",
       "words": {
-        "en": ["thousands", "thousand", "k"],
-        "hi": ["हज़ारों", "हजारों", "हज़ार", "हजार", "हजारो"],
-        "bn": ["হাজারের", "হাজার", "হাজারো"],
-        "ta": ["ஆயிரம்", "ஆயிர"]
+        "en": [
+          "thousands",
+          "thousand",
+          "k"
+        ],
+        "hi": [
+          "हज़ारों",
+          "हजारों",
+          "हज़ार",
+          "हजार",
+          "हजारो"
+        ],
+        "bn": [
+          "হাজারের",
+          "হাজার",
+          "হাজারো"
+        ],
+        "ta": [
+          "ஆயிரம்",
+          "ஆயிர"
+        ],
+        "gu": [
+          "હજારો",
+          "હજાર"
+        ],
+        "kn": [
+          "ಸಾವಿರ"
+        ],
+        "te": [
+          "వేలు",
+          "వేయి"
+        ],
+        "ml": [
+          "ആയിരം"
+        ],
+        "or": [
+          "ହଜାର"
+        ],
+        "pa": [
+          "ਹਜ਼ਾਰ"
+        ],
+        "mr": [
+          "हजार"
+        ],
+        "as": [
+          "হাজাৰ"
+        ],
+        "ur": [
+          "ہزار"
+        ]
       }
     }
   ],

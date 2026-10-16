@@ -44,6 +44,7 @@ $PY -m pytest
 
 step "Secret scan (in-house)"
 $PY -m agents.secret_scan
+$PY -m agents.secret_scan --history
 
 step "Static security analysis (bandit, medium+)"
 $PY -m bandit -q -r backend agents ai ml -x tests -ll
