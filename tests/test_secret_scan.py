@@ -199,6 +199,13 @@ def test_clean_repository_history_and_worktree():
     assert scan_history() == [], "this branch's history contains a possible secret"
 
 
+def test_working_artifacts_are_gitignored():
+    """Session artifacts (a full-repo .patch was once committed) must not return."""
+    ignore = (REPO / ".gitignore").read_text(encoding="utf-8")
+    for pattern in ("*.patch", "*.diff", "*.orig", "*.rej"):
+        assert pattern in ignore, f"{pattern} is no longer ignored"
+
+
 def test_ignore_file_loads_from_the_repository():
     # The repository may not ship one; loading must still be safe.
     assert isinstance(_load_ignore(REPO), list)

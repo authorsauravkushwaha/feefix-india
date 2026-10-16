@@ -29,6 +29,14 @@ runtime/.*
 *.pem
 *.key
 
+# Working artifacts — a full-repo diff (0.6 MB) was once committed to this
+# repository's history and later deleted; removal does not un-leak the blob, so
+# the class is ignored at the source.
+*.patch
+*.diff
+*.orig
+*.rej
+
 # OS / editor
 .DS_Store
 .idea/
