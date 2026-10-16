@@ -14,10 +14,12 @@ Integrity primitives (the *I* in CIA):
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import sqlite3
 import threading
+import time
 from pathlib import Path
 
 RUNTIME_DIR = Path(__file__).resolve().parents[2] / "runtime"
@@ -28,15 +30,52 @@ SCHEMA_VERSION = 5
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
 
+log = logging.getLogger("feefix.db")
+
+#: Seconds any statement may wait for a lock held by another connection.
+#: Installed *before* the first statement (see ``_connect``).
+BUSY_TIMEOUT_S = float(os.environ.get("FEEFIX_DB_BUSY_TIMEOUT", "30") or 30)
+
+
+def _switch_to_wal(conn: sqlite3.Connection, attempts: int = 6) -> None:
+    """Put the database in WAL mode, waiting out a concurrent opener.
+
+    Found by CI's flake-watch gate (and reproduced locally, ~1 run in 6 with
+    eight concurrent openers): switching the journal mode needs a brief
+    exclusive moment, and a peer that is opening the same **brand-new** file can
+    hold it — raising ``database is locked``. In production that is a
+    crash-looping deploy (two instances starting together against a fresh
+    volume), not a flaky test. The busy handler now covers this call, and the
+    switch additionally retries with a short backoff.
+    """
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            mode = str(conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]).lower()
+            if mode == "wal":
+                return
+            last_error = sqlite3.OperationalError(f"journal_mode is {mode!r}, not 'wal'")
+        except sqlite3.OperationalError as exc:
+            last_error = exc
+            if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+                raise
+        time.sleep(0.05 * (attempt + 1))
+    # Some filesystems (network mounts, for example) cannot do WAL at all. That
+    # is a degraded mode, not a reason to refuse to serve — say so loudly.
+    log.warning("[db] could not enable WAL on %s: %s", conn.execute("PRAGMA database_list").fetchone()[2], last_error)
+
 
 def _connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path), check_same_thread=False)
+    # `timeout` installs SQLite's busy handler *before* any statement runs, so
+    # the very first pragma waits for a concurrent writer instead of failing
+    # instantly with "database is locked".
+    conn = sqlite3.connect(str(path), check_same_thread=False, timeout=BUSY_TIMEOUT_S)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(f"PRAGMA busy_timeout={int(BUSY_TIMEOUT_S * 1000)}")
+    _switch_to_wal(conn)
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 

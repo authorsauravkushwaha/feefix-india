@@ -396,7 +396,7 @@ With those in place the pipeline is green end to end on the current head —
 `test`, `flake-watch`, `secret-scan-third-party`, `sast-and-dependencies` all
 pass, and the scheduled `dataset-liveness` job stays off the critical path.
 
-## E. An unexplained intermittent failure, handled honestly
+## E. The intermittent failure, found — and it was a production bug
 
 Two consecutive CI runs failed the test job while the identical suite passed
 locally (three hash seeds, then pinned to a single CPU). The failing test's name
@@ -419,11 +419,38 @@ available responses were applied:
   and migration suites three times per build. If the cause was environmental
   timing, it now reproduces in a pipeline run instead of a coin flip.
 
-The honest status: the specific first failure was never identified, and one
-hypothesis (ephemeral-port reuse) was disproved by measurement — 0/400
-back-to-back allocations returned a duplicate on this machine, so the guard that
-makes it impossible is hardening rather than a demonstrated fix. What is certain
-is that the next incident will name itself.
+**Resolved.** The `flake-watch` gate added in that step reproduced the failure
+on its first run, and — once the job was wired to emit the failing test id as a
+check annotation (the log blob is not reachable from every environment, but
+annotations are) — the cause was named in one run:
+
+```
+FAILED tests/test_schema_migrations.py::test_many_processes_migrating_one_new_database_all_succeed
+sqlite3.OperationalError: database is locked
+```
+
+That was not a test artefact. `db._connect()` set `PRAGMA busy_timeout` *after*
+switching the journal mode, so the switch — which needs a brief exclusive moment
+— could fail instantly when a peer was opening the same **brand-new** file. In
+production that is a crash-looping deploy whenever two instances start together
+against a fresh volume: precisely the multi-instance class the original review
+(#3) was about. It was reproduced locally at roughly 1 run in 6 with eight
+concurrent openers, and appears on CI more readily (four real cores, so the
+processes genuinely overlap).
+
+Fix: `sqlite3.connect(timeout=…)` installs the busy handler before any statement
+runs, `PRAGMA busy_timeout` is set first, and the journal-mode switch retries
+with backoff and reports the degraded case instead of hiding it. Pinned by three
+tests — the no-handler case (which must still raise, so the test proves the
+handler is what saves it), a peer process holding an EXCLUSIVE lock on a fresh
+database (connect must wait, then come up in WAL), and a retry assertion — and
+the reproduction now passes 20 rounds × 10 processes with zero failures.
+
+One earlier hypothesis was disproved by measurement rather than assumed
+(ephemeral-port reuse: 0/400 back-to-back allocations returned a duplicate), so
+that guard remains hardening rather than a fix — which is itself the point: the
+flake-watch gate, not the review, is what turned an intermittent red badge into
+a named, reproduced, fixed defect.
 
 ## What the second pass says about the first
 
