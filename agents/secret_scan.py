@@ -551,10 +551,14 @@ def scan_paths(paths: list[Path]) -> list[dict]:
 _USAGE = """FeeFix secret scanner — commit-time and CI gate for leaked credentials.
 
 Usage:
-  python -m agents.secret_scan [--path DIR] [--json FILE] [--staged] [--history]
+  python -m agents.secret_scan [--path DIR] [--json FILE] [--annotate]
+                               [--staged] [--history]
 
   --path DIR   scan a directory tree (default: this repository)
   --json FILE  also write a machine-readable report (CI artifact)
+  --annotate   print each finding as a GitHub check annotation, so a red run
+               can be read from the API (`gh pr checks`, the check-runs
+               endpoint) instead of a log blob
   --staged     scan only git-staged files (pre-commit mode)
   --history    scan added lines in every commit, not only the working tree
   --help       show this message
@@ -565,6 +569,23 @@ or list paths in .secretscanignore.
 """
 
 
+def _annotation(finding: dict) -> str:
+    """One GitHub workflow command for a finding.
+
+    GitHub renders ``::error`` lines as check annotations, which is how a red
+    run stays diagnosable when the log blob is not reachable (this scanner spent
+    a red CI run with its findings visible only in a log nobody could fetch).
+    The message is single-line and escaped per GitHub's workflow-command rules.
+    """
+    message = f"[{finding['type']}] {finding['file']}:{finding['line']} {finding['snippet']}"
+    for char, escape in (("%", "%25"), ("\r", "%0D"), ("\n", "%0A")):
+        message = message.replace(char, escape)
+    location = ""
+    if not str(finding["file"]).startswith("("):  # "(git)" is not a real path
+        location = f" file={finding['file']},line={finding['line']}"
+    return f"::error title=secret-scan {finding['type']}{location}::{message}"
+
+
 def main(argv: list[str]) -> int:
     # A CI tool that swallows `--help` and quietly runs the scan instead is a
     # tool people stop trusting; the flag check below (tests/test_ci_config.py)
@@ -573,7 +594,7 @@ def main(argv: list[str]) -> int:
         print(_USAGE, end="")
         return 0
 
-    known = {"--path", "--json", "--staged", "--history"}
+    known = {"--path", "--json", "--annotate", "--staged", "--history"}
     unknown = [
         a for i, a in enumerate(argv)
         if a.startswith("-") and a not in known
@@ -614,10 +635,28 @@ def main(argv: list[str]) -> int:
         print("and keep secrets in the environment (docs/security/SECURITY.md).")
         print("If it is a false positive, waive it in-line with")
         print("  # secret-scan: allow <reason>")
+        if "--annotate" in argv:
+            for finding in findings[:20]:
+                print(_annotation(finding))
         return 1
     print("  ✓ no committed secrets detected")
     return 0
 
 
+def _run(argv: list[str]) -> int:
+    """``main`` plus one guarantee: a red run always leaves something readable.
+
+    Findings are annotated (``--annotate``); a *crash* is annotated too, because
+    a gate that fails for a reason nobody can fetch from the log is a gate
+    nobody can act on.
+    """
+    try:
+        return main(argv)
+    except BaseException as exc:  # noqa: BLE001 - re-raised below
+        if not isinstance(exc, SystemExit):
+            print(f"::error title=secret-scan crashed::{type(exc).__name__}: {exc}")
+        raise
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(_run(sys.argv[1:]))

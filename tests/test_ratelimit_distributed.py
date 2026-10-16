@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import socket
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -310,6 +311,121 @@ def test_two_processes_share_one_sqlite_window(tmp_path):
         assert proc.returncode == 0, err
         outputs.append(int(out.strip()))
     assert sum(outputs) == 3, f"shared file must enforce one quota, got {outputs}"
+
+
+def _hold_a_read_lock(path: Path, seconds: float) -> subprocess.Popen:
+    """Start a peer process that holds a read transaction, and wait for it.
+
+    Blocking until the peer reports the lock is held removes the timing lottery
+    from the test: by the time the worker boots, the lock is definitely there.
+    """
+    script = (
+        "import sqlite3, sys, time\n"
+        f"conn = sqlite3.connect({str(path)!r}, isolation_level=None)\n"
+        "conn.execute('CREATE TABLE IF NOT EXISTS seed (x)')\n"
+        "conn.execute('BEGIN')\n"
+        "conn.execute('SELECT * FROM seed').fetchall()\n"
+        "print('locked', flush=True)\n"
+        f"time.sleep({seconds!r})\n"
+        "conn.execute('COMMIT')\n"
+    )
+    holder = subprocess.Popen(
+        [sys.executable, "-c", script], stdout=subprocess.PIPE, text=True
+    )
+    assert holder.stdout is not None
+    assert holder.stdout.readline().strip() == "locked", "the peer never took the lock"
+    return holder
+
+
+def test_a_lost_journal_mode_race_never_kills_a_worker(tmp_path):
+    """The boot crash CI's flake-watch caught: losing the WAL race is not fatal.
+
+    Two workers starting together both try to move the same *fresh* database to
+    WAL, and SQLite answers the loser of a journal-mode change with
+    ``database is locked`` — without consulting the busy handler, and without the
+    caller being able to do anything about it. Escaping from ``_init`` means the
+    worker never boots, so a performance setting takes the deployment down; CI
+    caught it as ``flaky``, on a real (if unlucky) schedule.
+
+    A peer process holding a read transaction makes the lock deterministic: the
+    upgrade must fail, the store must come up anyway, and it must still enforce
+    exactly one shared quota.
+    """
+    path = tmp_path / "raced.db"
+    script = (
+        "import sys\n"
+        f"sys.path.insert(0, {str(REPO)!r})\n"
+        "from backend.services.ratelimit import SqliteBackend\n"
+        # Boot must not spend the default 30 s lock wait proving it cannot have
+        # WAL: the upgrade gets its own, short budget.
+        "SqliteBackend._WAL_BUSY_S = 0.05\n"
+        f"store = SqliteBackend({str(path)!r})\n"
+        "print(store.status()['journal_mode'])\n"
+        "print(sum(store.allow('global', '1.2.3.4', 2, 60)[0] for _ in range(3)))\n"
+    )
+    holder = _hold_a_read_lock(path, 1.0)
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
+        )
+    finally:
+        holder.wait(timeout=10)
+    assert proc.returncode == 0, f"the worker died instead of degrading:\n{proc.stderr[-1500:]}"
+    mode, quota = proc.stdout.split()
+    assert mode == "default", f"a held reader cannot have allowed WAL (got {mode!r})"
+    assert quota == "2", f"the degraded store must still enforce one quota, got {quota}"
+
+
+def test_the_wal_upgrade_waits_before_it_gives_up(monkeypatch, tmp_path):
+    """Retry on a lock, keep going on anything else, and never raise on a lock."""
+    backend = ratelimit.SqliteBackend(tmp_path / "retry.db")
+    attempts = {"n": 0}
+
+    class Cursor:
+        def __init__(self, row):
+            self._row = row
+
+        def fetchone(self):
+            return self._row
+
+    class Flaky:
+        """Loses the race twice, then gets the file."""
+
+        def execute(self, sql, *args):
+            if sql.strip().upper().startswith("PRAGMA JOURNAL_MODE"):
+                attempts["n"] += 1
+                if attempts["n"] <= 2:
+                    raise sqlite3.OperationalError("database is locked")
+                return Cursor(("wal",))
+            raise AssertionError(f"unexpected statement: {sql}")
+
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    assert backend._switch_to_wal(Flaky()) is True
+    assert attempts["n"] == 3
+
+    class Broken:
+        def execute(self, sql, *args):
+            raise sqlite3.OperationalError("disk I/O error")
+
+    # ...but a real failure is not a flake, and must not be swallowed.
+    with pytest.raises(sqlite3.OperationalError):
+        backend._switch_to_wal(Broken())
+
+
+def test_sqlite_status_reports_the_journal_mode(tmp_path):
+    """A degraded store says so in /api/health instead of only in a log line."""
+    healthy = ratelimit.SqliteBackend(tmp_path / "healthy.db")
+    assert healthy.status()["journal_mode"] == "wal"
+
+    store = ratelimit.SqliteBackend(tmp_path / "degraded.db")
+
+    class Locked:
+        def execute(self, sql, *args):
+            raise sqlite3.OperationalError("database is locked")
+
+    store._wal = store._switch_to_wal(Locked())
+    assert store.status()["journal_mode"] == "default"
+    assert store.status()["distributed"] is True  # the quota is still shared
 
 
 def test_production_without_redis_uses_the_host_shared_store(monkeypatch, tmp_path):

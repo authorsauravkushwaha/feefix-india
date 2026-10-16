@@ -278,6 +278,40 @@ def test_scanner_can_emit_json_for_ci(planted, tmp_path, capsys):
     assert payload["findings"], "the CI artifact must contain the findings"
 
 
+def test_findings_are_printed_as_check_annotations(planted, capsys):
+    """A red scan must be readable from the API, not only from a log blob.
+
+    One CI run failed this gate with its findings visible nowhere but a log the
+    API could not fetch; `--annotate` is the fix (pytest failures are surfaced
+    the same way).
+    """
+    from agents import secret_scan
+
+    assert secret_scan.main(["--path", str(planted), "--annotate"]) == 1
+    lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("::error")]
+    assert lines, "no annotations were emitted"
+    assert all(ln.startswith("::error title=secret-scan ") for ln in lines)
+    assert any("file=svc/config.py" in ln and "line=1" in ln for ln in lines), lines
+    # Annotations are single-line workflow commands: a raw newline or `%` in a
+    # snippet would silently truncate what the reviewer sees.
+    assert not any("\n" in ln or "%" in ln for ln in lines), lines
+
+
+def test_a_crashing_scan_is_still_readable_from_the_annotations(monkeypatch, capsys):
+    """The other way this gate can go red: the scanner itself dies."""
+    from agents import secret_scan
+
+    def boom(argv):  # noqa: ANN001
+        raise RuntimeError("scanner exploded")
+
+    monkeypatch.setattr(secret_scan, "main", boom)
+    with pytest.raises(RuntimeError):
+        secret_scan._run([])
+    assert "::error title=secret-scan crashed::RuntimeError: scanner exploded" in (
+        capsys.readouterr().out
+    )
+
+
 def test_ignore_file_is_honoured(tmp_path):
     from agents.secret_scan import scan
 
@@ -397,7 +431,7 @@ def test_cli_flags_used_by_ci_and_pre_commit_are_advertised():
     """The usage text is the contract CI relies on."""
     from agents.secret_scan import _USAGE
 
-    for flag in ("--path", "--json", "--staged", "--history", "--help"):
+    for flag in ("--path", "--json", "--annotate", "--staged", "--history", "--help"):
         assert flag in _USAGE, f"{flag} is used but not documented"
 
 

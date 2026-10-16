@@ -378,6 +378,10 @@ class SqliteBackend:
     distributed = True
     multi_instance = False
 
+    #: Lock wait for the journal-mode upgrade only (real statements get 30 s).
+    _WAL_BUSY_S = 1.0
+    _WAL_ATTEMPTS = 3
+
     def __init__(self, path: str | os.PathLike[str]) -> None:
         import sqlite3
 
@@ -387,17 +391,61 @@ class SqliteBackend:
             os.makedirs(parent, exist_ok=True)
         self._sqlite3 = sqlite3
         self._local = threading.local()
+        self._wal = False
         self._init()
 
     def _conn(self):
         conn = getattr(self._local, "conn", None)
         if conn is None:
-            conn = self._sqlite3.connect(self.path, timeout=30, isolation_level=None)
-            conn.execute("PRAGMA journal_mode=WAL")
+            conn = self._sqlite3.connect(self.path, timeout=self._WAL_BUSY_S, isolation_level=None)
+            # Order matters twice over: the busy handler is installed *before*
+            # the first statement can contend for a lock, and the WAL upgrade
+            # below is attempted with a short wait, so a contended file does not
+            # stall a boot. 30 s afterwards for every real statement.
+            conn.execute(f"PRAGMA busy_timeout={int(self._WAL_BUSY_S * 1000)}")
+            self._wal = self._switch_to_wal(conn)
             conn.execute("PRAGMA busy_timeout=30000")
             conn.execute("PRAGMA synchronous=NORMAL")
             self._local.conn = conn
         return conn
+
+    def _switch_to_wal(self, conn) -> bool:
+        """Move the file to WAL, waiting out a concurrent opener — never fatal.
+
+        Two workers on one host start together and both try to switch the same
+        **fresh** file to WAL. The loser gets ``sqlite3.OperationalError:
+        database is locked`` from a journal-mode change, and the busy handler is
+        not consulted for that particular race (the in-process version, eight
+        concurrent openers, is what CI's flake-watch gate caught in
+        ``backend/services/db.py``; this store had the same bug and CI caught it
+        a second time). A worker that dies at boot because a sibling won a
+        journal-mode race takes the whole deployment down to protect a
+        performance setting, so losing is a degraded mode: retry, then carry on
+        in the default journal mode, where ``BEGIN IMMEDIATE`` plus the busy
+        timeout still enforce exactly one quota.
+        """
+        last_error: Exception | None = None
+        for attempt in range(self._WAL_ATTEMPTS):
+            try:
+                mode = str(conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]).lower()
+            except self._sqlite3.OperationalError as exc:
+                last_error = exc
+                if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+                    raise
+            else:
+                if mode == "wal":
+                    return True
+                last_error = self._sqlite3.OperationalError(f"journal_mode is {mode!r}, not 'wal'")
+            if attempt < self._WAL_ATTEMPTS - 1:
+                time.sleep(0.05 * (attempt + 1))
+        # Network mounts cannot do WAL at all. Serve anyway (correct, slower) and
+        # say so — a silent downgrade is how the original per-process limiter
+        # shipped in the first place.
+        log.warning(
+            "[ratelimit] %s is not in WAL mode: %s (using the default journal "
+            "mode; the shared quota is still enforced)", self.path, last_error,
+        )
+        return False
 
     def _init(self) -> None:
         conn = self._conn()
@@ -478,6 +526,11 @@ class SqliteBackend:
             "scope": "host",
             "multi_instance": False,
             "path": "configured",
+            # WAL is a performance/robustness setting, not the correctness
+            # mechanism (that is BEGIN IMMEDIATE + the busy timeout) — so a
+            # database that refused WAL still enforces one shared quota, and the
+            # degraded mode is visible here instead of only in a log line.
+            "journal_mode": "wal" if self._wal else "default",
         }
 
 

@@ -316,7 +316,10 @@ def test_verify_script_covers_every_ci_gate(ci):
 def test_ci_runs_both_directions_of_the_secret_scan(ci):
     """Scan the tree *and* emit the machine-readable report CI archives."""
     commands = _run_commands(ci)
-    assert "python -m agents.secret_scan --json secret-scan-report.json" in commands
+    assert "python -m agents.secret_scan --json secret-scan-report.json --annotate" in commands
+    # The findings have to be readable without the log blob: the run that
+    # prompted this had a red scan whose output the API could not fetch.
+    assert any("--history --json secret-scan-history.json" in c for c in commands)
     upload = [
         s
         for s in ci["jobs"]["test"]["steps"]
