@@ -39,25 +39,33 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Full test suite
-        run: python -m pytest --junitxml=pytest-report.xml
+        run: python -m pytest --junitxml=pytest-report.xml 2>&1 | tee pytest-output.txt
 
-      # A red job whose reason lives only in the log is a gate people learn to
-      # ignore. Failed test ids are emitted as check annotations (readable via
-      # the API, the UI and `gh pr checks`), and the XML is archived.
+      # A red job whose reason lives only in a log blob is a gate people learn to
+      # ignore. Failed test ids are surfaced as check annotations (readable via
+      # the API, the UI and `gh pr checks`) and the junit XML is archived.
+      # Deliberately plain: text utilities over a captured file, no parser that
+      # can fail on its own and no YAML folding to mangle quoting.
       - name: Report test failures as annotations
         if: failure()
-        run: >-
-          python -c "import xml.etree.ElementTree as ET, glob;
-          [print(f'::error title=pytest::{tc.get("classname")}::{tc.get("name")}')
-          for f in glob.glob('pytest-report.xml')
-          for tc in ET.parse(f).getroot().iter('testcase') if len(tc)]"
+        run: |
+          set +e
+          hits=$(grep -E "^(FAILED|ERROR)" pytest-output.txt | head -20)
+          if [ -n "$hits" ]; then
+            echo "$hits" | sed -E 's/^(FAILED|ERROR) /::error title=pytest::/'
+          else
+            tail -c 800 pytest-output.txt | sed 's/^/::error title=pytest-output::/'
+          fi
+          exit 0
 
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pytest-report
-          path: pytest-report.xml
+          path: |
+            pytest-report.xml
+            pytest-output.txt
           if-no-files-found: ignore
 
       - name: Secret scan (in-house, no committed credentials)

@@ -186,16 +186,19 @@ def test_failing_tests_are_reported_as_annotations(ci):
     assert report_step, "no annotation step: a failing run would be undiagnosable"
     assert report_step.get("if") == "failure()"
     assert "::error" in report_step["run"]
-    assert "pytest-report.xml" in report_step["run"]
+    # It must not become a second, opaque failure of its own.
+    assert "exit 0" in report_step["run"]
+    assert "pytest-output" in report_step["run"]
 
     suite_step = next(s for s in steps if s.get("name") == "Full test suite")
-    assert "--junitxml=pytest-report.xml" in suite_step["run"], (
-        "the annotation step parses the junit report; the suite must write it"
+    assert "tee pytest-output.txt" in suite_step["run"], (
+        "the annotation step reads the captured output"
     )
+    assert "--junitxml=pytest-report.xml" in suite_step["run"]
     upload = [
         s for s in steps
         if str(s.get("uses", "")).startswith("actions/upload-artifact")
-        and s.get("with", {}).get("path") == "pytest-report.xml"
+        and "pytest-report.xml" in str(s.get("with", {}).get("path", ""))
     ]
     assert upload and upload[0].get("if") == "always()"
 
@@ -276,12 +279,20 @@ def test_requirements_cover_every_test_dependency():
 _EXCLUDED = ("pytest", "--check-urls")
 
 
+#: Only self-contained commands are executed here. Multi-line shell blocks
+#: (control flow, pipelines, variables) cannot be run line-by-line, and running
+#: them is not the point of this test: it exists to catch *rot in names* —
+#: a module that moved, a flag that was renamed, a script that now needs an env
+#: var. Shell structure is asserted structurally by the tests above.
+_RUNNABLE_PREFIXES = ("python -m ", "bandit ")
+
+
 def _cheap_ci_commands(ci: dict) -> list[str]:
     commands = []
     for command in _run_commands(ci):
         if any(token in command for token in _EXCLUDED):
             continue
-        if command.startswith("pip install") or command.startswith("uses"):
+        if not command.startswith(_RUNNABLE_PREFIXES):
             continue
         commands.append(command)
     return commands
@@ -294,7 +305,7 @@ def test_cheap_ci_commands_execute_successfully(ci, tmp_path):
     or "the module import now needs an env var" *before* a red build does.
     """
     commands = _cheap_ci_commands(ci)
-    assert commands, "expected the workflow to run some cheap commands"
+    assert len(commands) >= 3, f"expected several runnable commands, found {commands}"
 
     env = {
         # Same layout as CI: pip installs the scanners into the running
