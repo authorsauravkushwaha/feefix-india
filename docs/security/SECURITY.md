@@ -64,7 +64,7 @@ the **CIA triad** (Confidentiality · Integrity · Availability).
 
 ## What green tests do and don't mean
 
-The suite (455 tests) proves **consistency with the rules we wrote down**. It
+The suite (466 tests) proves **consistency with the rules we wrote down**. It
 cannot prove the rules are complete, because the tests were written by the same
 authors as the code: assumptions we never questioned are assumptions we never
 tested. Two of the most recent real defects — a lone surrogate turning a request

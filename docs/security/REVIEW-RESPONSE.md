@@ -8,14 +8,14 @@ test that fails if the finding comes back.
 Verification commands:
 
 ```bash
-python -m pytest                                    # 455 passed
+python -m pytest                                    # 466 passed
 bandit -q -r backend agents ai ml -x tests -ll       # exit 0, 0 medium+
 pip-audit -r requirements.txt                        # no known vulnerabilities
 python -m agents.secret_scan                         # 0 findings on this repo
 pre-commit run --all-files                           # the developer-loop gates
 ```
 
-Test count went from **217 → 455**. The additions are the point of the exercise:
+Test count went from **217 → 466**. The additions are the point of the exercise:
 the old suite proved consistency, the new one probes the assumptions.
 
 | Test file | What it adds |
@@ -346,7 +346,7 @@ curator ever narrows the fixture), and a new
 range**, asserting the ranker's invariants — expired-last ordering, descending
 scores per partition, and `expired == (days_left < 0)` — on all of them. The
 suite was then run under three `PYTHONHASHSEED` values to rule out ordering
-flakes: 455 passed each time.
+flakes: all green, and the flake-watch job now covers it.
 
 ## C. Session identifiers: one rule, enforced on every path
 
@@ -446,11 +446,17 @@ handler is what saves it), a peer process holding an EXCLUSIVE lock on a fresh
 database (connect must wait, then come up in WAL), and a retry assertion — and
 the reproduction now passes 20 rounds × 10 processes with zero failures.
 
-One earlier hypothesis was disproved by measurement rather than assumed
-(ephemeral-port reuse: 0/400 back-to-back allocations returned a duplicate), so
-that guard remains hardening rather than a fix — which is itself the point: the
-flake-watch gate, not the review, is what turned an intermittent red badge into
-a named, reproduced, fixed defect.
+This also explains the *original* failure: `flake-watch` runs the same
+concurrency suites the main test job runs, so the intermittent red test job and
+the red flake-watch job were the same defect seen twice — and both jobs are green
+since the fix. The earlier "cause never identified" status was a consequence of
+the evidence being unreachable, not of the bug being mysterious.
+
+One hypothesis was disproved by measurement rather than assumed (ephemeral-port
+reuse: 0/400 back-to-back allocations returned a duplicate), so that guard
+remains hardening rather than a fix — which is the point: the flake-watch gate,
+not the review, is what turned an intermittent red badge into a named,
+reproduced, fixed defect.
 
 ## What the second pass says about the first
 

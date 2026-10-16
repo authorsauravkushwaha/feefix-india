@@ -231,6 +231,42 @@ def test_concurrency_and_property_suites_are_run_repeatedly(ci):
     assert "exit 1" in script, "flake-watch must fail the build"
 
 
+def test_verify_script_covers_every_ci_gate(ci):
+    """`./scripts/verify.sh` must run what CI runs, or it is a false friend.
+
+    A local "verify everything" command that silently omits a gate is worse than
+    none: it certifies work that the pipeline will reject. Every command the
+    workflow runs is asserted to appear in the script.
+    """
+    script_path = REPO / "scripts" / "verify.sh"
+    assert script_path.exists(), "scripts/verify.sh is missing"
+    assert os.access(script_path, os.X_OK), "scripts/verify.sh is not executable"
+    script = script_path.read_text(encoding="utf-8")
+
+    required = {
+        "agents.secret_scan": "in-house secret scan",
+        "bandit": "static security analysis",
+        "pip_audit": "dependency audit",
+        "agents.verify_dataset": "dataset agent",
+        "ml.experiments.simulate_outcomes": "ML sanity run",
+        "agents.reminder_scheduler": "scheduler dry run",
+        "tests/test_ratelimit_distributed.py": "repeated concurrency suite",
+        "tests/test_fuzz_security.py": "repeated property suite",
+    }
+    for token, label in required.items():
+        assert token in script, f"verify.sh does not run the {label} ({token})"
+
+    # Same interpreter conventions as CI, minus the shell-only plumbing.
+    assert "set -euo pipefail" in script
+    assert "FEEFIX_AI_BACKEND" in script, "a verify run must not try to fetch models"
+
+    # Every module CI invokes through `python -m` must be covered here too.
+    ci_modules = set(re.findall(r"python -m ([a-zA-Z0-9_.]+)", " ".join(_run_commands(ci))))
+    script_modules = set(re.findall(r"-m ([a-zA-Z0-9_.]+)", script))
+    missing = {m for m in ci_modules if m not in script_modules and m != "pytest"}
+    assert not missing, f"verify.sh skips modules that CI runs: {missing}"
+
+
 def test_ci_runs_both_directions_of_the_secret_scan(ci):
     """Scan the tree *and* emit the machine-readable report CI archives."""
     commands = _run_commands(ci)

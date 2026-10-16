@@ -88,7 +88,7 @@ WAL + foreign keys + race-safe versioned migrations · non-root container.
 ## Verifying it yourself
 
 ```bash
-python -m pytest                                   # full suite (455 tests)
+python -m pytest                                   # full suite (466 tests)
 python -m pytest tests/test_fuzz_security.py        # property-based/adversarial
 python -m pytest tests/test_ci_config.py            # the gates themselves
 bandit -q -r backend agents ai ml -x tests -ll
@@ -97,6 +97,7 @@ python -m agents.secret_scan                        # repo scan (exit 1 on findi
 python -m agents.secret_scan --staged               # pre-commit mode
 python -m agents.verify_dataset                     # + --check-urls for liveness
 pre-commit run --all-files                          # what a developer's loop runs
+./scripts/verify.sh                                 # every CI gate, one command
 ```
 
 ## What this document does **not** claim

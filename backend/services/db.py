@@ -61,8 +61,13 @@ def _switch_to_wal(conn: sqlite3.Connection, attempts: int = 6) -> None:
                 raise
         time.sleep(0.05 * (attempt + 1))
     # Some filesystems (network mounts, for example) cannot do WAL at all. That
-    # is a degraded mode, not a reason to refuse to serve — say so loudly.
-    log.warning("[db] could not enable WAL on %s: %s", conn.execute("PRAGMA database_list").fetchone()[2], last_error)
+    # is a degraded mode, not a reason to refuse to serve — say so loudly, and
+    # never let the *reporting* of it become a second failure.
+    try:
+        where = conn.execute("PRAGMA database_list").fetchone()[2]
+    except sqlite3.Error:  # pragma: no cover - reporting must not raise
+        where = "<unknown>"
+    log.warning("[db] could not enable WAL on %s: %s", where, last_error)
 
 
 def _connect(path: Path) -> sqlite3.Connection:
