@@ -224,6 +224,11 @@ def test_concurrency_and_property_suites_are_run_repeatedly(ci):
     for path in ("tests/test_ratelimit_distributed.py", "tests/test_fuzz_security.py"):
         assert path in script, f"flake-watch does not cover {path}"
     assert "for pass in 1 2 3" in script, "flake-watch must repeat, not run once"
+    # The failure must be readable without the log blob (job summaries are
+    # exposed through the check-runs API; the log blob is not).
+    assert "GITHUB_STEP_SUMMARY" in script, "flake-watch failures would be opaque"
+    assert "FAILED|ERROR" in script, "flake-watch must name the failing test"
+    assert "exit 1" in script, "flake-watch must fail the build"
 
 
 def test_ci_runs_both_directions_of_the_secret_scan(ci):

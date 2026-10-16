@@ -56,6 +56,14 @@ jobs:
           else
             tail -c 800 pytest-output.txt | sed 's/^/::error title=pytest-output::/'
           fi
+          # Also into the job summary, which is readable from the API.
+          {
+            echo "### test job failed"
+            echo '```'
+            echo "$hits"
+            tail -60 pytest-output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
           exit 0
 
       - name: Upload test report
@@ -115,9 +123,34 @@ jobs:
         run: |
           for pass in 1 2 3; do
             echo "=== pass $pass of 3 ==="
-            python -m pytest tests/test_ratelimit_distributed.py tests/test_fuzz_security.py \
-              tests/test_schema_migrations.py -q -p no:cacheprovider
+            if python -m pytest tests/test_ratelimit_distributed.py \
+                 tests/test_fuzz_security.py tests/test_schema_migrations.py \
+                 -q -p no:cacheprovider --tb=short > flake-watch.log 2>&1; then
+              tail -3 flake-watch.log
+            else
+              cat flake-watch.log
+              # Job summaries are readable through the check-runs API, unlike
+              # the log blob: put the failing test ids and the assertion context
+              # where an agent (or a person on a phone) can actually see them.
+              {
+                echo "### flake-watch failed on pass $pass of 3"
+                echo '```'
+                grep -E "^(FAILED|ERROR) " flake-watch.log | head -30
+                echo '--- tail ---'
+                tail -80 flake-watch.log
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
           done
+
+      - name: Upload flake-watch output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flake-watch-log
+          path: flake-watch.log
+          if-no-files-found: ignore
 
   # --- independent scanners -------------------------------------------------
   # Separate vendors, separate heuristics: the in-house scanner above is good at
