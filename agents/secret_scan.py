@@ -30,7 +30,8 @@ offline and dependency-free:
 Exit code 1 = a finding needs attention. Usage::
 
     python -m agents.secret_scan                 # scan the working tree
-    python -m agents.secret_scan --history       # + git history
+    python -m agents.secret_scan --history       # + this branch's history
+    python -m agents.secret_scan --history --all-branches   # whole-repo audit
     python -m agents.secret_scan --check-ci      # assert CI wiring is intact
     python -m agents.secret_scan --json          # machine-readable output
 """
@@ -97,8 +98,10 @@ _HEX_BLOB = re.compile(r"^[0-9a-fA-F]{40,}$")
 #: Natural-language hyphenation ("sentence-transformers") and dotted identifiers
 #: ("auth.token_replay_detected") and MIME types score high on Shannon entropy
 #: but are not credentials. Filtering them is what keeps the signal usable.
-_NATURAL_WORD = re.compile(r"[a-z]{2,}-[a-z]{2,}")
+_NATURAL_WORD = re.compile(r"^[a-z]+(?:[._-][a-z]+)+$")
 _DOTTED_IDENT = re.compile(r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+$")
+#: Any-case dotted identifier/attribute path — code, never a credential.
+_DOTTED_PATH = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+$")
 _MIME_TYPE = re.compile(r"^[a-z]+/[a-z0-9.+-]+$")
 _HTTP_HEADER_NAMES = frozenset({
     "content-type", "accept", "authorization", "user-agent", "cache-control",
@@ -124,7 +127,9 @@ _BENIGN_CONTEXT = (
 
 # Test fixtures legitimately carry sample credentials — don't flag them here.
 _TEST_PATH = re.compile(r"(^|/)(tests?/|test_[^/]*$|.*_test\.py$|conftest\.py$|fixtures?/)")
-_ALLOWLIST_PRAGMA = re.compile(r"pragma:\s*allowlist\s+secret", re.I)
+_ALLOWLIST_PRAGMA = re.compile(
+    r"pragma:\s*allowlist\s+secret|secret-scan:\s*allow|nosec:\s*secret", re.I
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -197,7 +202,12 @@ def _looks_benign(value: str, line: str) -> bool:
     low = value.lower()
     if low in _PLACEHOLDER_LITERALS:
         return True
-    if _NATURAL_WORD.search(value) or _DOTTED_IDENT.match(value) or _MIME_TYPE.match(value):
+    if (
+        _NATURAL_WORD.search(value)
+        or _DOTTED_IDENT.match(value)
+        or _DOTTED_PATH.match(value)
+        or _MIME_TYPE.match(value)
+    ):
         return True
     if low.startswith(("http", "https", "www.", "<", "{{", "${", "assets/", "/api/")):
         return True
@@ -212,6 +222,24 @@ def _looks_benign(value: str, line: str) -> bool:
     return False
 
 
+def _is_charset_range(value: str) -> bool:
+    """True for a character-class alphabet, e.g. ``"abc…zABC…Z0-9._-"``.
+
+    Sanitisers, validators and CSP helpers legitimately carry these: they are
+    long, multi-class and therefore score high on Shannon entropy, but their
+    *sorted unique* characters form a couple of consecutive runs. A real secret's
+    do not — random bytes leave a gap between nearly every pair. This removes the
+    single largest class of false positives (four of them in this repository's
+    other branches), which is what keeps the scan usable enough that nobody
+    disables it.
+    """
+    chars = sorted(set(value))
+    if len(chars) < 10 or len(chars) < 0.4 * len(value):
+        return False
+    gaps = sum(1 for a, b in zip(chars, chars[1:]) if ord(b) - ord(a) > 1)
+    return gaps <= 6
+
+
 def _high_entropy_secret(value: str, line: str) -> bool:
     if len(value) < 20 or not _TOKEN_CHARS.match(value):
         return False
@@ -219,6 +247,8 @@ def _high_entropy_secret(value: str, line: str) -> bool:
         return False
     if _HEX_BLOB.match(value):        # 40+ hex chars: 160+ bits, not a checksum id
         return True
+    if _is_charset_range(value):      # "abc…zABC…Z0-9" allowlist, not a credential
+        return False
     return entropy(value) >= HIGH_ENTROPY_BITS
 
 
@@ -315,20 +345,50 @@ def _dedupe(findings: list[dict]) -> list[dict]:
     return unique
 
 
-def scan_history(limit: int = 4000) -> list[dict]:
-    """Scan ``git log -p`` output — a deleted secret is still a leaked secret."""
+def _iter_patch_additions(patch: str):
+    """Yield ``(path, added_line)`` for every added line of a unified diff.
+
+    Tracking the ``+++ b/<path>`` header matters for correctness, not cosmetics:
+    without it every historical line is attributed to a synthetic filename, so
+    the test-fixture exemption and `.secretscanignore` stop applying and the
+    scan lights up on the fake credentials that tests legitimately contain.
+    """
+    current = "git-history"
+    for line in patch.splitlines():
+        if line.startswith("+++ "):
+            target = line[4:].strip()
+            current = target[2:] if target.startswith("b/") else target
+            continue
+        if line.startswith("+"):
+            yield current, line[1:]
+
+
+def scan_history(rev: str = "HEAD", limit: int = 4000, all_branches: bool = False) -> list[dict]:
+    """Scan committed history — a deleted secret is still a leaked secret.
+
+    Scope is the **current branch's lineage** by default: a PR gate must not fail
+    because of somebody else's in-flight branch. ``all_branches=True`` (CLI:
+    ``--all-branches``) is the deliberate whole-repository audit, and it will
+    report the deliberately fake credentials that scanner test-suites across
+    branches contain — hence opt-in.
+    """
+    args = ["git", "log", "-p", "--no-color", "-U0"]
+    args += ["--all"] if all_branches else [rev]
     try:
         patch = subprocess.run(
-            ["git", "log", "-p", "--all", "--no-color", "-U0"],
-            cwd=REPO, capture_output=True, text=True, timeout=180, check=False,
+            args, cwd=REPO, capture_output=True, text=True, timeout=180, check=False,
         ).stdout
     except (OSError, subprocess.SubprocessError):  # pragma: no cover - no git
         return []
+
+    ignore = _load_ignore(REPO)
     findings: list[dict] = []
-    for lineno, line in enumerate(patch.splitlines()[:limit], 1):
-        if not line.startswith("+"):
+    for lineno, (path, content) in enumerate(_iter_patch_additions(patch), 1):
+        if lineno > limit:
+            break
+        if path == "/dev/null" or _ignored(path, ignore):
             continue
-        findings.extend(_scan_line(line[1:], "git-history", lineno, False))
+        findings.extend(_scan_line(content, path, lineno, bool(_TEST_PATH.search(path))))
     return _dedupe(findings)
 
 
@@ -396,14 +456,18 @@ def main(argv: list[str]) -> int:
     findings = scan(root)
     history: list[dict] = []
     if "--history" in argv:
-        history = scan_history()
+        history = scan_history(all_branches="--all-branches" in argv)
 
     if as_json:
         print(json.dumps({"working_tree": findings, "history": history}, indent=2))
         return 1 if (findings or history) else 0
 
     print("== FeeFix Secret Scan ==")
-    print(f"scanned under {root} | working-tree findings: {len(findings)} | history findings: {len(history)}")
+    scope = "all branches" if "--all-branches" in argv else "this branch's history"
+    print(
+        f"scanned under {root} | working-tree findings: {len(findings)} | "
+        f"history findings ({scope}): {len(history)}"
+    )
     for finding in (findings + history)[:50]:
         print(f"  ✗ [{finding['type']}] {finding['file']}:{finding['line']}  {finding['snippet']}")
     if findings or history:

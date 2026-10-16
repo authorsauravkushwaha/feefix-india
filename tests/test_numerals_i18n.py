@@ -28,7 +28,6 @@ from backend.services.numerals import (
     MAX_INCOME,
     build_patterns,
     digit_translation,
-    lexicon,
     normalize_digits,
     supported_languages,
     validate_lexicon,

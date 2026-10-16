@@ -33,6 +33,10 @@ jobs:
         run: python -m agents.secret_scan
 
       - name: Secret scan — git history (a deleted secret is still a leaked secret)
+        # Scope is this branch's lineage on purpose: a PR gate must not fail
+        # because another in-flight branch contains deliberately fake fixtures.
+        # The whole-repository audit is `--history --all-branches` (operator-run;
+        # it reports scanner test fixtures by design).
         run: python -m agents.secret_scan --history
 
       - name: Secret-scan wiring self-check (the control must stay wired in)

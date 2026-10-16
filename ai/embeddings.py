@@ -24,7 +24,6 @@ import hashlib
 import math
 import os
 import re
-from dataclasses import dataclass
 from typing import Protocol
 
 _TOKEN_RE = re.compile(r"[a-z0-9.]+")

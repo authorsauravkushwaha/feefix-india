@@ -31,7 +31,7 @@ from backend.models.student import (
     INDIAN_STATES,
     StudentProfile,
 )
-from backend.services.chat_i18n import detect_lang, normalize_digits, tr
+from backend.services.chat_i18n import detect_lang, tr
 from backend.services.numerals import parse_income as _parse_income
 from backend.services.dataset import DatasetService
 from backend.services.matching import match_profile, strip_internal

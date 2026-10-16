@@ -17,7 +17,8 @@ Run the evidence yourself:
 python -m pytest                                     # suite incl. property tests
 python -m pytest tests/test_rate_limit_shared.py     # limiter across processes
 python -m scripts.fuzz_api --requests 2000 --seed 1  # randomised API probing
-python -m agents.secret_scan --history --check-ci    # secrets + CI wiring
+python -m agents.secret_scan --history --check-ci    # secrets (this branch) + CI wiring
+python -m agents.secret_scan --history --all-branches  # whole-repo audit (see note)
 node --test "web/tests/*.test.mjs"                   # clipboard behaviour
 pip-audit -r requirements.txt                        # dependency advisories
 ```
@@ -27,7 +28,7 @@ pip-audit -r requirements.txt                        # dependency advisories
 | 1 | **Replay attack** | `services/auth.py`, `backend/main.py` | Bearer tokens rotate after 24 h (`X-Session-Token`). A replayed superseded token is **tombstoned immediately** and reported (`X-Session-Warning`), while the live token keeps working — sustained replay (≥3 in the window) or an opt-in `FEEFIX_SESSION_REUSE_POLICY=revoke_family` escalates to revoking the family. Events are visible at `GET /api/auth/security-events`; the user's own hammer is `POST /api/auth/logout-all`. OAuth `state` and OTP codes are single-use. | `test_session_reuse_policy.py` |
 | 2 | **Clipboard** | `web/frontend/secure-clipboard.js` | **The helper is UX hygiene, not a security control** — clipboard-stealing malware reads a value the instant it is written. What it *does* enforce: the session token (or any token-shaped value) is **never copied**, and the courtesy wipe only fires after reading the clipboard back and confirming it still holds our value, so the user's own clipboard content is never destroyed. Failures are reported, not swallowed. | `web/tests/clipboard.test.mjs`, `test_security_hardening.py` |
 | 3 | **SQL / NoSQL injection** | `services/db.py`, `services/sqlite_store.py`, `services/otp.py` | Every statement is parameterized; a test scans the source so no string-built SQL can land. SQLite has no NoSQL surface. Injection payloads are inert data. | `test_security_hardening.py` |
-| 4 | **Secret key leaks** | `agents/secret_scan.py`, `.gitignore`, CI | Scanner covers provider token shapes, **entropy** (including 40+ hex characters), **split/re-joined literals**, and every text file (not an extension allowlist). `--history` scans `git log -p`, `--check-ci` asserts the CI step is unconditional, and false positives are handled with `.secretscanignore` / `# pragma: allowlist secret` instead of disabling the job. | `test_wiring_and_claims.py` |
+| 4 | **Secret key leaks** | `agents/secret_scan.py`, `.gitignore`, CI | Scanner covers provider token shapes, **entropy** (including 40+ hex characters), **split/re-joined literals**, and every text file (not an extension allowlist). `--history` scans committed history **attributed to the real file path** (so fixtures stay exempt and `.secretscanignore` still applies) and is scoped to this branch by default; `--all-branches` is the operator-run whole-repo audit. `--check-ci` asserts the CI step is unconditional. False positives are handled with `.secretscanignore` / `# pragma: allowlist secret` / `# secret-scan: allow` instead of disabling the job. | `test_secret_scan.py`, `test_wiring_and_claims.py` |
 | 5 | **Long-password DoS** | `services/auth.py`, `services/limits.py` | Passwords are length-capped in the schema *and* the service, and **pre-hashed with SHA-256** so KDF cost is independent of input size. Memory-hard hashing is itself bounded: at most `FEEFIX_KDF_CONCURRENCY` (default 4) concurrent KDFs, so 48 MiB-per-hash cannot be turned into RAM exhaustion. | `test_password_hashing.py` |
 | 6 | **ReDoS** | `services/limits.py`, `services/numerals.py` | All user text is length-capped before any regex runs; digit runs use bounded quantifiers; the income lexicon is compiled from **escaped data**, not hand-written alternations. Timing tests keep pathological inputs fast. | `test_security_hardening.py`, `test_numerals_i18n.py` |
 | 7 | **Server-side template injection** | `api/routes.py`, `web/frontend/app.js` | The API returns JSON only — there is no server-side template engine. The single HTML page (OAuth handoff) splices its payload through `_json_html_safe()`, which neutralises `</script>`, entity and line-terminator breakouts, and is property-tested with arbitrary Unicode. | `test_fuzzing.py` |
@@ -37,6 +38,15 @@ pip-audit -r requirements.txt                        # dependency advisories
 | 11 | **Input validation** | `services/limits.py`, `services/body_limit.py`, `api/schemas.py` | Central caps, **per endpoint** (chat 64 KB, Q&A 32 KB, auth 8 KB, JSON API 256 KB, uploads their own budget) — every knob env-tunable. Bodies are counted **while they stream**, so a chunked request with no `Content-Length` cannot bypass the gate, and the 413 reports the limit and scope so a legitimate large client can adapt. | `test_body_limits.py` |
 | 12 | **Rate limiting** | `services/ratelimit.py`, `backend/main.py` | Sliding-window limits with a **shared store by default** (SQLite, atomic via `BEGIN IMMEDIATE`; Redis when `FEEFIX_REDIS_URL` is set) so limits hold across worker processes and instances. The process-local store is opt-in, warns loudly when workers are configured, and is regression-tested for the multiplication it causes. Bounded counter table, proxy-aware client IP anchored to the *right* of `X-Forwarded-For`, `Retry-After` on 429, and store outages that are counted in `/api/health` (fail-closed if `FEEFIX_RATELIMIT_FAIL_MODE=closed`). | `test_rate_limit_shared.py` |
 | 13 | **authentication ≠ authorization** | `api/routes.py` | `_require_user` proves identity; `_authorize_session` proves ownership — enforced on every session-scoped endpoint including documents, ML rank and events. Anonymous sessions stay open by design. | `test_uploads_api.py`, `test_security_hardening.py` |
+
+### History-scan scope (and what a whole-repo audit will show)
+
+`python -m agents.secret_scan --history` scans the **current branch's** lineage.
+That is deliberate: a pull-request gate should fail for a secret *this* change
+introduces, not for the deliberately fake credentials that some other in-flight
+branch's scanner tests contain. Use `--all-branches` when you want the full
+repository audit, and expect it to list test fixtures and sample tokens — that is
+what those branches' test suites are made of, not a leak.
 
 ## Why interactive docs are ON
 

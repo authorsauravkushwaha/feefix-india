@@ -16,8 +16,6 @@ Three claims this file makes testable:
 
 from __future__ import annotations
 
-import importlib
-
 import pytest
 from fastapi.testclient import TestClient
 

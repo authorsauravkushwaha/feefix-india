@@ -100,7 +100,6 @@ def _enforce_auth_limit(request: Request, identifier: str) -> None:
 @router.post("/auth/register")
 def register(body: RegisterRequest, request: Request) -> dict:
     from backend.services import auth as auth_svc
-    from backend.services import ratelimit
 
     _enforce_auth_limit(request, body.email.strip().lower())
     try:
@@ -115,7 +114,6 @@ def register(body: RegisterRequest, request: Request) -> dict:
 @router.post("/auth/login")
 def login(body: LoginRequest, request: Request) -> dict:
     from backend.services import auth as auth_svc
-    from backend.services import ratelimit
 
     _enforce_auth_limit(request, body.email.strip().lower())
     try:
@@ -240,8 +238,7 @@ def otp_request(body: OtpRequestBody, request: Request) -> dict:
     from backend.services import otp as otp_svc
     from backend.services import ratelimit
 
-    from backend.services import ratelimit as _rl
-    client = _rl.client_ip(request)
+    client = ratelimit.client_ip(request)   # stamped on the OTP row for auditing
     _enforce_auth_limit(request, "otp-req")
     try:
         return otp_svc.request_code(body.channel, body.address, client)
@@ -254,10 +251,7 @@ def otp_verify(body: OtpVerifyBody, request: Request) -> dict:
     """Burn the code → mint a session. Wrong code and unknown account both
     answer 401 identically (no user-enumeration)."""
     from backend.services import otp as otp_svc
-    from backend.services import ratelimit
 
-    from backend.services import ratelimit as _rl
-    client = _rl.client_ip(request)
     _enforce_auth_limit(request, f"otp-verify:{body.address.strip().lower()}")
     try:
         user = otp_svc.verify_code(body.channel, body.address, body.code, body.name)

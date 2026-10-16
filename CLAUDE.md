@@ -49,6 +49,11 @@ that will fail if the old behaviour comes back.
    (`web/tests/clipboard.test.mjs`.)
 6. **Secrets are enforced at boot.** Strict mode (`FEEFIX_STRICT_SECRETS=1` or
    production markers) refuses to start on placeholder/half-configured values.
+   The scanner's history mode must keep *attributing real file paths* (so the
+   test-fixture exemption and `.secretscanignore` apply) and must stay scoped to
+   the current branch by default — `--all-branches` is the opt-in whole-repo
+   audit, and it reports other branches' fake fixtures by design.
+   (`tests/test_secret_scan.py`.)
 7. **The upload gate is called by routes.** `services/upload.py` (validation) +
    `services/documents.py` (storage outside the web root) are wired into
    `/api/students/{sid}/documents`. A static test fails if a new module starts

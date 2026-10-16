@@ -67,10 +67,29 @@ def test_property_upload_validation_never_crashes_and_returns_a_reason(filename,
 @settings(max_examples=250, deadline=None)
 @given(name=st.text(max_size=200))
 def test_property_sanitized_filenames_cannot_escape(name):
+    """The real invariant: a sanitised name is a *bare basename* that cannot
+    change the directory it is joined to.
+
+    Hypothesis found an over-claim in an earlier version of this test (`0..` is
+    returned unchanged): "contains no two dots" is not the guarantee. The
+    guarantee is that no separator, no NUL and no leading dot survive, so the
+    name can never resolve outside the upload root — which is what this asserts,
+    against the same helper the download path uses.
+    """
+    from pathlib import Path
+
+    from backend.services.documents import resolve_path
+
     safe = sanitize_filename(name)
     assert "/" not in safe and "\\" not in safe and "\x00" not in safe
-    assert not safe.startswith(".") and ".." not in safe
-    assert len(safe) <= 128
+    assert not safe.startswith(".")
+    assert len(safe) <= 128 and safe
+    # Joining it to a directory cannot move the result out of that directory.
+    root = Path("/tmp/uploads-root")
+    assert (root / safe).parent == root
+    assert (root / safe).resolve().parent == root.resolve()
+    # Anything that resolves to nothing (or outside) is refused, not served.
+    assert resolve_path(safe) is None
 
 
 @settings(max_examples=250, deadline=None)
