@@ -12,6 +12,7 @@ const State = {
   token: localStorage.getItem("feefix.token") || null,
   user: JSON.parse(localStorage.getItem("feefix.user") || "null"),
   dict: {},
+  fallback: {},
   meta: null,
   stats: null,
   lastResults: null,
@@ -146,21 +147,35 @@ function toast(msg) {
 }
 
 /* ---------------------------------------------------------------- i18n -- */
+/* The four languages the UI ships in. Anything else is ignored — a stale or
+   hand-edited localStorage value must never become part of a request path. */
+const LANGS = ["en", "bn", "hi", "ta"];
+
 async function loadLang(lang) {
+  const target = LANGS.includes(lang) ? lang : "en";
   try {
-    const dict = await api(`/api/i18n/${lang}`);
+    const dict = await api(`/api/i18n/${target}`);
+    if (!dict || typeof dict !== "object") throw new Error("Malformed dictionary");
     State.dict = dict;
-    State.lang = lang;
-    localStorage.setItem("feefix.lang", lang);
-    document.documentElement.lang = ["bn", "hi", "ta"].includes(lang) ? lang : "en";
+    State.lang = target;
+    localStorage.setItem("feefix.lang", target);
+    document.documentElement.lang = target;
+    return true;
   } catch (e) {
-    State.dict = {};
+    // Keep the last good dictionary. Replacing it with an empty one would
+    // render the whole UI as raw translation keys ("nav.home" instead of
+    // "Home") — a broken page instead of an untranslated one.
+    if (!Object.keys(State.dict || {}).length) State.dict = State.fallback || {};
+    return false;
   }
 }
 
 /* ----------------------------------------------------------------- nav -- */
 function renderNav() {
-  const route = currentRoute();
+  // NB: do not name this `route` — it would shadow the global `route()`
+  // router for every closure created below (including the language picker,
+  // which calls `route()` to re-render the view).
+  const active = currentRoute();
   const links = [
     ["#/home", t("nav.home")],
     ["#/matcher", t("nav.find")],
@@ -170,8 +185,8 @@ function renderNav() {
   $("#navLinks").innerHTML =
     links
       .map(([href, label]) => {
-        const active = route === href.slice(1) ? "active" : "";
-        return `<a href="${href}" class="${active}">${esc(label)}</a>`;
+        const on = active === href.slice(1) ? "active" : "";
+        return `<a href="${href}" class="${on}">${esc(label)}</a>`;
       })
       .join("") +
     (State.user
@@ -186,11 +201,12 @@ function renderNav() {
      </select>`;
   $("#signinBtn")?.addEventListener("click", openAuthModal);
   $("#logoutBtn")?.addEventListener("click", logout);
-  $("#langPick").addEventListener("change", async (e) => {
-    await loadLang(e.target.value);
+  $("#langPick")?.addEventListener("change", async (e) => {
+    const ok = await loadLang(e.target.value);
+    if (!ok) toast(t("common.error"));
     renderNav();
     renderFooter();
-    route();
+    await route();
   });
   $("#footerTagline") && ($("#footerTagline").textContent = t("footer.tagline"));
 }
@@ -311,11 +327,11 @@ function HomeView(el) {
     (s.fee_waivers ?? 0) > 1 ? `${s.fee_waivers}+` : "1+",
     s.total_schemes ? `${s.verified}/${s.total_schemes}` : "–",
   ];
-  $$("#statStrip .num").forEach((el, i) => {
+  $$("#statStrip .num").forEach((node, i) => {
     if (i === 1) {
-      animateCount(el, 0, defs[1], (v) => "₹" + Math.round(v / 1000) + "K");
-    } else if (i === 0) animateCount(el, 0, defs[0], (v) => String(Math.round(v)));
-    else el.textContent = defs[i];
+      animateCount(node, 0, defs[1], (v) => "₹" + Math.round(v / 1000) + "K");
+    } else if (i === 0) animateCount(node, 0, defs[0], (v) => String(Math.round(v)));
+    else node.textContent = defs[i];
   });
   $("#openChat").addEventListener("click", () => Chat.open());
 }
@@ -437,11 +453,10 @@ function renderWizard(el, dir = 1) {
 
 /* --- step renderers --- */
 function renderStateStep() {
-  const states = State.meta?.states || [];
   const cur = State.wizard.data.domicile_state || "";
   return `
     <div class="search-select">
-      <input id="stateInput" placeholder="State / राज्य / রাজ্য…" value="${esc(cur)}" autocomplete="off" />
+      <input id="stateInput" placeholder="${esc(t("matcher.state.placeholder"))}" value="${esc(cur)}" autocomplete="off" />
       <div class="drop" id="stateDrop" style="display:none"></div>
     </div>`;
 }
@@ -449,16 +464,16 @@ function renderStateStep() {
 function renderCategoryStep() {
   const cur = State.wizard.data.category;
   const opts = [
-    ["general", "General", "No reservation category"],
-    ["sc", "SC", "Scheduled Caste"],
-    ["st", "ST", "Scheduled Tribe"],
-    ["obc", "OBC", "OBC-A / OBC-B · Non-creamy layer"],
+    ["general", "🪢", "matcher.category.general", "matcher.category.general.sub"],
+    ["sc", "🏷️", "matcher.category.sc", "matcher.category.sc.sub"],
+    ["st", "🏷️", "matcher.category.st", "matcher.category.st.sub"],
+    ["obc", "🏷️", "matcher.category.obc", "matcher.category.obc.sub"],
   ];
   return `<div class="opt-grid">${opts
-    .map(([v, l, s]) => `
+    .map(([v, ic, label, sub]) => `
       <button class="opt-card ${cur === v ? "sel" : ""}" data-k="category" data-v="${v}">
-        <span class="ic">${{ general: "🪪", sc: "🏷️", st: "🏷️", obc: "🏷️" }[v]}</span>
-        <span>${l}<small>${s}</small></span>
+        <span class="ic">${ic}</span>
+        <span>${esc(t(label))}<small>${esc(t(sub))}</small></span>
       </button>`)
     .join("")}</div>`;
 }
@@ -473,21 +488,12 @@ function renderIncomeStep() {
 
 function renderCourseStep() {
   const cur = State.wizard.data.course_level;
-  const labels = {
-    en: { school: "School (VI–X)", higher_secondary: "Class XI–XII (HS)", iti: "ITI", diploma: "Diploma / Polytechnic", ug: "Undergraduate", pg: "Postgraduate", phd: "PhD / Research" },
-    bn: { school: "স্কুল (VI–X)", higher_secondary: "XI–XII (HS)", iti: "ITI", diploma: "ডিপ্লোমা", ug: "স্নাতক (UG)", pg: "স্নাতকোত্তর (PG)", phd: "PhD" },
-    hi: { school: "स्कूल (VI–X)", higher_secondary: "XI–XII (HS)", iti: "ITI", diploma: "डिप्लोमा", ug: "स्नातक (UG)", pg: "स्नातकोत्तर (PG)", phd: "PhD" },
-  }[State.lang] || {};
-  const subs = {
-    ug: "B.Tech · MBBS · B.Sc · BA · B.Com", pg: "M.Tech · M.Sc · MBA · MA",
-    school: "Class 6–10", higher_secondary: "Intermediate", iti: "Trade courses", diploma: "After class 10", phd: "Doctoral",
-  };
   const order = ["school", "higher_secondary", "iti", "diploma", "ug", "pg", "phd"];
   return `<div class="opt-grid">${order
     .map((v) => `
       <button class="opt-card ${cur === v ? "sel" : ""}" data-k="course_level" data-v="${v}">
         <span class="ic">${COURSE_ICONS[v]}</span>
-        <span>${labels[v] || v}<small>${subs[v] || ""}</small></span>
+        <span>${esc(t("matcher.course." + v))}<small>${esc(t("matcher.course." + v + ".sub"))}</small></span>
       </button>`)
     .join("")}</div>`;
 }
@@ -503,9 +509,14 @@ function renderMarksStep() {
 
 function renderGenderStep() {
   const cur = State.wizard.data.gender;
-  const opts = [["female", "👩", "Female"], ["male", "👨", "Male"], ["other", "🧑", "Other"], ["prefer_not_to_say", "🤐", "Prefer not to say"]];
+  const opts = [
+    ["female", "👩", "matcher.gender.female"],
+    ["male", "👨", "matcher.gender.male"],
+    ["other", "🧑", "matcher.gender.other"],
+    ["prefer_not_to_say", "🤐", "matcher.gender.prefer_not_to_say"],
+  ];
   return `<div class="pill-row">${opts
-    .map(([v, ic, l]) => `<button class="pill ${cur === v ? "sel" : ""}" data-k="gender" data-v="${v}">${ic} ${l}</button>`)
+    .map(([v, ic, label]) => `<button class="pill ${cur === v ? "sel" : ""}" data-k="gender" data-v="${v}">${ic} ${esc(t(label))}</button>`)
     .join("")}</div>`;
 }
 
@@ -520,7 +531,7 @@ function renderDetailsStep() {
       </label>
       <div class="community-row ${d.is_minority ? "show" : ""}" id="communityRow">
         <select id="communitySel">
-          <option value="">Select community…</option>
+          <option value="">${esc(t("matcher.details.select_community"))}</option>
           ${communities.map((c) => `<option value="${c}" ${d.minority_community === c ? "selected" : ""}>${c[0].toUpperCase() + c.slice(1)}</option>`).join("")}
         </select>
       </div>
@@ -672,7 +683,6 @@ function ResultsView(el) {
     try {
       const data = await api(`/api/ml/rank/${State.sid}`);
       const order = new Map(data.items.map((it) => [it.scheme_id, it]));
-      const list = $("#matchList");
       const cards = $$(".match-card", list);
       cards
         .sort((a, b) => (order.get(a.dataset.id)?.v2_rank ?? 999) - (order.get(b.dataset.id)?.v2_rank ?? 999))
@@ -732,7 +742,7 @@ function nearCardHTML(n) {
   return `
     <div class="near-card" data-id="${esc(n.id)}">
       <h4>${esc(n.name)}</h4>
-      <div class="blocker">⚠ ${esc(n.failed_rule.detail)}</div>
+      <div class="blocker">⚠ <b>${esc(t("results.blocker"))}:</b> ${esc(n.failed_rule.detail)}</div>
       ${n.gap_advice ? `<div class="advice">💡 ${esc(n.gap_advice)}</div>` : ""}
       <button class="btn btn-ghost btn-small" data-act="view">${esc(t("results.view"))}</button>
     </div>`;
@@ -813,13 +823,13 @@ async function openScheme(id, viaRoute = false) {
 
       <div class="d-section"><h4>${esc(t("scheme.eligibility"))}</h4>
         <div class="elig-grid">
-          ${eligItem("Domicile", s.eligibility.domicile_states?.join(", ") || "All India")}
-          ${eligItem("Income cap", s.eligibility.max_family_income ? fmtINR(s.eligibility.max_family_income) + "/yr" : t("common.na"))}
-          ${eligItem("Category", s.eligibility.categories?.map((c) => c.toUpperCase()).join(", ") || t("common.na"))}
-          ${eligItem("Course", s.eligibility.course_levels?.map((c) => c.replace("_", " ")).join(", ") || t("common.na"))}
-          ${s.eligibility.min_marks_percent ? eligItem("Merit", `≥${s.eligibility.min_marks_percent}% in last exam`) : ""}
-          ${s.eligibility.minority_only ? eligItem("Community", "Notified minority communities") : ""}
-          ${s.eligibility.disability_required ? eligItem("Disability", "Benchmark disability (40%+)") : ""}
+          ${eligItem(t("elig.domicile"), s.eligibility.domicile_states?.join(", ") || t("elig.all_india"))}
+          ${eligItem(t("elig.income_cap"), s.eligibility.max_family_income ? t("elig.income_per_year", { n: fmtINR(s.eligibility.max_family_income) }) : t("common.na"))}
+          ${eligItem(t("elig.category"), s.eligibility.categories?.map((c) => c.toUpperCase()).join(", ") || t("common.na"))}
+          ${eligItem(t("elig.course"), s.eligibility.course_levels?.map((c) => t("matcher.course." + c)).join(", ") || t("common.na"))}
+          ${s.eligibility.min_marks_percent ? eligItem(t("elig.merit"), t("elig.merit_value", { n: s.eligibility.min_marks_percent })) : ""}
+          ${s.eligibility.minority_only ? eligItem(t("elig.community"), t("elig.community_value")) : ""}
+          ${s.eligibility.disability_required ? eligItem(t("elig.disability"), t("elig.disability_value")) : ""}
         </div>
         ${s.eligibility.special_conditions?.length ? `<div class="d-box" style="margin-top:10px"><ul class="d-list">${s.eligibility.special_conditions.map((c) => `<li><span class="tick" style="color:var(--amber)">▹</span>${esc(c)}</li>`).join("")}</ul></div>` : ""}
       </div>
@@ -959,7 +969,7 @@ async function DashboardView(el) {
           method: "POST", body: JSON.stringify({ limit: 10 }),
         });
         $("#dispatchNote").innerHTML =
-          `<div class="dispatch-note">✓ ${r.dispatched} reminder(s) queued in the WhatsApp outbox (demo).</div>`;
+          `<div class="dispatch-note">${esc(t("dash.dispatch_done", { n: r.dispatched }))}</div>`;
       } catch (e) { toast(e.message); }
       btn.disabled = false;
     });
@@ -1241,7 +1251,14 @@ async function boot() {
     $("#chatPanel").classList.contains("open") ? Chat.close() : Chat.open();
   });
   await loadLang(State.lang);
-  State.fallback = State.dict;
+  // English is the safety net: a partially translated language falls back to
+  // it key by key, and a language that fails to load never renders the UI as
+  // raw translation keys.
+  State.fallback =
+    State.lang === "en" ? State.dict : await api("/api/i18n/en").catch(() => ({}));
+  // The saved language may not have loaded (offline, flaky network): fall
+  // back to English rather than rendering raw translation keys.
+  if (!Object.keys(State.dict || {}).length) State.dict = State.fallback;
   try {
     [State.meta, State.stats] = await Promise.all([api("/api/meta"), api("/api/stats")]);
   } catch (e) {
