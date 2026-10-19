@@ -45,3 +45,7 @@ runtime/.*
 .DS_Store
 .idea/
 .vscode/
+
+# Node — the frontend has no build step, but the behaviour tests run on Node.
+# Never commit the installed tree.
+node_modules/

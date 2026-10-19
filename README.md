@@ -143,6 +143,13 @@ The entire surface — UI, match explanations, and full chat conversations — r
 Native digits (২ লাখ / २ लाख / 2 லட்சம்), 30+ Bengali/Hindi/Tamil state names,
 Unicode-NFC-safe keyword matching.
 
+The language picker in the nav switches the **whole page** — wizard option
+cards, the scheme drawer's eligibility grid, the dashboard, the chat panel —
+in the chosen script, and the choice is remembered across visits. All four
+dictionaries carry the same 167 keys (a missing key would leave a raw
+`badge.top_pick` on screen), and a language that fails to load falls back to
+English rather than to empty strings. `test_web_i18n` proves both.
+
 ## 🗄 The dataset
 
 **71 verified schemes:** West Bengal · Bihar · Odisha · Uttar Pradesh ·
@@ -210,6 +217,7 @@ Check a deployment in one command —
 | `test_clipboard_js` | executes `secure-clipboard.js` in node (18 checks) — and asserts it claims no security control |
 | `test_ci_config` | parses CI + pre-commit, runs their commands, and fails if a gate is mis-wired or demoted to advisory |
 | `test_chat` · `test_i18n_rules` | 4-language parsing + full conversations + localized explanations |
+| `test_web_i18n` | the language switch (executed in node against the real `app.js`) + dictionary parity: no missing key, no raw enum value, no string left in English |
 | `test_ai` · `test_agents` | grounding, search rankings, verifier, scheduler |
 | `test_password_hashing` | Argon2id default, legacy-hash upgrade on login, scrypt fallback, bounded KDF concurrency |
 | `test_rate_limit_shared` | the limiter across **real OS processes** (and the multiplication the in-memory store causes) |
